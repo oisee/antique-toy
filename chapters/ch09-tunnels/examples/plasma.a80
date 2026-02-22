@@ -302,7 +302,7 @@ copy_four_way:
     inc  a
     ld   (cur_row), a
     cp   QUARTER_H
-    jr   c, .row_loop
+    jp   c, .row_loop
 
     ret
 

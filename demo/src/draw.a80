@@ -135,8 +135,8 @@ draw_line:
     ld   c, a
 
     ld   a, (line_dx)
-    ld   (smc_hcmp + 1), a
-    ld   (smc_hsub + 1), a
+    ld   (.smc_hcmp + 1), a
+    ld   (.smc_hsub + 1), a
 
     ld   a, (line_dx)
     ld   d, a
@@ -165,10 +165,10 @@ draw_line:
     inc  l
 .h_nb:
     add  a, e
-smc_hcmp:
+.smc_hcmp:
     cp   0
     jr   c, .h_pixel
-smc_hsub:
+.smc_hsub:
     sub  0
     push af
     call step_y
@@ -178,8 +178,8 @@ smc_hsub:
     ; === Vertical-major ===
 .vmaj:
     ld   a, (line_dy)
-    ld   (smc_vcmp + 1), a
-    ld   (smc_vsub + 1), a
+    ld   (.smc_vcmp + 1), a
+    ld   (.smc_vsub + 1), a
 
     ld   a, (line_dy)
     ld   b, a
@@ -200,10 +200,10 @@ smc_hsub:
     call step_y
     pop  af
     add  a, e
-smc_vcmp:
+.smc_vcmp:
     cp   0
     jr   c, .v_pixel
-smc_vsub:
+.smc_vsub:
     sub  0
     rrc  c
     jr   nc, .v_pixel

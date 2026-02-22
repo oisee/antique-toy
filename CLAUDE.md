@@ -12,7 +12,7 @@ Working repository for **"Coding the Impossible: Z80 Demoscene Techniques for Mo
 
 ```
 book-outline.md          # THE master plan (v2, merged from both earlier outlines)
-Makefile                 # Builds all chapter examples with mza
+Makefile                 # Builds all chapter examples with sjasmplus
 chapters/
   ch01-thinking-in-cycles/
     draft.md             # Chapter prose
@@ -37,15 +37,17 @@ build/                   # Compiled output (gitignored)
 ## Build System
 
 ```sh
-make              # compile all examples with mza
+make              # compile all examples with sjasmplus
 make test         # assemble all, report pass/fail
+make test-mza     # assemble all with mza
 make ch01         # compile just chapter 1 examples
+make demo         # build the torus demo
 make clean        # remove build artifacts
 ```
 
-**Primary assembler:** `mza` (MinZ Z80 Assembler) — we develop it at `../minz-ts/`. Aliased as `mza` in shell. Supports `--target zxspectrum`, `--target agon`.
+**Primary assembler:** `sjasmplus` v1.21.1 — full Z80/Z80N instruction set, IX/IY indexed modes, negative DB, expressions. Pinned as git submodule in `tools/sjasmplus/`. Flags: `--nologo`, `--raw=` for binary output.
 
-**Secondary:** `sjasmplus` at `~/dev/bin/sjasmplus` (v1.07 RC8, old — needs upgrade for full compatibility). Examples should compile on both where possible.
+**Secondary:** `mza` (MinZ Z80 Assembler) — we develop it at `../minz-ts/`. Used for mze emulation and DZRP. Has IX/IY limitations (see MEMORY.md).
 
 ## Key Context
 
@@ -60,9 +62,13 @@ make clean        # remove build artifacts
 
 - Use `.a80` extension for Z80 assembly files
 - ORG $8000 for ZX Spectrum examples (above screen memory)
-- Use mza syntax: `$FF` for hex, `%10101010` for binary, `.label` for local labels
+- Hex: `$FF` (preferred, also works in sjasmplus). `#FF` also accepted by sjasmplus.
+- Binary: `%10101010`. Local labels: `.label`
+- Full IX/IY instruction set: `ld (ix+d), imm`, `ld r, (ix+d)`, `inc (ix+d)`, `add a, (ix+d)`, `bit b, (ix+d)` etc.
+- Negative DB values allowed: `DB -3, -6` (sjasmplus handles two's complement)
+- Self-modifying code labels inside functions must be local (`.smc_xxx:`) to avoid breaking local label scope
 - Comments explain cycle counts where relevant: `; 11 T` or `; 196-204 T-states`
-- Examples must compile with `mza --target zxspectrum`
+- Examples must compile with `sjasmplus --nologo`
 
 ## Languages
 

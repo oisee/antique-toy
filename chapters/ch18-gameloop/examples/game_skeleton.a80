@@ -5,9 +5,7 @@
 ; type dispatch, player movement, enemy patrol, bullet spawning,
 ; attribute-block rendering placeholder
 ;
-; Assembles with: mza --target zxspectrum
-; Note: mza only supports ld a,(ix+d) / ld (ix+d),a for IX-indexed,
-; so all IX ops go through register A.
+; Assembles with: sjasmplus / mza --target zxspectrum
 
     ORG  $8000
 
@@ -151,24 +149,16 @@ init_game:
 
     ; Player (slot 0)
     ld   ix, entity_array
-    xor  a
-    ld   (ix+0), a              ; X frac = 0
-    ld   a, 128
-    ld   (ix+1), a              ; X pixel = 128
-    ld   a, 160
-    ld   (ix+2), a              ; Y = 160
-    ld   a, TYPE_PLAYER
-    ld   (ix+3), a
-    ld   a, 1
-    ld   (ix+4), a              ; state = active
-    xor  a
-    ld   (ix+5), a              ; anim_frame
-    ld   (ix+6), a              ; dx
-    ld   (ix+7), a              ; dy
-    ld   a, 3
-    ld   (ix+8), a              ; health = 3
-    ld   a, %00000111
-    ld   (ix+9), a              ; ACTIVE + VISIBLE + COLLIDABLE
+    ld   (ix+0), 0              ; X frac = 0
+    ld   (ix+1), 128            ; X pixel = 128
+    ld   (ix+2), 160            ; Y = 160
+    ld   (ix+3), TYPE_PLAYER
+    ld   (ix+4), 1              ; state = active
+    ld   (ix+5), 0              ; anim_frame
+    ld   (ix+6), 0              ; dx
+    ld   (ix+7), 0              ; dy
+    ld   (ix+8), 3              ; health = 3
+    ld   (ix+9), %00000111      ; ACTIVE + VISIBLE + COLLIDABLE
 
     ; 8 enemies (slots 1-8)
     ld   ix, entity_array + ENTITY_SIZE
@@ -177,26 +167,16 @@ init_game:
 
 .enemy_loop:
     push bc
-    xor  a
-    ld   (ix+0), a              ; X frac
-    ld   a, c
-    ld   (ix+1), a              ; X pixel
-    ld   a, 32
-    ld   (ix+2), a              ; Y = 32
-    ld   a, TYPE_ENEMY
-    ld   (ix+3), a
-    ld   a, 1
-    ld   (ix+4), a              ; state = active
-    xor  a
-    ld   (ix+5), a              ; anim_frame
-    ld   a, 1
-    ld   (ix+6), a              ; dx = 1
-    xor  a
-    ld   (ix+7), a              ; dy = 0
-    ld   a, 1
-    ld   (ix+8), a              ; health = 1
-    ld   a, %00000111
-    ld   (ix+9), a              ; flags
+    ld   (ix+0), 0              ; X frac
+    ld   (ix+1), c              ; X pixel
+    ld   (ix+2), 32             ; Y = 32
+    ld   (ix+3), TYPE_ENEMY
+    ld   (ix+4), 1              ; state = active
+    ld   (ix+5), 0              ; anim_frame
+    ld   (ix+6), 1              ; dx = 1
+    ld   (ix+7), 0              ; dy = 0
+    ld   (ix+8), 1              ; health = 1
+    ld   (ix+9), %00000111      ; flags
 
     ld   de, ENTITY_SIZE
     add  ix, de
@@ -273,8 +253,7 @@ update_entities:
 
 .loop:
     push bc
-    ld   a, (ix+9)
-    bit  FLAG_ACTIVE, a
+    bit  FLAG_ACTIVE, (ix+9)
     jr   z, .skip
 
     ld   a, (ix+3)              ; type
@@ -323,9 +302,7 @@ update_player:
     add  a, 2
     ld   (ix+0), a
     jr   nc, .x_done_r
-    ld   a, (ix+1)
-    inc  a
-    ld   (ix+1), a
+    inc  (ix+1)
 .x_done_r:
     res  FLAG_FACING_L, (ix+9)
     jr   .horiz_done
@@ -336,9 +313,7 @@ update_player:
     sub  2
     ld   (ix+0), a
     jr   nc, .x_done_l
-    ld   a, (ix+1)
-    dec  a
-    ld   (ix+1), a
+    dec  (ix+1)
 .x_done_l:
     set  FLAG_FACING_L, (ix+9)
 .horiz_done:
@@ -347,10 +322,8 @@ update_player:
     ld   a, (input_pressed)
     bit  INPUT_FIRE, a
     jr   z, .no_fire
-    ld   a, (ix+1)
-    ld   b, a                   ; player X
-    ld   a, (ix+2)
-    ld   c, a                   ; player Y
+    ld   b, (ix+1)              ; player X
+    ld   c, (ix+2)              ; player Y
     call spawn_bullet
 .no_fire:
 
@@ -365,23 +338,19 @@ update_player:
 ; Enemy update (simple patrol)
 ; ============================================================
 update_enemy:
-    ld   a, (ix+6)              ; dx
-    ld   e, a
     ld   a, (ix+1)              ; X pixel
-    add  a, e
+    add  a, (ix+6)              ; + dx
     ld   (ix+1), a
 
     ; Bounce at screen edges
     cp   240
     jr   c, .no_bounce_r
-    ld   a, 255                 ; -1 unsigned
-    ld   (ix+6), a
+    ld   (ix+6), 255            ; dx = -1
     jr   .bounce_done
 .no_bounce_r:
     cp   8
     jr   nc, .bounce_done
-    ld   a, 1
-    ld   (ix+6), a
+    ld   (ix+6), 1
 .bounce_done:
 
     ; Animate
@@ -395,10 +364,8 @@ update_enemy:
 ; Bullet update
 ; ============================================================
 update_bullet:
-    ld   a, (ix+6)              ; dx
-    ld   e, a
     ld   a, (ix+1)
-    add  a, e
+    add  a, (ix+6)              ; + dx
     ld   (ix+1), a
 
     cp   248
@@ -408,8 +375,7 @@ update_bullet:
     ret
 
 .deactivate:
-    xor  a
-    ld   (ix+9), a
+    ld   (ix+9), 0
     ret
 
 ; ============================================================
@@ -423,8 +389,7 @@ update_explosion:
     ld   (ix+5), a
     ret
 .done:
-    xor  a
-    ld   (ix+9), a
+    ld   (ix+9), 0
     ret
 
 ; ============================================================
@@ -448,35 +413,25 @@ spawn_bullet:
     ret
 
 .found:
-    xor  a
-    ld   (ix+0), a
-    ld   a, b
-    ld   (ix+1), a
-    ld   a, c
-    ld   (ix+2), a
-    ld   a, TYPE_BULLET
-    ld   (ix+3), a
-    ld   a, 1
-    ld   (ix+4), a
-    xor  a
-    ld   (ix+5), a
-    ld   (ix+7), a              ; dy = 0
+    ld   (ix+0), 0
+    ld   (ix+1), b
+    ld   (ix+2), c
+    ld   (ix+3), TYPE_BULLET
+    ld   (ix+4), 1
+    ld   (ix+5), 0
+    ld   (ix+7), 0              ; dy = 0
 
     ; Direction from player facing
     ld   a, (entity_array + 9)
     bit  FLAG_FACING_L, a
     jr   z, .right
-    ld   a, 252                 ; dx = -4 (unsigned)
-    ld   (ix+6), a
+    ld   (ix+6), 252            ; dx = -4 (unsigned)
     jr   .dir_done
 .right:
-    ld   a, 4
-    ld   (ix+6), a
+    ld   (ix+6), 4
 .dir_done:
-    ld   a, 1
-    ld   (ix+8), a              ; health = 1
-    ld   a, %00000111
-    ld   (ix+9), a
+    ld   (ix+8), 1              ; health = 1
+    ld   (ix+9), %00000111
 
     pop  ix
     or   a
@@ -491,8 +446,7 @@ render_entities:
 
 .loop:
     push bc
-    ld   a, (ix+9)
-    bit  FLAG_VISIBLE, a
+    bit  FLAG_VISIBLE, (ix+9)
     jr   z, .skip
 
     ; Character column from X pixel

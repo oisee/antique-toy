@@ -118,8 +118,8 @@ basis_hex:
     DB  54,  16,   0
     DB  36,  16,   0
     DB  27,   0,   0
-    DB  36, 240,   0     ; y = -16
-    DB  54, 240,   0
+    DB  36, -16,   0
+    DB  54, -16,   0
 
 ; Ring 2 at (0, 0, R): hex in YZ plane
 basis_hex_r2:
@@ -127,8 +127,8 @@ basis_hex_r2:
     DB   0,  16,  54
     DB   0,  16,  36
     DB   0,   0,  27
-    DB   0, 240,  36     ; y = -16
-    DB   0, 240,  54
+    DB   0, -16,  36
+    DB   0, -16,  54
 
 ; --- Edge list: 96 edges (vertex index pairs) ---
 edge_list:

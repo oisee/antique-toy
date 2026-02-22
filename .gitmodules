@@ -1,0 +1,3 @@
+[submodule "tools/sjasmplus"]
+	path = tools/sjasmplus
+	url = https://github.com/oisee/sjasmplus.git
