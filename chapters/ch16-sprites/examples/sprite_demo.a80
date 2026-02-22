@@ -1,0 +1,395 @@
+; sprite_demo.a80 — OR+AND Masked Sprite Demo
+; From Chapter 16: Fast Sprites
+;
+; Demonstrates:
+;   - Pixel address calculation for ZX Spectrum interleaved screen
+;   - OR+AND masked sprite rendering (8x8 sprite with mask data)
+;   - Background save/restore for clean animation
+;   - Sprite movement across the screen each frame
+;
+; Assembles with: mza --target zxspectrum
+;
+; The sprite is an 8x8 arrow shape that moves rightward and
+; downward, bouncing off screen edges. Each frame:
+;   1. Restore the saved background at old position
+;   2. Calculate screen address for new position
+;   3. Save the background at new position
+;   4. Draw the masked sprite at new position
+
+    ORG  $8000
+
+; ============================================================
+; Constants
+; ============================================================
+SCREEN      EQU  $4000
+SCREEN_END  EQU  $5800
+ATTR_START  EQU  $5800
+ATTR_LEN    EQU  768
+
+; ============================================================
+; Entry point
+; ============================================================
+entry:
+    di
+    ld   sp, $7FFE
+    im   1
+    ei
+
+    ; Fill screen with a checkerboard pattern so we can see
+    ; that the background save/restore works properly
+    call fill_pattern
+
+    ; Set attributes: bright white ink on blue paper
+    ; Attribute: flash=0 bright=1 paper=001 ink=111 = $4F
+    ld   hl, ATTR_START
+    ld   de, ATTR_START + 1
+    ld   (hl), $4F
+    ld   bc, ATTR_LEN - 1
+    ldir
+
+    ; Set border to blue
+    ld   a, 1
+    out  ($FE), a
+
+    ; Initialise sprite position
+    ld   a, 32
+    ld   (sprite_x), a
+    ld   a, 32
+    ld   (sprite_y), a
+    ld   a, 1
+    ld   (sprite_dx), a
+    ld   a, 1
+    ld   (sprite_dy), a
+
+    ; Clear the save buffer (all zeros = no background saved yet)
+    ld   hl, save_buffer
+    ld   b, 8
+.clr:
+    ld   (hl), 0
+    inc  hl
+    djnz .clr
+
+    ; Calculate initial screen address and save initial background
+    ld   a, (sprite_x)
+    ld   b, a
+    ld   a, (sprite_y)
+    ld   c, a
+    call pixel_addr_byte
+    ; HL = screen address of sprite top-left byte
+    ld   (old_scr_addr), hl
+    call save_bg
+
+; ============================================================
+; Main loop — one update per frame
+; ============================================================
+main_loop:
+    halt                     ; sync to VBLANK
+
+    ; Border red = sprite work
+    ld   a, 2
+    out  ($FE), a
+
+    ; --- Phase 1: Restore background at old position ---
+    ld   hl, (old_scr_addr)
+    call restore_bg
+
+    ; --- Phase 2: Update sprite position ---
+    call update_position
+
+    ; --- Phase 3: Calculate new screen address ---
+    ld   a, (sprite_x)
+    ld   b, a
+    ld   a, (sprite_y)
+    ld   c, a
+    call pixel_addr_byte
+    ; HL = screen address for new position (byte-aligned)
+    ld   (old_scr_addr), hl
+
+    ; --- Phase 4: Save background at new position ---
+    call save_bg
+
+    ; --- Phase 5: Draw the masked sprite ---
+    ld   hl, (old_scr_addr)
+    ld   de, sprite_data
+    call draw_masked_8x8
+
+    ; Border black = done
+    xor  a
+    out  ($FE), a
+
+    jr   main_loop
+
+; ============================================================
+; UPDATE_POSITION — move sprite, bounce off edges
+; ============================================================
+update_position:
+    ; --- X axis ---
+    ld   a, (sprite_x)
+    ld   b, a
+    ld   a, (sprite_dx)
+    add  a, b
+    ld   (sprite_x), a
+
+    ; Bounce at right edge (X >= 248 means we're at rightmost byte col)
+    cp   248
+    jr   c, .no_bounce_r
+    ; Reverse X direction: dx = -1 = $FF
+    ld   a, $FF
+    ld   (sprite_dx), a
+    jr   .x_done
+.no_bounce_r:
+    ; Bounce at left edge (X < 8)
+    cp   8
+    jr   nc, .x_done
+    ; Reverse X direction: dx = +1
+    ld   a, 1
+    ld   (sprite_dx), a
+.x_done:
+
+    ; --- Y axis ---
+    ld   a, (sprite_y)
+    ld   b, a
+    ld   a, (sprite_dy)
+    add  a, b
+    ld   (sprite_y), a
+
+    ; Bounce at bottom edge (Y >= 184 — leave room for 8 rows)
+    cp   184
+    jr   c, .no_bounce_d
+    ld   a, $FF
+    ld   (sprite_dy), a
+    jr   .y_done
+.no_bounce_d:
+    ; Bounce at top edge (Y < 8)
+    cp   8
+    jr   nc, .y_done
+    ld   a, 1
+    ld   (sprite_dy), a
+.y_done:
+    ret
+
+; ============================================================
+; PIXEL_ADDR_BYTE — calculate screen address for byte column
+; Input:  B = x pixel (0-255), C = y pixel (0-191)
+; Output: HL = screen address of byte at (x/8, y)
+;
+; Derived from the standard pixel_addr routine in draw.a80,
+; but returns the byte address without the pixel bit mask.
+; ZX Spectrum screen layout: 010TTSSS LLLCCCCC
+;   TT  = third (0-2), SSS = scanline within char (0-7)
+;   LLL = character row within third (0-7)
+;   CCCCC = character column (0-31)
+; ============================================================
+pixel_addr_byte:
+    ; --- High byte: 010 TT SSS ---
+    ld   a, c               ;  4 T   A = y
+    and  $C0                ;  7 T   isolate TT (bits 7-6 of y)
+    rrca                    ;  4 T   \
+    rrca                    ;  4 T    | shift to bits 4-3
+    rrca                    ;  4 T   /
+    ld   h, a               ;  4 T   H = 000TT000
+    ld   a, c               ;  4 T   A = y
+    and  $07                ;  7 T   isolate SSS (bits 2-0 of y)
+    or   h                  ;  4 T   combine: 000TTSSS
+    or   $40                ;  7 T   add screen base: 010TTSSS
+    ld   h, a               ;  4 T
+
+    ; --- Low byte: LLL CCCCC ---
+    ld   a, c               ;  4 T   A = y
+    and  $38                ;  7 T   isolate LLL (bits 5-3 of y)
+    rlca                    ;  4 T   \
+    rlca                    ;  4 T   /  shift to bits 7-5
+    ld   l, a               ;  4 T   L = LLL00000
+    ld   a, b               ;  4 T   A = x
+    rrca                    ;  4 T   \
+    rrca                    ;  4 T    | x / 8 = character column
+    rrca                    ;  4 T   /
+    and  $1F                ;  7 T   isolate CCCCC
+    or   l                  ;  4 T   combine: LLLCCCCC
+    ld   l, a               ;  4 T
+    ret                     ; 10 T
+
+; ============================================================
+; DOWN_HL — advance screen address one pixel row down
+; Handles character boundary crossing.
+; Input/Output: HL = screen address
+; ============================================================
+down_hl:
+    inc  h                   ;  4 T   next scanline (SSS++)
+    ld   a, h                ;  4 T
+    and  7                   ;  7 T   did SSS wrap to 0?
+    ret  nz                  ; 11/5 T no boundary — done
+    ; Character boundary: advance LLL, fix H
+    ld   a, l                ;  4 T
+    add  a, 32               ;  7 T   LLL++ (add 32 to L = next char row)
+    ld   l, a                ;  4 T
+    ret  c                   ; 11/5 T if carry, L wrapped and H is correct
+    ld   a, h                ;  4 T
+    sub  8                   ;  7 T   undo the inc h that crossed boundary
+    ld   h, a                ;  4 T
+    ret                      ; 10 T
+
+; ============================================================
+; DRAW_MASKED_8x8 — draw an 8x8 OR+AND masked sprite
+; Input:  HL = screen address (top-left byte)
+;         DE = pointer to sprite data
+;              Format per row: mask_byte, graphic_byte (16 bytes total)
+;
+; Algorithm per byte:
+;   screen = (screen AND mask) OR graphic
+;
+; The mask has 1 for transparent pixels, 0 for opaque.
+; ANDing clears a sprite-shaped hole; ORing stamps the graphic.
+; ============================================================
+draw_masked_8x8:
+    ld   b, 8                ;  7 T   8 rows
+
+.row:
+    ; --- Read mask, AND with screen ---
+    ld   a, (de)             ;  7 T   load mask byte
+    and  (hl)                ;  7 T   mask the background
+    ld   c, a                ;  4 T   save masked background
+    inc  de                  ;  6 T   advance to graphic byte
+
+    ; --- Read graphic, OR with masked background ---
+    ld   a, (de)             ;  7 T   load graphic byte
+    or   c                   ;  4 T   stamp sprite into hole
+    ld   (hl), a             ;  7 T   write result to screen
+    inc  de                  ;  6 T   advance to next row's mask
+
+    ; --- Move down one pixel row ---
+    call down_hl             ; 17+ T  advance HL one scanline
+
+    djnz .row                ; 13/8 T
+    ret                      ; 10 T
+
+; ============================================================
+; SAVE_BG — save 8 bytes of background (one byte per row, 8 rows)
+; Input:  HL = screen address (top-left byte)
+; Uses save_buffer
+; ============================================================
+save_bg:
+    push hl
+    ld   de, save_buffer
+    ld   b, 8
+
+.row:
+    ld   a, (hl)             ;  7 T   read screen byte
+    ld   (de), a             ;  7 T   store in buffer
+    inc  de                  ;  6 T
+
+    call down_hl             ; 17+ T
+    djnz .row                ; 13/8 T
+
+    pop  hl
+    ret
+
+; ============================================================
+; RESTORE_BG — restore 8 bytes of saved background
+; Input:  HL = screen address where background was saved from
+; Uses save_buffer
+; ============================================================
+restore_bg:
+    ld   de, save_buffer
+    ld   b, 8
+
+.row:
+    ld   a, (de)             ;  7 T   read saved byte
+    ld   (hl), a             ;  7 T   write back to screen
+    inc  de                  ;  6 T
+
+    call down_hl             ; 17+ T
+    djnz .row                ; 13/8 T
+    ret
+
+; ============================================================
+; FILL_PATTERN — fill screen with a visible pattern
+; Alternating $55/$AA per character row for a checkerboard
+; ============================================================
+fill_pattern:
+    ; Fill pixel area with checkerboard so background
+    ; save/restore is visually testable
+    ld   hl, SCREEN
+    ld   de, SCREEN + 1
+    ld   (hl), $55
+    ld   bc, 6143
+    ldir
+
+    ; Alternate even character rows with $AA
+    ; Rows 8-15, 24-31, etc. (every other char row of 8 scanlines)
+    ld   c, 0               ; character row counter
+    ld   hl, SCREEN
+
+.char_loop:
+    ld   a, c
+    and  1                   ; odd char row?
+    jr   z, .skip_row
+
+    ; Fill 8 scanlines x 32 bytes = 256 bytes with $AA
+    push bc
+    ld   b, 0               ; 256 iterations
+.fill:
+    ld   (hl), $AA
+    inc  hl
+    djnz .fill
+    pop  bc
+    jr   .next_row
+
+.skip_row:
+    ; Skip 256 bytes
+    push bc
+    ld   b, 0               ; add 256
+.skip:
+    inc  hl
+    djnz .skip
+    pop  bc
+
+.next_row:
+    inc  c
+    ld   a, c
+    cp   24                  ; 24 character rows total
+    jr   c, .char_loop
+    ret
+
+; ============================================================
+; Sprite data
+; ============================================================
+
+; 8x8 arrow sprite — OR+AND masked format
+; Each row: mask_byte, graphic_byte
+; Mask: $FF = fully transparent, $00 = fully opaque
+;       1-bits = transparent (background shows through)
+;       0-bits = opaque (sprite pixel drawn)
+; Graphic: the actual sprite pixel pattern
+;
+; Arrow pointing right:
+;   Row 0: ...X....  mask=$E7  gfx=$10
+;   Row 1: ...XX...  mask=$E3  gfx=$18
+;   Row 2: ...XXX..  mask=$E1  gfx=$1C
+;   Row 3: XXXXXXX.  mask=$01  gfx=$FE
+;   Row 4: XXXXXXX.  mask=$01  gfx=$FE
+;   Row 5: ...XXX..  mask=$E1  gfx=$1C
+;   Row 6: ...XX...  mask=$E3  gfx=$18
+;   Row 7: ...X....  mask=$E7  gfx=$10
+
+sprite_data:
+    DB   $E7, $10            ; row 0: ...X....
+    DB   $E3, $18            ; row 1: ...XX...
+    DB   $E1, $1C            ; row 2: ...XXX..
+    DB   $01, $FE            ; row 3: XXXXXXX.
+    DB   $01, $FE            ; row 4: XXXXXXX.
+    DB   $E1, $1C            ; row 5: ...XXX..
+    DB   $E3, $18            ; row 6: ...XX...
+    DB   $E7, $10            ; row 7: ...X....
+
+; ============================================================
+; Variables
+; ============================================================
+sprite_x:       DB   32     ; current X position (byte-aligned: moves by 1 pixel column)
+sprite_y:       DB   32     ; current Y position (pixel row)
+sprite_dx:      DB   1      ; X velocity (signed: 1 or $FF)
+sprite_dy:      DB   1      ; Y velocity (signed: 1 or $FF)
+
+old_scr_addr:   DW   0      ; screen address of last drawn position
+
+save_buffer:    DS   8       ; 8 bytes: one byte per row for 8x8 sprite
