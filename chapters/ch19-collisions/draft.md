@@ -1106,18 +1106,7 @@ check_all_collisions:
 
 ### Agon Light 2 Notes
 
-On the Agon, the same physics and AI code runs unchanged -- it is pure Z80 arithmetic with no hardware dependencies. The differences are in where you store the entity array (flat 24-bit addressing, no banking needed) and how you render the results (VDP hardware sprites instead of software blitting).
-
-The Agon's larger frame budget (~368,000 T-states) means you can afford luxuries that are unthinkable on the Spectrum:
-
-- **More entities**: 32 or 64 instead of 16, with no frame budget pressure.
-- **Per-frame AI**: No need for the every-2nd-frame optimisation. Update all enemies every frame.
-- **Better collision**: Check more points around each entity, or use smaller grid cells for tighter tile collision.
-- **Richer state machines**: More states per enemy, more complex transition logic, longer detection ranges.
-
-The physics constants (gravity, jump force, friction) should be identical between platforms so the game *feels* the same. What changes is the quantity and complexity of entities, not the quality of their behaviour.
-
-For Agon-specific sprite collision, the VDP provides hardware collision detection between sprites. You can use this for bullet-vs-enemy checks and save CPU cycles entirely. But for tile collision, you are still doing the tilemap lookup in Z80 code -- the VDP does not know about your game logic.
+The same physics and AI code runs unchanged on the Agon -- pure Z80 arithmetic with no hardware dependencies. The Agon's ~368,000 T-state budget means you can afford more entities (32 or 64), per-frame AI (no 2nd-frame skip needed), more collision check points, and richer state machines. Keep the physics constants identical between platforms so the game *feels* the same. The Agon VDP provides hardware sprite collision for bullet-vs-enemy checks, but tile collision remains a Z80 tilemap lookup.
 
 ---
 
