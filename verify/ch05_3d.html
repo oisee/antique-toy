@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Ch05 — 3D Wireframe (verify Z80 math.a80)</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    background: #1a1a2e; color: #c8c8d0; font-family: "Courier New", monospace;
+    text-align: center; padding: 20px;
+}
+h2 { color: #e0e0f0; margin-bottom: 8px; font-size: 18px; }
+h3 { color: #a0a0c0; margin-bottom: 16px; font-size: 13px; font-weight: normal; }
+canvas {
+    border: 4px solid #333355; display: block; margin: 12px auto;
+    image-rendering: pixelated;
+}
+.controls {
+    margin: 12px auto; max-width: 800px;
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
+    align-items: center;
+}
+.controls label { font-size: 13px; color: #a0a0c0; }
+select, button {
+    background: #2a2a4e; color: #c8c8d0; border: 1px solid #444466;
+    padding: 5px 14px; font-family: inherit; font-size: 13px; cursor: pointer;
+}
+select:hover, button:hover { background: #3a3a5e; border-color: #6666aa; }
+button.active { background: #44447a; border-color: #8888cc; color: #fff; }
+.info-panel {
+    margin: 12px auto; max-width: 800px;
+    display: flex; flex-wrap: wrap; gap: 16px; justify-content: center;
+}
+.info-box {
+    background: #16162a; border: 1px solid #333355; padding: 10px 14px;
+    text-align: left; font-size: 12px; line-height: 1.6; min-width: 200px;
+}
+.info-box .title {
+    color: #8888bb; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 4px;
+}
+.info-box span { color: #e0e080; }
+.vertex-table {
+    font-size: 11px; line-height: 1.5; max-height: 160px; overflow-y: auto;
+}
+.vertex-table .hdr { color: #6688aa; }
+.mode-indicator {
+    display: inline-block; padding: 2px 8px; font-size: 11px; border-radius: 3px;
+    margin-left: 8px;
+}
+.mode-z80 { background: #553322; color: #ffaa66; }
+.mode-float { background: #225533; color: #66ffaa; }
+</style>
+</head><body>
+<h2>Ch05: 3D Wireframe Rendering</h2>
+<h3>Verifies Z80 math.a80: signed 8-bit multiply, sin table (127*sin), rotate_pair, rotate_xyz, perspective projection</h3>
+<canvas id="screen"></canvas>
+
+<div class="controls">
+    <label>Shape:</label>
+    <select id="shapeSelect">
+        <option value="cube">Cube (8v, 12e)</option>
+        <option value="tetrahedron">Tetrahedron (4v, 6e)</option>
+        <option value="octahedron">Octahedron (6v, 12e)</option>
+        <option value="icosahedron">Icosahedron (12v, 30e)</option>
+    </select>
+    <button id="z80Toggle" class="active" onclick="toggleZ80()">Z80 Mode</button>
+    <span id="modeTag" class="mode-indicator mode-z80">INT8</span>
+    <button onclick="paused=!paused">Pause / Resume</button>
+    <button onclick="angleX=0;angleY=0">Reset Angles</button>
+</div>
+
+<div class="info-panel">
+    <div class="info-box">
+        <div class="title">Rotation State</div>
+        <div>
+            <span id="fps">0</span> fps |
+            <span id="vertCount">0</span> verts,
+            <span id="edgeCount">0</span> edges<br>
+            angle_y = <span id="dispAY">0</span> (+=3/frame)<br>
+            angle_x = <span id="dispAX">0</span> (+=1/frame)<br>
+            angle_z = <span id="dispAZ">0</span> (fixed)
+        </div>
+    </div>
+    <div class="info-box">
+        <div class="title">Projected Vertices (screen x, y)</div>
+        <div id="vertexDisplay" class="vertex-table"></div>
+    </div>
+    <div class="info-box">
+        <div class="title">Rotated 3D Coords (signed 8-bit)</div>
+        <div id="coordDisplay" class="vertex-table"></div>
+    </div>
+</div>
+
+<script src="zx_screen.js"></script>
+<script>
+// =====================================================================
+// Ch05 3D Wireframe — matches Z80 math.a80 routines exactly
+// =====================================================================
+
+const zx = new ZXScreen(document.getElementById('screen'), 3);
+zx.fillAttrs(ZXScreen.makeAttr(7, 0, 1)); // bright white on black
+
+// --- Shape definitions (signed 8-bit coordinates, roughly +/-40 range) ---
+
+const SHAPES = {
+    cube: {
+        verts: [
+            [-30, -30, -30], [ 30, -30, -30], [ 30,  30, -30], [-30,  30, -30],
+            [-30, -30,  30], [ 30, -30,  30], [ 30,  30,  30], [-30,  30,  30],
+        ],
+        edges: [
+            [0,1],[1,2],[2,3],[3,0],  // front face
+            [4,5],[5,6],[6,7],[7,4],  // back face
+            [0,4],[1,5],[2,6],[3,7],  // connecting edges
+        ],
+    },
+    tetrahedron: {
+        // Regular tetrahedron inscribed in a cube of half-size ~35
+        // vertices at alternating cube corners
+        verts: [
+            [ 35,  35,  35],
+            [ 35, -35, -35],
+            [-35,  35, -35],
+            [-35, -35,  35],
+        ],
+        edges: [
+            [0,1],[0,2],[0,3],[1,2],[1,3],[2,3],
+        ],
+    },
+    octahedron: {
+        verts: [
+            [ 40,   0,   0], [-40,   0,   0],
+            [  0,  40,   0], [  0, -40,   0],
+            [  0,   0,  40], [  0,   0, -40],
+        ],
+        edges: [
+            [0,2],[0,3],[0,4],[0,5],
+            [1,2],[1,3],[1,4],[1,5],
+            [2,4],[4,3],[3,5],[5,2],
+        ],
+    },
+    icosahedron: (() => {
+        // Golden ratio vertices, scaled to fit signed 8-bit range (~+/-40)
+        const phi = (1 + Math.sqrt(5)) / 2;
+        const s = 25; // scale factor so coordinates fit in +/-40
+        const raw = [
+            [0,  1,  phi], [0, -1,  phi], [0,  1, -phi], [0, -1, -phi],
+            [ 1,  phi, 0], [-1,  phi, 0], [ 1, -phi, 0], [-1, -phi, 0],
+            [ phi, 0,  1], [ phi, 0, -1], [-phi, 0,  1], [-phi, 0, -1],
+        ];
+        const verts = raw.map(([x,y,z]) => [
+            Math.round(x * s),
+            Math.round(y * s),
+            Math.round(z * s),
+        ]);
+        const edges = [
+            [0,1],[0,4],[0,5],[0,8],[0,10],
+            [1,6],[1,7],[1,8],[1,10],
+            [2,3],[2,4],[2,5],[2,9],[2,11],
+            [3,6],[3,7],[3,9],[3,11],
+            [4,5],[4,8],[4,9],
+            [5,10],[5,11],
+            [6,7],[6,8],[6,9],
+            [7,10],[7,11],
+            [8,9],
+            [10,11],
+        ];
+        return { verts, edges };
+    })(),
+};
+
+let currentShape = 'cube';
+let z80Mode = true;
+let paused = false;
+let angleX = 0, angleY = 0, angleZ = 0;
+
+// --- Z80-accurate math (matching math.a80 exactly) ---
+
+const Z80Math = {
+    // Sin table: 256 entries, sin(i) = round(127 * sin(2*pi*i/256)), signed 8-bit
+    // Matches sin_table in math.a80
+    sinTable: new Int8Array(256),
+
+    initSinTable() {
+        for (let i = 0; i < 256; i++) {
+            this.sinTable[i] = Math.round(127 * Math.sin(2 * Math.PI * i / 256));
+        }
+    },
+
+    sin(angle) { return this.sinTable[angle & 0xFF]; },
+    cos(angle) { return this.sinTable[(angle + 64) & 0xFF]; },
+
+    // Signed 8-bit multiply: D * E -> HL (matches muls8 in math.a80)
+    // Takes two signed 8-bit values, returns signed 16-bit result
+    muls8(d, e) {
+        d = (d << 24) >> 24; // sign-extend to signed 8-bit
+        e = (e << 24) >> 24;
+        return (d * e) | 0;  // 16-bit result
+    },
+
+    // Clamp to signed 8-bit range (matches ld a, h taking high byte)
+    clamp8(v) {
+        v = v | 0;
+        if (v > 127) return 127;
+        if (v < -128) return -128;
+        return v;
+    },
+
+    // rotate_pair: matches math.a80 rotate_pair exactly
+    // a' = (a*cos - b*sin) * 2 >> 8    (add hl,hl then take H)
+    // b' = (a*sin + b*cos) * 2 >> 8
+    rotatePair(a, b, sin, cos) {
+        // a*cos
+        const ac = this.muls8(a, cos);
+        // b*sin
+        const bs = this.muls8(b, sin);
+        // sbc hl,de then add hl,hl then take h
+        const ra_16 = (ac - bs);
+        const ra = (ra_16 * 2) >> 8;  // add hl,hl; ld a,h
+
+        // a*sin
+        const as = this.muls8(a, sin);
+        // b*cos
+        const bc = this.muls8(b, cos);
+        // add hl,de then add hl,hl then take h
+        const rb_16 = (as + bc);
+        const rb = (rb_16 * 2) >> 8;
+
+        return [this.clamp8(ra), this.clamp8(rb)];
+    },
+
+    // rotate_xyz: matches math.a80 rotate_xyz exactly
+    // Order: Z-axis (X,Y), Y-axis (X,Z), X-axis (Y,Z)
+    rotateXYZ(x, y, z, ax, ay, az) {
+        let sx, cx;
+        // Z-axis rotation: affects X, Y
+        sx = this.sin(az); cx = this.cos(az);
+        [x, y] = this.rotatePair(x, y, sx, cx);
+        // Y-axis rotation: affects X, Z
+        sx = this.sin(ay); cx = this.cos(ay);
+        [x, z] = this.rotatePair(x, z, sx, cx);
+        // X-axis rotation: affects Y, Z
+        sx = this.sin(ax); cx = this.cos(ax);
+        [y, z] = this.rotatePair(y, z, sx, cx);
+        return [x, y, z];
+    },
+
+    // project: matches math.a80 project routine exactly
+    // scale = min(255, VIEWER_DIST * 128 / (z + VIEWER_DIST))
+    // sx = 128 + (muls8(x, scale) * 2) >> 8
+    // sy = 96  + (muls8(y, scale) * 2) >> 8
+    project(x, y, z, viewerDist) {
+        const denom = z + viewerDist;
+        if (denom <= 0) return null;
+
+        // div16: HL=VIEWER_DIST*128, BC=denom -> quotient in HL
+        let scale = Math.floor((viewerDist * 128) / denom);
+        if (scale > 255) scale = 255;
+
+        // muls8 + add hl,hl + ld a,h + add a, offset
+        const sx = 128 + ((this.muls8(x, scale) * 2) >> 8);
+        const sy = 96  + ((this.muls8(y, scale) * 2) >> 8);
+
+        // Screen bounds check (Z80 uses unsigned 8-bit)
+        if (sx < 0 || sx > 255 || sy < 0 || sy > 191) return null;
+        return [sx, sy];
+    },
+};
+
+Z80Math.initSinTable();
+
+// --- Float math (for comparison mode) ---
+
+const FloatMath = {
+    sin(angle) { return Math.sin(2 * Math.PI * (angle & 0xFF) / 256); },
+    cos(angle) { return Math.cos(2 * Math.PI * (angle & 0xFF) / 256); },
+
+    rotatePair(a, b, sin, cos) {
+        const ra = a * cos - b * sin;
+        const rb = a * sin + b * cos;
+        return [ra, rb];
+    },
+
+    rotateXYZ(x, y, z, ax, ay, az) {
+        let sx, cx;
+        sx = this.sin(az); cx = this.cos(az);
+        [x, y] = this.rotatePair(x, y, sx, cx);
+        sx = this.sin(ay); cx = this.cos(ay);
+        [x, z] = this.rotatePair(x, z, sx, cx);
+        sx = this.sin(ax); cx = this.cos(ax);
+        [y, z] = this.rotatePair(y, z, sx, cx);
+        return [x, y, z];
+    },
+
+    project(x, y, z, viewerDist) {
+        const denom = z + viewerDist;
+        if (denom <= 0) return null;
+        const scale = viewerDist / denom;
+        const sx = Math.round(128 + x * scale);
+        const sy = Math.round(96  + y * scale);
+        if (sx < 0 || sx > 255 || sy < 0 || sy > 191) return null;
+        return [sx, sy];
+    },
+};
+
+// --- Rendering ---
+
+const VIEWER_DIST = 200;
+
+function getMath() {
+    return z80Mode ? Z80Math : FloatMath;
+}
+
+function renderFrame() {
+    const shape = SHAPES[currentShape];
+    const math = getMath();
+
+    zx.clearScreen();
+
+    // Rotate all vertices
+    const rotated = [];
+    const projected = [];
+
+    for (let i = 0; i < shape.verts.length; i++) {
+        const [ox, oy, oz] = shape.verts[i];
+        const [rx, ry, rz] = math.rotateXYZ(ox, oy, oz, angleX, angleY, angleZ);
+        rotated.push([rx, ry, rz]);
+        projected.push(math.project(rx, ry, rz, VIEWER_DIST));
+    }
+
+    // Draw edges using Bresenham (ZXScreen.drawLine matches Z80 draw_line)
+    let drawnEdges = 0;
+    for (const [a, b] of shape.edges) {
+        const pa = projected[a];
+        const pb = projected[b];
+        if (!pa || !pb) continue;
+        // Clip to screen bounds
+        if (pa[1] >= 192 || pb[1] >= 192) continue;
+        if (pa[0] >= 256 || pb[0] >= 256) continue;
+        zx.drawLine(pa[0], pa[1], pb[0], pb[1]);
+        drawnEdges++;
+    }
+
+    zx.render();
+
+    // Update info displays
+    document.getElementById('vertCount').textContent = shape.verts.length;
+    document.getElementById('edgeCount').textContent = shape.edges.length;
+    document.getElementById('dispAX').textContent = angleX;
+    document.getElementById('dispAY').textContent = angleY;
+    document.getElementById('dispAZ').textContent = angleZ;
+
+    // Vertex coordinate display
+    let coordHTML = '<span class="hdr">  # |   X    Y    Z</span>\n';
+    for (let i = 0; i < rotated.length; i++) {
+        const [rx, ry, rz] = rotated[i];
+        const fx = z80Mode ? String(rx).padStart(4) : rx.toFixed(1).padStart(7);
+        const fy = z80Mode ? String(ry).padStart(4) : ry.toFixed(1).padStart(7);
+        const fz = z80Mode ? String(rz).padStart(4) : rz.toFixed(1).padStart(7);
+        coordHTML += `v${String(i).padStart(2,'0')} | ${fx} ${fy} ${fz}\n`;
+    }
+    document.getElementById('coordDisplay').innerHTML = '<pre>' + coordHTML + '</pre>';
+
+    // Projected vertex display
+    let projHTML = '<span class="hdr">  # |  sx   sy</span>\n';
+    for (let i = 0; i < projected.length; i++) {
+        const p = projected[i];
+        if (p) {
+            projHTML += `v${String(i).padStart(2,'0')} | ${String(p[0]).padStart(3)} ${String(p[1]).padStart(4)}\n`;
+        } else {
+            projHTML += `v${String(i).padStart(2,'0')} | clipped\n`;
+        }
+    }
+    document.getElementById('vertexDisplay').innerHTML = '<pre>' + projHTML + '</pre>';
+}
+
+// --- Animation loop (Y+=3, X+=1 per frame, matching torus.html) ---
+
+let lastTime = performance.now(), frameCounter = 0;
+
+function frame() {
+    if (!paused) {
+        renderFrame();
+
+        // Angle increment matches torus demo: Y+=3, X+=1 per frame
+        angleY = (angleY + 3) & 0xFF;
+        angleX = (angleX + 1) & 0xFF;
+        // angleZ stays at 0 (no Z rotation for this demo)
+    }
+
+    frameCounter++;
+    const now = performance.now();
+    if (now - lastTime > 1000) {
+        document.getElementById('fps').textContent = frameCounter;
+        frameCounter = 0;
+        lastTime = now;
+    }
+
+    requestAnimationFrame(frame);
+}
+
+// --- UI handlers ---
+
+function toggleZ80() {
+    z80Mode = !z80Mode;
+    const btn = document.getElementById('z80Toggle');
+    const tag = document.getElementById('modeTag');
+    if (z80Mode) {
+        btn.classList.add('active');
+        btn.textContent = 'Z80 Mode';
+        tag.className = 'mode-indicator mode-z80';
+        tag.textContent = 'INT8';
+    } else {
+        btn.classList.remove('active');
+        btn.textContent = 'Float Mode';
+        tag.className = 'mode-indicator mode-float';
+        tag.textContent = 'FLOAT';
+    }
+}
+
+document.getElementById('shapeSelect').addEventListener('change', function() {
+    currentShape = this.value;
+    angleX = 0; angleY = 0; angleZ = 0;
+});
+
+// --- Start ---
+frame();
+</script>
+</body></html>

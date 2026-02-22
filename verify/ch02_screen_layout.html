@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>ZX Spectrum Screen Layout — verify (ch02)</title>
+<style>
+* { box-sizing: border-box; }
+body {
+    background: #1a1a2e; color: #c8c8c8; font-family: "Courier New", monospace;
+    margin: 0; padding: 20px;
+}
+h2 { color: #e0e0ff; text-align: center; margin: 0 0 6px 0; font-size: 18px; }
+.subtitle { text-align: center; color: #888; font-size: 12px; margin-bottom: 16px; }
+
+.main-layout {
+    display: flex; gap: 20px; justify-content: center; align-items: flex-start;
+    flex-wrap: wrap;
+}
+.left-panel { display: flex; flex-direction: column; align-items: center; }
+.right-panel {
+    display: flex; flex-direction: column; gap: 12px;
+    min-width: 320px; max-width: 420px;
+}
+
+canvas#screen {
+    border: 3px solid #444; display: block; image-rendering: pixelated;
+    cursor: crosshair;
+}
+canvas#heatmap {
+    border: 3px solid #444; display: block; image-rendering: pixelated;
+    cursor: crosshair;
+}
+
+.controls {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    margin: 10px 0;
+}
+.controls label {
+    background: #2a2a4a; padding: 4px 10px; border-radius: 3px;
+    cursor: pointer; font-size: 12px; border: 1px solid #444;
+}
+.controls label:hover { border-color: #88f; }
+.controls input[type="radio"]:checked + span { color: #88f; font-weight: bold; }
+.controls input[type="radio"] { display: none; }
+
+.pattern-row {
+    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+    margin: 6px 0;
+}
+.pattern-row button {
+    background: #2a2a4a; color: #c8c8c8; border: 1px solid #555;
+    padding: 3px 10px; font-family: monospace; font-size: 11px;
+    cursor: pointer; border-radius: 3px;
+}
+.pattern-row button:hover { border-color: #88f; color: #fff; }
+.pattern-row button.active { border-color: #88f; color: #88f; }
+
+.info-box {
+    background: #0d0d1a; border: 1px solid #333; border-radius: 4px;
+    padding: 10px 14px; font-size: 12px; line-height: 1.7;
+}
+.info-box .label { color: #666; }
+.info-box .value { color: #8f8; }
+.info-box .addr { color: #ff8; }
+.info-box .bits { color: #f88; }
+.info-box .attr-color { display: inline-block; width: 12px; height: 12px;
+    vertical-align: middle; border: 1px solid #555; margin: 0 2px; }
+
+.memory-view {
+    background: #0a0a18; border: 1px solid #333; border-radius: 4px;
+    padding: 8px; font-size: 10px; line-height: 1.5;
+    max-height: 260px; overflow-y: auto; overflow-x: hidden;
+    scrollbar-width: thin; scrollbar-color: #444 #1a1a2e;
+}
+.memory-view .mem-offset { color: #666; user-select: none; }
+.memory-view .mem-byte { color: #aaa; }
+.memory-view .mem-byte.highlight { color: #ff0; background: #442; }
+.memory-view .mem-byte.attr-region { color: #6af; }
+
+.legend {
+    background: #0d0d1a; border: 1px solid #333; border-radius: 4px;
+    padding: 8px 12px; font-size: 11px; line-height: 1.8;
+}
+.legend-swatch {
+    display: inline-block; width: 14px; height: 10px;
+    vertical-align: middle; margin-right: 4px; border: 1px solid #555;
+}
+
+.section-title {
+    color: #aac; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1px; margin: 0 0 4px 0; padding-bottom: 3px;
+    border-bottom: 1px solid #333;
+}
+</style>
+</head><body>
+
+<h2>ZX Spectrum Screen Memory Layout</h2>
+<div class="subtitle">Chapter 2 — The Screen as a Puzzle | 256x192 pixels, 6144+768 bytes, interleaved thirds</div>
+
+<div class="main-layout">
+
+<!-- LEFT: canvas + controls -->
+<div class="left-panel">
+    <canvas id="screen"></canvas>
+
+    <div class="controls">
+        <label><input type="radio" name="view" value="normal" checked><span>Normal</span></label>
+        <label><input type="radio" name="view" value="heatmap"><span>Address Heatmap</span></label>
+        <label><input type="radio" name="view" value="thirds"><span>Third Boundaries</span></label>
+        <label><input type="radio" name="view" value="charrows"><span>Char Rows</span></label>
+        <label><input type="radio" name="view" value="scanlines"><span>Scanline Order</span></label>
+    </div>
+
+    <div class="pattern-row">
+        <button onclick="fillPattern('clear')" title="Clear screen">Clear</button>
+        <button onclick="fillPattern('checker')" title="8x8 checkerboard">Checker</button>
+        <button onclick="fillPattern('diag')" title="Diagonal stripes">Diag Stripes</button>
+        <button onclick="fillPattern('hstripes')" title="Horizontal stripes">H-Stripes</button>
+        <button onclick="fillPattern('vstripes')" title="Vertical stripes">V-Stripes</button>
+        <button onclick="fillPattern('gradient')" title="Sequential byte fill to show layout">Sequential</button>
+        <button onclick="fillPattern('text')" title="Fill with character row markers">Row Markers</button>
+        <button onclick="fillPattern('rainbow')" title="Rainbow attributes">Rainbow Attrs</button>
+    </div>
+
+    <!-- Memory view -->
+    <div style="width: 774px; margin-top: 10px;">
+        <div class="section-title">Screen Memory ($4000-$5AFF) — 6912 bytes</div>
+        <div class="memory-view" id="memview"></div>
+    </div>
+</div>
+
+<!-- RIGHT: info panels -->
+<div class="right-panel">
+    <div class="info-box" id="hover-info">
+        <div class="section-title">Pixel Info (hover over screen)</div>
+        <div><span class="label">Pixel:</span> <span class="value" id="info-xy">—</span></div>
+        <div><span class="label">Byte col, row:</span> <span class="value" id="info-colrow">—</span></div>
+        <div><span class="label">Screen addr:</span> <span class="addr" id="info-addr">—</span></div>
+        <div><span class="label">Offset:</span> <span class="addr" id="info-offset">—</span></div>
+        <div><span class="label">Address bits:</span> <span class="bits" id="info-bits">—</span></div>
+        <div><span class="label">Third:</span> <span class="value" id="info-third">—</span></div>
+        <div><span class="label">Char row:</span> <span class="value" id="info-charrow">—</span></div>
+        <div><span class="label">Pixel line in cell:</span> <span class="value" id="info-pixline">—</span></div>
+        <hr style="border-color: #333;">
+        <div><span class="label">Attr cell:</span> <span class="value" id="info-attrcell">—</span></div>
+        <div><span class="label">Attr addr:</span> <span class="addr" id="info-attraddr">—</span></div>
+        <div><span class="label">Attr byte:</span> <span class="addr" id="info-attrbyte">—</span></div>
+        <div><span class="label">Ink:</span> <span class="value" id="info-ink">—</span> <span class="attr-color" id="swatch-ink"></span></div>
+        <div><span class="label">Paper:</span> <span class="value" id="info-paper">—</span> <span class="attr-color" id="swatch-paper"></span></div>
+        <div><span class="label">Bright:</span> <span class="value" id="info-bright">—</span>
+             <span class="label" style="margin-left:8px">Flash:</span> <span class="value" id="info-flash">—</span></div>
+    </div>
+
+    <div class="legend" id="legend-box">
+        <div class="section-title">Layout Reference</div>
+        <div>Screen: <span style="color:#ff8">$4000-$57FF</span> (6144 bytes)</div>
+        <div>Attrs: <span style="color:#6af">$5800-$5AFF</span> (768 bytes)</div>
+        <hr style="border-color:#333">
+        <div>Address: H = <span class="bits">010</span> <span style="color:#f88">Y7Y6</span> <span style="color:#8f8">Y2Y1Y0</span></div>
+        <div style="margin-left:56px">L = <span style="color:#fa0">Y5Y4Y3</span> <span style="color:#8af">X4X3X2X1X0</span></div>
+        <hr style="border-color:#333">
+        <div><span class="legend-swatch" style="background:#e44"></span>Third 0: rows 0-63 ($4000)</div>
+        <div><span class="legend-swatch" style="background:#4c4"></span>Third 1: rows 64-127 ($4800)</div>
+        <div><span class="legend-swatch" style="background:#48f"></span>Third 2: rows 128-191 ($5000)</div>
+        <hr style="border-color:#333">
+        <div style="color:#888; font-size:10px;">Each third: 8 char rows x 8 pixel lines</div>
+        <div style="color:#888; font-size:10px;">Line 0 of all 8 char rows first, then line 1, ...</div>
+        <div style="color:#888; font-size:10px;">Consecutive addresses = 8 pixels apart vertically!</div>
+    </div>
+
+    <div class="info-box">
+        <div class="section-title">Address Formula (Z80)</div>
+        <pre style="margin:4px 0; font-size:11px; color:#ddd; line-height:1.5;">; (x,y) -> screen address in HL
+; Input: B=y (0-191), C=x (0-255)
+pixel_addr:
+    ld  a, b        ; A = y
+    and $07         ; Y2Y1Y0
+    or  $40         ; 010 prefix
+    ld  h, a
+    ld  a, b        ; A = y again
+    rra
+    rra
+    rra
+    and $18         ; Y7Y6 -> bits 4,3
+    or  h
+    ld  h, a        ; H done
+    ld  a, b        ; A = y
+    rla
+    rla
+    and $E0         ; Y5Y4Y3 -> bits 7,6,5
+    ld  l, a
+    ld  a, c        ; A = x
+    rra
+    rra
+    rra
+    and $1F         ; X/8 -> bits 4..0
+    or  l
+    ld  l, a        ; L done
+    ret             ; HL = screen addr</pre>
+    </div>
+</div>
+
+</div>
+
+<script src="zx_screen.js"></script>
+<script>
+// --- Setup ---
+const SCALE = 3;
+const canvas = document.getElementById('screen');
+const zx = new ZXScreen(canvas, SCALE);
+
+// Initialize with white ink on black paper
+zx.fillAttrs(ZXScreen.makeAttr(7, 0, 0, 0));
+
+// --- View state ---
+let currentView = 'normal';
+let highlightedOffset = -1;  // memory offset currently hovered
+
+// --- Color constants for overlays ---
+const THIRD_COLORS = [
+    [228, 68, 68],   // red for third 0
+    [68, 196, 68],   // green for third 1
+    [68, 136, 255],  // blue for third 2
+];
+
+// HSL-based heatmap: address offset -> color
+function heatmapColor(offset, maxOffset) {
+    const t = offset / maxOffset;
+    const hue = t * 270; // 0=red -> 270=violet
+    return hslToRgb(hue / 360, 0.85, 0.5);
+}
+
+function hslToRgb(h, s, l) {
+    let r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+    }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+// Char row cycling colors (8 distinct colors per third)
+const CHARROW_COLORS = [];
+for (let i = 0; i < 24; i++) {
+    const hue = (i * 15) % 360;
+    CHARROW_COLORS.push(hslToRgb(hue / 360, 0.7, 0.45));
+}
+
+// --- Render functions ---
+
+function renderNormal() {
+    zx.render();
+}
+
+function renderOverlay(colorFn) {
+    // Render to an offscreen buffer at 1x, then scale
+    const imgData = zx.ctx.createImageData(256, 192);
+    const data = imgData.data;
+
+    for (let y = 0; y < 192; y++) {
+        for (let x = 0; x < 256; x++) {
+            const [r, g, b] = colorFn(x, y);
+            const idx = (y * 256 + x) * 4;
+            data[idx] = r;
+            data[idx + 1] = g;
+            data[idx + 2] = b;
+            data[idx + 3] = 255;
+        }
+    }
+
+    zx.ctx.putImageData(imgData, 0, 0);
+    if (SCALE > 1) {
+        zx.ctx.save();
+        zx.ctx.imageSmoothingEnabled = false;
+        zx.ctx.drawImage(canvas, 0, 0, 256, 192, 0, 0, 256 * SCALE, 192 * SCALE);
+        zx.ctx.restore();
+    }
+}
+
+function renderHeatmap() {
+    renderOverlay((x, y) => {
+        const offset = zx.screenAddr(x, y);
+        return heatmapColor(offset, 6143);
+    });
+}
+
+function renderThirds() {
+    // Render normal first, then tint by third
+    zx.render();
+
+    // Draw colored overlay with transparency
+    const ctx = zx.ctx;
+    for (let third = 0; third < 3; third++) {
+        const [r, g, b] = THIRD_COLORS[third];
+        ctx.fillStyle = `rgba(${r},${g},${b},0.25)`;
+        ctx.fillRect(0, third * 64 * SCALE, 256 * SCALE, 64 * SCALE);
+
+        // Draw boundary lines
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.8)`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0, third * 64 * SCALE, 256 * SCALE, 64 * SCALE);
+    }
+
+    // Label thirds
+    ctx.font = `bold ${14 * (SCALE > 1 ? 1 : 1)}px monospace`;
+    ctx.textAlign = 'left';
+    for (let third = 0; third < 3; third++) {
+        const [r, g, b] = THIRD_COLORS[third];
+        ctx.fillStyle = `rgba(${r},${g},${b},0.9)`;
+        const baseAddr = 0x4000 + third * 0x800;
+        ctx.fillText(`Third ${third} ($${baseAddr.toString(16).toUpperCase()})`,
+            6, third * 64 * SCALE + 16);
+    }
+}
+
+function renderCharRows() {
+    renderOverlay((x, y) => {
+        const charRow = Math.floor(y / 8);
+        return CHARROW_COLORS[charRow];
+    });
+
+    // Draw char row boundaries
+    const ctx = zx.ctx;
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    for (let row = 0; row < 24; row++) {
+        ctx.strokeRect(0, row * 8 * SCALE, 256 * SCALE, 8 * SCALE);
+    }
+}
+
+function renderScanlineOrder() {
+    // Color each pixel row by its position in sequential memory
+    // This shows the interleaved scanning pattern
+    renderOverlay((x, y) => {
+        const offset = zx.screenAddr(x, y);
+        // Use only the row part (ignore x) to show the scanline ordering
+        const rowOffset = offset & 0xFFE0; // mask off the column bits
+        return heatmapColor(rowOffset, 6143);
+    });
+
+    // Draw arrows or labels showing the scan order
+    const ctx = zx.ctx;
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+
+    // Label a few key scanlines
+    const keyLines = [0, 1, 2, 8, 16, 64, 65, 128];
+    for (const y of keyLines) {
+        const offset = zx.screenAddr(0, y);
+        const addr = 0x4000 + offset;
+        ctx.fillText(`y=${y} $${addr.toString(16).toUpperCase()}`,
+            254 * SCALE, y * SCALE + 10);
+    }
+}
+
+function renderCurrent() {
+    switch (currentView) {
+        case 'normal': renderNormal(); break;
+        case 'heatmap': renderHeatmap(); break;
+        case 'thirds': renderThirds(); break;
+        case 'charrows': renderCharRows(); break;
+        case 'scanlines': renderScanlineOrder(); break;
+    }
+}
+
+// --- Pattern fills ---
+
+function fillPattern(name) {
+    zx.clearScreen();
+
+    // Reset attrs to white-on-black
+    zx.fillAttrs(ZXScreen.makeAttr(7, 0, 0, 0));
+
+    switch (name) {
+        case 'clear':
+            break;
+
+        case 'checker': {
+            // 8x8 checkerboard pattern
+            for (let y = 0; y < 192; y++) {
+                for (let col = 0; col < 32; col++) {
+                    const cellX = col;
+                    const cellY = Math.floor(y / 8);
+                    const lineInCell = y & 7;
+                    let byte;
+                    if ((cellX + cellY) & 1) {
+                        byte = (lineInCell < 4) ? 0xF0 : 0x0F;
+                    } else {
+                        byte = (lineInCell < 4) ? 0x0F : 0xF0;
+                    }
+                    const addr = zx.screenAddr(col * 8, y);
+                    zx.poke(addr, byte);
+                }
+            }
+            break;
+        }
+
+        case 'diag': {
+            // Diagonal stripes
+            for (let y = 0; y < 192; y++) {
+                for (let col = 0; col < 32; col++) {
+                    let byte = 0;
+                    for (let bit = 0; bit < 8; bit++) {
+                        const x = col * 8 + bit;
+                        if (((x + y) & 3) < 2) byte |= (0x80 >> bit);
+                    }
+                    const addr = zx.screenAddr(col * 8, y);
+                    zx.poke(addr, byte);
+                }
+            }
+            break;
+        }
+
+        case 'hstripes': {
+            // Horizontal stripes (every other pixel row)
+            for (let y = 0; y < 192; y++) {
+                if (y & 1) continue;
+                for (let col = 0; col < 32; col++) {
+                    const addr = zx.screenAddr(col * 8, y);
+                    zx.poke(addr, 0xFF);
+                }
+            }
+            break;
+        }
+
+        case 'vstripes': {
+            // Vertical stripes (every other column of pixels)
+            for (let y = 0; y < 192; y++) {
+                for (let col = 0; col < 32; col++) {
+                    const addr = zx.screenAddr(col * 8, y);
+                    zx.poke(addr, 0xAA); // 10101010
+                }
+            }
+            break;
+        }
+
+        case 'gradient': {
+            // Sequential byte fill: poke 0,1,2,...255 into consecutive memory
+            // This dramatically shows the interleaved layout
+            for (let offset = 0; offset < 6144; offset++) {
+                zx.poke(offset, (offset & 0xFF));
+            }
+            break;
+        }
+
+        case 'text': {
+            // Mark each character row with its number (simple block patterns)
+            for (let charRow = 0; charRow < 24; charRow++) {
+                const third = Math.floor(charRow / 8);
+                const rowInThird = charRow % 8;
+                // Fill first pixel line of each char row with the row number pattern
+                for (let col = 0; col < 32; col++) {
+                    // Top and bottom lines of each cell = solid
+                    const yTop = charRow * 8;
+                    const yBot = charRow * 8 + 7;
+                    zx.poke(zx.screenAddr(col * 8, yTop), 0xFF);
+                    zx.poke(zx.screenAddr(col * 8, yBot), 0xFF);
+                    // Left edge of each cell
+                    for (let line = 0; line < 8; line++) {
+                        const addr = zx.screenAddr(col * 8, charRow * 8 + line);
+                        zx.poke(addr, zx.peek(addr) | 0x80);
+                    }
+                }
+                // Write row number in first few columns using simple digit bitmaps
+                writeDigits(charRow, 1, charRow);
+            }
+            break;
+        }
+
+        case 'rainbow': {
+            // Fill with a pattern and apply rainbow attributes
+            for (let y = 0; y < 192; y++) {
+                for (let col = 0; col < 32; col++) {
+                    // Interesting fill pattern
+                    let byte = 0;
+                    for (let bit = 0; bit < 8; bit++) {
+                        const x = col * 8 + bit;
+                        if (((x ^ y) & 3) < 2) byte |= (0x80 >> bit);
+                    }
+                    zx.poke(zx.screenAddr(col * 8, y), byte);
+                }
+            }
+            // Rainbow attributes
+            for (let row = 0; row < 24; row++) {
+                for (let col = 0; col < 32; col++) {
+                    const ink = (col + row) % 8;
+                    const paper = (col + row + 4) % 8;
+                    const bright = (row & 1) ? 1 : 0;
+                    zx.setAttr(col, row, ZXScreen.makeAttr(
+                        ink === 0 ? 7 : ink,
+                        paper === 7 ? 0 : paper,
+                        bright, 0
+                    ));
+                }
+            }
+            break;
+        }
+    }
+
+    renderCurrent();
+    updateMemoryView();
+
+    // Update active button
+    document.querySelectorAll('.pattern-row button').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+}
+
+// --- Simple digit bitmaps (3x5 pixels) ---
+const DIGITS = [
+    [0b111, 0b101, 0b101, 0b101, 0b111], // 0
+    [0b010, 0b110, 0b010, 0b010, 0b111], // 1
+    [0b111, 0b001, 0b111, 0b100, 0b111], // 2
+    [0b111, 0b001, 0b111, 0b001, 0b111], // 3
+    [0b101, 0b101, 0b111, 0b001, 0b001], // 4
+    [0b111, 0b100, 0b111, 0b001, 0b111], // 5
+    [0b111, 0b100, 0b111, 0b101, 0b111], // 6
+    [0b111, 0b001, 0b010, 0b010, 0b010], // 7
+    [0b111, 0b101, 0b111, 0b101, 0b111], // 8
+    [0b111, 0b101, 0b111, 0b001, 0b111], // 9
+];
+
+function writeDigits(number, col, charRow) {
+    const digits = number.toString().split('').map(Number);
+    let xOff = col * 8 + 2;
+    for (const d of digits) {
+        const bmp = DIGITS[d];
+        for (let line = 0; line < 5; line++) {
+            const y = charRow * 8 + 1 + line;
+            const addr = zx.screenAddr(col * 8, y);
+            let byte = zx.peek(addr);
+            for (let bit = 0; bit < 3; bit++) {
+                if (bmp[line] & (4 >> bit)) {
+                    const px = xOff + bit;
+                    const pxCol = px >> 3;
+                    const pxBit = px & 7;
+                    const a = zx.screenAddr(pxCol * 8, y);
+                    zx.poke(a, zx.peek(a) | (0x80 >> pxBit));
+                }
+            }
+        }
+        xOff += 4;
+    }
+}
+
+// --- Hover info ---
+
+const COLOR_NAMES = ['Black', 'Blue', 'Red', 'Magenta', 'Green', 'Cyan', 'Yellow', 'White'];
+
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const x = Math.floor(mx / SCALE);
+    const y = Math.floor(my / SCALE);
+
+    if (x < 0 || x > 255 || y < 0 || y > 191) return;
+
+    const offset = zx.screenAddr(x, y);
+    const absAddr = 0x4000 + offset;
+    const col = x >> 3;
+    const charRow = y >> 3;
+    const lineInCell = y & 7;
+    const third = Math.floor(y / 64);
+    const charRowInThird = Math.floor((y % 64) / 8);
+
+    // Address bit breakdown
+    const h = (absAddr >> 8) & 0xFF;
+    const l = absAddr & 0xFF;
+    const y7y6 = (h >> 3) & 0x03;
+    const y2y1y0 = h & 0x07;
+    const y5y4y3 = (l >> 5) & 0x07;
+    const x4x3x2x1x0 = l & 0x1F;
+
+    const hBits = h.toString(2).padStart(8, '0');
+    const lBits = l.toString(2).padStart(8, '0');
+    const bitBreak = `H=${hBits.substring(0,3)} ${hBits.substring(3,5)} ${hBits.substring(5,8)}  ` +
+                     `L=${lBits.substring(0,3)} ${lBits.substring(3,8)}`;
+
+    // Attribute info
+    const attrOffset = 6144 + charRow * 32 + col;
+    const attrAbsAddr = 0x4000 + attrOffset;
+    const attrByte = zx.peek(attrOffset);
+    const ink = attrByte & 0x07;
+    const paper = (attrByte >> 3) & 0x07;
+    const bright = (attrByte & 0x40) ? 1 : 0;
+    const flash = (attrByte & 0x80) ? 1 : 0;
+    const inkIdx = ink + (bright ? 8 : 0);
+    const paperIdx = paper + (bright ? 8 : 0);
+
+    // Update info panel
+    document.getElementById('info-xy').textContent = `(${x}, ${y})`;
+    document.getElementById('info-colrow').textContent = `col=${col}, charRow=${charRow}`;
+    document.getElementById('info-addr').textContent = `$${absAddr.toString(16).toUpperCase().padStart(4, '0')}`;
+    document.getElementById('info-offset').textContent = `${offset} ($${offset.toString(16).toUpperCase().padStart(4, '0')})`;
+    document.getElementById('info-bits').textContent = bitBreak;
+    document.getElementById('info-third').textContent = `${third} (rows ${third*64}-${third*64+63}, base $${(0x4000 + third * 0x800).toString(16).toUpperCase()})`;
+    document.getElementById('info-charrow').textContent = `${charRow} (row ${charRowInThird} in third ${third})`;
+    document.getElementById('info-pixline').textContent = `${lineInCell} of 7`;
+    document.getElementById('info-attrcell').textContent = `(${col}, ${charRow})`;
+    document.getElementById('info-attraddr').textContent = `$${attrAbsAddr.toString(16).toUpperCase().padStart(4, '0')}`;
+    document.getElementById('info-attrbyte').textContent = `$${attrByte.toString(16).toUpperCase().padStart(2, '0')} (${attrByte.toString(2).padStart(8, '0')})`;
+    document.getElementById('info-ink').textContent = `${ink} (${COLOR_NAMES[ink]})`;
+    document.getElementById('info-paper').textContent = `${paper} (${COLOR_NAMES[paper]})`;
+    document.getElementById('swatch-ink').style.background = ZX_COLORS[inkIdx];
+    document.getElementById('swatch-paper').style.background = ZX_COLORS[paperIdx];
+    document.getElementById('info-bright').textContent = bright ? 'Yes' : 'No';
+    document.getElementById('info-flash').textContent = flash ? 'Yes' : 'No';
+
+    // Highlight in memory view
+    highlightMemoryByte(offset);
+});
+
+canvas.addEventListener('mouseleave', () => {
+    highlightedOffset = -1;
+    // Clear highlights
+    document.querySelectorAll('.mem-byte.highlight').forEach(el => el.classList.remove('highlight'));
+});
+
+// --- Memory view ---
+
+const memviewEl = document.getElementById('memview');
+
+function updateMemoryView() {
+    // Build HTML for all 6912 bytes, 16 bytes per row
+    const lines = [];
+    for (let base = 0; base < 6912; base += 16) {
+        const absAddr = 0x4000 + base;
+        let line = `<span class="mem-offset">${absAddr.toString(16).toUpperCase().padStart(4, '0')}:</span> `;
+        for (let i = 0; i < 16; i++) {
+            const offset = base + i;
+            if (offset >= 6912) break;
+            const val = zx.peek(offset);
+            const cls = offset >= 6144 ? 'mem-byte attr-region' : 'mem-byte';
+            line += `<span class="${cls}" data-off="${offset}">${val.toString(16).toUpperCase().padStart(2, '0')}</span> `;
+        }
+        lines.push(line);
+    }
+    memviewEl.innerHTML = lines.join('\n');
+}
+
+function highlightMemoryByte(offset) {
+    if (offset === highlightedOffset) return;
+
+    // Remove old highlight
+    const oldEl = memviewEl.querySelector('.mem-byte.highlight');
+    if (oldEl) oldEl.classList.remove('highlight');
+
+    highlightedOffset = offset;
+
+    // Add new highlight
+    const el = memviewEl.querySelector(`.mem-byte[data-off="${offset}"]`);
+    if (el) {
+        el.classList.add('highlight');
+        // Scroll into view if needed
+        const container = memviewEl;
+        const elTop = el.offsetTop - container.offsetTop;
+        if (elTop < container.scrollTop || elTop > container.scrollTop + container.clientHeight - 20) {
+            container.scrollTop = elTop - container.clientHeight / 2;
+        }
+    }
+}
+
+// --- View switching ---
+
+document.querySelectorAll('input[name="view"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+        currentView = e.target.value;
+        renderCurrent();
+    });
+});
+
+// --- Click to toggle pixel ---
+
+canvas.addEventListener('click', (e) => {
+    if (currentView !== 'normal') return; // only in normal mode
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const x = Math.floor(mx / SCALE);
+    const y = Math.floor(my / SCALE);
+
+    if (x < 0 || x > 255 || y < 0 || y > 191) return;
+
+    if (zx.getPixel(x, y)) {
+        zx.clearPixel(x, y);
+    } else {
+        zx.setPixel(x, y);
+    }
+
+    renderCurrent();
+    updateMemoryView();
+});
+
+// --- Initial render ---
+fillPattern('gradient');
+// Re-select the correct button after initial fill
+document.querySelectorAll('.pattern-row button').forEach(b => {
+    if (b.textContent === 'Sequential') b.classList.add('active');
+});
+
+</script>
+</body></html>

@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Attribute Plasma — verify Z80 (ch09)</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    background: #111;
+    color: #bbb;
+    font-family: 'Courier New', monospace;
+    text-align: center;
+    min-height: 100vh;
+    padding: 20px 10px;
+}
+h2 {
+    color: #0ff;
+    margin-bottom: 4px;
+    font-size: 18px;
+    text-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+}
+.subtitle {
+    color: #666;
+    font-size: 12px;
+    margin-bottom: 16px;
+}
+.displays {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.display-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.display-panel h3 {
+    color: #888;
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+canvas {
+    border: 3px solid #333;
+    display: block;
+    image-rendering: pixelated;
+    background: #000;
+}
+canvas:hover { border-color: #555; }
+.info {
+    margin: 12px 0 8px;
+    font-size: 13px;
+    color: #777;
+}
+.info span { color: #aaa; }
+.controls {
+    display: inline-block;
+    text-align: left;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    padding: 16px 24px;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+.controls h4 {
+    color: #0aa;
+    font-size: 13px;
+    margin-bottom: 10px;
+    text-align: center;
+}
+.control-row {
+    display: flex;
+    align-items: center;
+    margin: 5px 0;
+    font-size: 12px;
+}
+.control-row label {
+    width: 120px;
+    text-align: right;
+    padding-right: 10px;
+    color: #888;
+}
+.control-row input[type="range"] {
+    width: 180px;
+    accent-color: #0aa;
+}
+.control-row .val {
+    width: 50px;
+    text-align: left;
+    padding-left: 8px;
+    color: #ccc;
+    font-size: 11px;
+}
+.buttons {
+    text-align: center;
+    margin-top: 12px;
+}
+button {
+    margin: 0 4px;
+    padding: 4px 14px;
+    background: #222;
+    color: #aaa;
+    border: 1px solid #444;
+    font-family: monospace;
+    font-size: 12px;
+    cursor: pointer;
+}
+button:hover { background: #333; color: #fff; border-color: #666; }
+.palette-strip {
+    margin: 10px auto;
+    display: flex;
+    justify-content: center;
+}
+.palette-strip canvas {
+    border: 1px solid #333;
+    height: 16px;
+}
+</style>
+</head><body>
+
+<h2>Attribute Plasma / Tunnel Effect</h2>
+<div class="subtitle">Chapter 9 — sine-sum plasma with 4-fold symmetry | 32x24 attribute grid</div>
+
+<div class="displays">
+    <div class="display-panel">
+        <h3>True-color plasma (JS reference)</h3>
+        <canvas id="truecolor" width="256" height="192"></canvas>
+    </div>
+    <div class="display-panel">
+        <h3>ZX Spectrum attributes (8x8 cells)</h3>
+        <canvas id="screen"></canvas>
+    </div>
+</div>
+
+<div class="info">
+    <span id="fps">0 fps</span> |
+    frame: <span id="frameNum">0</span> |
+    symmetry: compute <span style="color:#0a0">16x12</span>, mirror to <span style="color:#0aa">32x24</span> |
+    palette: <span id="paletteLen">0</span> entries
+</div>
+
+<div class="palette-strip">
+    <canvas id="paletteVis" width="512" height="16"></canvas>
+</div>
+
+<div class="controls">
+    <h4>-- plasma parameters --</h4>
+    <div class="control-row">
+        <label>speed:</label>
+        <input type="range" id="speed" min="1" max="20" value="3">
+        <span class="val" id="speedVal">3</span>
+    </div>
+    <div class="control-row">
+        <label>freq 1 (X):</label>
+        <input type="range" id="freq1" min="1" max="40" value="8">
+        <span class="val" id="freq1Val">8</span>
+    </div>
+    <div class="control-row">
+        <label>freq 2 (Y):</label>
+        <input type="range" id="freq2" min="1" max="40" value="6">
+        <span class="val" id="freq2Val">6</span>
+    </div>
+    <div class="control-row">
+        <label>freq 3 (X+Y):</label>
+        <input type="range" id="freq3" min="1" max="40" value="4">
+        <span class="val" id="freq3Val">4</span>
+    </div>
+    <div class="control-row">
+        <label>phase speed 1:</label>
+        <input type="range" id="pspeed1" min="1" max="15" value="3">
+        <span class="val" id="pspeed1Val">3</span>
+    </div>
+    <div class="control-row">
+        <label>phase speed 2:</label>
+        <input type="range" id="pspeed2" min="1" max="15" value="5">
+        <span class="val" id="pspeed2Val">5</span>
+    </div>
+    <div class="control-row">
+        <label>phase speed 3:</label>
+        <input type="range" id="pspeed3" min="1" max="15" value="7">
+        <span class="val" id="pspeed3Val">7</span>
+    </div>
+    <div class="buttons">
+        <button onclick="paused=!paused">Pause / Resume</button>
+        <button onclick="resetPhases()">Reset Phases</button>
+        <button onclick="cycleMode()">Mode: <span id="modeLabel">plasma</span></button>
+        <button onclick="cyclePalette()">Palette: <span id="palLabel">rainbow</span></button>
+    </div>
+</div>
+
+<script src="zx_screen.js"></script>
+<script>
+// -------------------------------------------------------------------
+//  ZX Spectrum attribute plasma — Chapter 9 prototype
+//  Demonstrates sine-sum plasma with 4-fold symmetry optimization
+// -------------------------------------------------------------------
+
+// --- Canvas setup ---
+const trueCanvas = document.getElementById('truecolor');
+trueCanvas.width = 256;
+trueCanvas.height = 192;
+const trueCtx = trueCanvas.getContext('2d');
+trueCanvas.style.width = '384px';   // 1.5x display
+trueCanvas.style.height = '288px';
+
+const zx = new ZXScreen(document.getElementById('screen'), 2);
+// Fill pixel data with solid blocks (all bits set) so attributes are visible
+for (let i = 0; i < 6144; i++) zx.pixels[i] = 0xFF;
+
+// --- Sine table (256 entries, values 0..255 for unsigned plasma) ---
+const SINE_TABLE = new Uint8Array(256);
+for (let i = 0; i < 256; i++) {
+    SINE_TABLE[i] = Math.round(127.5 + 127.5 * Math.sin(2 * Math.PI * i / 256));
+}
+
+// --- ZX Spectrum color palette mapping ---
+// Maps plasma value (0..255) to attribute bytes
+// Cycle: blue -> cyan -> green -> yellow -> white -> magenta -> red -> back
+
+const ZX_INK_COLORS = {
+    // color index: [r, g, b] for true-color display
+    0: [0, 0, 0],       // black
+    1: [0, 0, 205],     // blue
+    2: [205, 0, 0],     // red
+    3: [205, 0, 205],   // magenta
+    4: [0, 205, 0],     // green
+    5: [0, 205, 205],   // cyan
+    6: [205, 205, 0],   // yellow
+    7: [205, 205, 205], // white
+    9: [0, 0, 255],     // bright blue
+    10: [255, 0, 0],    // bright red
+    11: [255, 0, 255],  // bright magenta
+    12: [0, 255, 0],    // bright green
+    13: [0, 255, 255],  // bright cyan
+    14: [255, 255, 0],  // bright yellow
+    15: [255, 255, 255] // bright white
+};
+
+// Palette definitions — each is a list of {ink, paper, bright} steps
+// The plasma value 0..255 indexes into this palette (wrapping)
+
+function buildRainbowPalette() {
+    // blue -> cyan -> green -> yellow -> white -> magenta -> red -> loop
+    // Each color gets a gradient via ink/paper mixing
+    const sequence = [
+        // ink, paper, bright — we use paper=black for vivid look
+        { ink: 1, paper: 0, bright: 0 },  // blue
+        { ink: 1, paper: 0, bright: 1 },  // bright blue
+        { ink: 5, paper: 1, bright: 0 },  // cyan on blue
+        { ink: 5, paper: 0, bright: 0 },  // cyan
+        { ink: 5, paper: 0, bright: 1 },  // bright cyan
+        { ink: 4, paper: 5, bright: 0 },  // green on cyan
+        { ink: 4, paper: 0, bright: 0 },  // green
+        { ink: 4, paper: 0, bright: 1 },  // bright green
+        { ink: 6, paper: 4, bright: 0 },  // yellow on green
+        { ink: 6, paper: 0, bright: 0 },  // yellow
+        { ink: 6, paper: 0, bright: 1 },  // bright yellow
+        { ink: 7, paper: 6, bright: 0 },  // white on yellow
+        { ink: 7, paper: 0, bright: 1 },  // bright white
+        { ink: 7, paper: 0, bright: 0 },  // white
+        { ink: 3, paper: 7, bright: 0 },  // magenta on white
+        { ink: 3, paper: 0, bright: 1 },  // bright magenta
+        { ink: 3, paper: 0, bright: 0 },  // magenta
+        { ink: 2, paper: 3, bright: 0 },  // red on magenta
+        { ink: 2, paper: 0, bright: 1 },  // bright red
+        { ink: 2, paper: 0, bright: 0 },  // red
+        { ink: 1, paper: 2, bright: 0 },  // blue on red
+    ];
+    return expandPalette(sequence);
+}
+
+function buildFirePalette() {
+    const sequence = [
+        { ink: 0, paper: 0, bright: 0 },  // black
+        { ink: 2, paper: 0, bright: 0 },  // red
+        { ink: 2, paper: 0, bright: 1 },  // bright red
+        { ink: 6, paper: 2, bright: 0 },  // yellow on red
+        { ink: 6, paper: 0, bright: 0 },  // yellow
+        { ink: 6, paper: 0, bright: 1 },  // bright yellow
+        { ink: 7, paper: 6, bright: 1 },  // bright white on yellow
+        { ink: 7, paper: 0, bright: 1 },  // bright white
+        { ink: 6, paper: 0, bright: 1 },  // bright yellow
+        { ink: 6, paper: 0, bright: 0 },  // yellow
+        { ink: 2, paper: 6, bright: 0 },  // red on yellow
+        { ink: 2, paper: 0, bright: 1 },  // bright red
+        { ink: 2, paper: 0, bright: 0 },  // red
+        { ink: 0, paper: 2, bright: 0 },  // black on red
+    ];
+    return expandPalette(sequence);
+}
+
+function buildOceanPalette() {
+    const sequence = [
+        { ink: 0, paper: 0, bright: 0 },  // black
+        { ink: 1, paper: 0, bright: 0 },  // blue
+        { ink: 1, paper: 0, bright: 1 },  // bright blue
+        { ink: 5, paper: 1, bright: 0 },  // cyan on blue
+        { ink: 5, paper: 0, bright: 0 },  // cyan
+        { ink: 5, paper: 0, bright: 1 },  // bright cyan
+        { ink: 7, paper: 5, bright: 1 },  // white on cyan
+        { ink: 7, paper: 0, bright: 1 },  // bright white
+        { ink: 5, paper: 0, bright: 1 },  // bright cyan
+        { ink: 5, paper: 0, bright: 0 },  // cyan
+        { ink: 1, paper: 5, bright: 0 },  // blue on cyan
+        { ink: 1, paper: 0, bright: 1 },  // bright blue
+        { ink: 1, paper: 0, bright: 0 },  // blue
+    ];
+    return expandPalette(sequence);
+}
+
+// Expand N-entry palette to 256 entries, distributing evenly
+function expandPalette(sequence) {
+    const n = sequence.length;
+    const palette = new Array(256);
+    for (let i = 0; i < 256; i++) {
+        const idx = Math.floor(i * n / 256);
+        const entry = sequence[idx];
+        palette[i] = {
+            attr: ZXScreen.makeAttr(entry.ink, entry.paper, entry.bright),
+            ink: entry.ink + (entry.bright ? 8 : 0),
+            paper: entry.paper + (entry.bright ? 8 : 0),
+        };
+    }
+    return palette;
+}
+
+// Build true-color gradient for the reference display
+function buildTrueColorGradient() {
+    // Smooth rainbow gradient: HSL cycle
+    const gradient = new Array(256);
+    for (let i = 0; i < 256; i++) {
+        const h = (i / 256) * 360;
+        const [r, g, b] = hslToRgb(h, 1.0, 0.5);
+        gradient[i] = [r, g, b];
+    }
+    return gradient;
+}
+
+function hslToRgb(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m = l - c / 2;
+    let r, g, b;
+    if (h < 60)       { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else               { r = c; g = 0; b = x; }
+    return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+const trueColorGrad = buildTrueColorGradient();
+
+// --- Palette state ---
+const PALETTES = ['rainbow', 'fire', 'ocean'];
+let paletteIdx = 0;
+let attrPalette = buildRainbowPalette();
+
+function cyclePalette() {
+    paletteIdx = (paletteIdx + 1) % PALETTES.length;
+    switch (PALETTES[paletteIdx]) {
+        case 'rainbow': attrPalette = buildRainbowPalette(); break;
+        case 'fire':    attrPalette = buildFirePalette(); break;
+        case 'ocean':   attrPalette = buildOceanPalette(); break;
+    }
+    document.getElementById('palLabel').textContent = PALETTES[paletteIdx];
+    renderPaletteStrip();
+}
+
+// --- Mode state (plasma vs tunnel) ---
+const MODES = ['plasma', 'tunnel'];
+let modeIdx = 0;
+
+function cycleMode() {
+    modeIdx = (modeIdx + 1) % MODES.length;
+    document.getElementById('modeLabel').textContent = MODES[modeIdx];
+}
+
+// --- Precomputed tunnel map (for tunnel mode) ---
+const tunnelDist = new Uint8Array(16 * 12);  // quarter screen
+const tunnelAngle = new Uint8Array(16 * 12);
+
+function buildTunnelMap() {
+    const cx = 16, cy = 12;  // center of full 32x24 grid (half for quarter)
+    for (let qy = 0; qy < 12; qy++) {
+        for (let qx = 0; qx < 16; qx++) {
+            // offset from center (use quarter coords mapped to full)
+            const dx = qx - cx + 0.5;
+            const dy = qy - cy + 0.5;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
+
+            // Map to 0..255 ranges
+            const idx = qy * 16 + qx;
+            tunnelDist[idx] = Math.round(512 / (dist + 1)) & 0xFF;
+            tunnelAngle[idx] = Math.round(angle * 256 / (2 * Math.PI) + 256) & 0xFF;
+        }
+    }
+}
+buildTunnelMap();
+
+// --- Animation state ---
+let phase1 = 0, phase2 = 0, phase3 = 0;
+let paused = false;
+let frameNum = 0;
+
+function resetPhases() {
+    phase1 = 0; phase2 = 0; phase3 = 0; frameNum = 0;
+}
+
+// --- Read controls ---
+function getCtrl(id) { return parseInt(document.getElementById(id).value); }
+function updateLabels() {
+    for (const id of ['speed', 'freq1', 'freq2', 'freq3', 'pspeed1', 'pspeed2', 'pspeed3']) {
+        document.getElementById(id + 'Val').textContent = getCtrl(id);
+    }
+}
+
+// --- Plasma computation ---
+// Quarter buffer: 16x12, stores plasma values 0..255
+const quarterBuf = new Uint8Array(16 * 12);
+
+function computePlasmaQuarter(f1, f2, f3, p1, p2, p3) {
+    for (let qy = 0; qy < 12; qy++) {
+        for (let qx = 0; qx < 16; qx++) {
+            // Sine-sum plasma: three sine waves combined
+            // value = sin(x*freq1 + phase1) + sin(y*freq2 + phase2) + sin((x+y)*freq3 + phase3)
+            const s1 = SINE_TABLE[(qx * f1 + p1) & 0xFF];
+            const s2 = SINE_TABLE[(qy * f2 + p2) & 0xFF];
+            const s3 = SINE_TABLE[((qx + qy) * f3 + p3) & 0xFF];
+
+            // Average three sines to keep in 0..255
+            const val = Math.round((s1 + s2 + s3) / 3);
+            quarterBuf[qy * 16 + qx] = val;
+        }
+    }
+}
+
+function computeTunnelQuarter(p1, p2) {
+    for (let qy = 0; qy < 12; qy++) {
+        for (let qx = 0; qx < 16; qx++) {
+            const idx = qy * 16 + qx;
+            const val = (tunnelDist[idx] + p1 + tunnelAngle[idx] + p2) & 0xFF;
+            quarterBuf[idx] = val;
+        }
+    }
+}
+
+// --- 4-fold symmetry: mirror quarter to full 32x24 ---
+// Full plasma buffer
+const fullBuf = new Uint8Array(32 * 24);
+
+function mirrorToFull() {
+    for (let qy = 0; qy < 12; qy++) {
+        for (let qx = 0; qx < 16; qx++) {
+            const val = quarterBuf[qy * 16 + qx];
+
+            // Quadrant mapping (origin at center):
+            //  TL: mirror both axes   TR: mirror Y axis
+            //  BL: mirror X axis      BR: direct (computed quadrant)
+            const fx = 16 + qx;    // right half x
+            const mx = 15 - qx;    // mirrored left half x
+            const fy = 12 + qy;    // bottom half y
+            const my = 11 - qy;    // mirrored top half y
+
+            // Bottom-right (original)
+            fullBuf[fy * 32 + fx] = val;
+            // Bottom-left (mirror X)
+            fullBuf[fy * 32 + mx] = val;
+            // Top-right (mirror Y)
+            fullBuf[my * 32 + fx] = val;
+            // Top-left (mirror both)
+            fullBuf[my * 32 + mx] = val;
+        }
+    }
+}
+
+// --- Render true-color reference ---
+function renderTrueColor() {
+    const imgData = trueCtx.createImageData(256, 192);
+    const data = imgData.data;
+
+    for (let row = 0; row < 24; row++) {
+        for (let col = 0; col < 32; col++) {
+            const val = fullBuf[row * 32 + col];
+            const [r, g, b] = trueColorGrad[val];
+
+            // Fill 8x8 pixel block
+            for (let py = 0; py < 8; py++) {
+                for (let px = 0; px < 8; px++) {
+                    const x = col * 8 + px;
+                    const y = row * 8 + py;
+                    const idx = (y * 256 + x) * 4;
+                    data[idx]     = r;
+                    data[idx + 1] = g;
+                    data[idx + 2] = b;
+                    data[idx + 3] = 255;
+                }
+            }
+        }
+    }
+    trueCtx.putImageData(imgData, 0, 0);
+}
+
+// --- Render ZX attributes ---
+function renderZXAttributes() {
+    for (let row = 0; row < 24; row++) {
+        for (let col = 0; col < 32; col++) {
+            const val = fullBuf[row * 32 + col];
+            const entry = attrPalette[val];
+            zx.setAttr(col, row, entry.attr);
+        }
+    }
+    zx.render();
+}
+
+// --- Palette strip visualization ---
+function renderPaletteStrip() {
+    const c = document.getElementById('paletteVis');
+    const ctx = c.getContext('2d');
+    for (let i = 0; i < 256; i++) {
+        const entry = attrPalette[i];
+        const inkIdx = entry.ink;
+        const rgb = ZX_COLORS[inkIdx];
+        ctx.fillStyle = rgb;
+        ctx.fillRect(i * 2, 0, 2, 16);
+    }
+    document.getElementById('paletteLen').textContent = '256';
+}
+
+// --- Main animation loop ---
+let lastTime = performance.now(), fpsCounter = 0;
+
+function frame() {
+    if (!paused) {
+        updateLabels();
+
+        const speed  = getCtrl('speed');
+        const f1     = getCtrl('freq1');
+        const f2     = getCtrl('freq2');
+        const f3     = getCtrl('freq3');
+        const ps1    = getCtrl('pspeed1');
+        const ps2    = getCtrl('pspeed2');
+        const ps3    = getCtrl('pspeed3');
+
+        // Compute quarter plasma
+        if (MODES[modeIdx] === 'plasma') {
+            computePlasmaQuarter(f1, f2, f3, phase1, phase2, phase3);
+        } else {
+            computeTunnelQuarter(phase1, phase2);
+        }
+
+        // Mirror to full 32x24
+        mirrorToFull();
+
+        // Render both views
+        renderTrueColor();
+        renderZXAttributes();
+
+        // Advance phases
+        phase1 = (phase1 + ps1 * speed) & 0xFF;
+        phase2 = (phase2 + ps2 * speed) & 0xFF;
+        phase3 = (phase3 + ps3 * speed) & 0xFF;
+
+        frameNum++;
+        document.getElementById('frameNum').textContent = frameNum;
+    }
+
+    fpsCounter++;
+    const now = performance.now();
+    if (now - lastTime > 1000) {
+        document.getElementById('fps').textContent = fpsCounter + ' fps';
+        fpsCounter = 0;
+        lastTime = now;
+    }
+
+    requestAnimationFrame(frame);
+}
+
+// --- Initialize ---
+renderPaletteStrip();
+frame();
+</script>
+</body></html>

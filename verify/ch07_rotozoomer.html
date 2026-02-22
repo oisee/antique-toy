@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Rotozoomer — verify Z80 (ch07)</title>
+<style>
+body { background: #1a1a1a; color: #bbb; font-family: monospace; text-align: center; margin: 0; padding: 10px; }
+h2 { color: #ddd; margin: 10px 0 5px; font-size: 16px; }
+canvas { border: 4px solid #444; display: block; margin: 10px auto; image-rendering: pixelated; }
+.info { margin: 8px auto; font-size: 13px; max-width: 900px; line-height: 1.6; }
+.info span { color: #8f8; }
+#controls { margin: 10px auto; max-width: 900px; }
+#controls table { margin: 0 auto; border-collapse: collapse; text-align: left; }
+#controls td { padding: 3px 8px; vertical-align: middle; }
+#controls label { cursor: pointer; }
+button { margin: 0 4px; padding: 4px 12px; font-family: monospace; background: #333; color: #ccc;
+    border: 1px solid #555; cursor: pointer; }
+button:hover { background: #444; }
+button.active { background: #264; border-color: #4a8; color: #8f8; }
+select, input[type=range] { font-family: monospace; background: #333; color: #ccc; border: 1px solid #555; }
+select { padding: 3px 6px; }
+input[type=range] { width: 120px; vertical-align: middle; }
+.z80-panel { margin: 12px auto; max-width: 900px; background: #111; border: 1px solid #333;
+    padding: 10px 14px; text-align: left; font-size: 12px; line-height: 1.7; }
+.z80-panel h3 { color: #8cf; margin: 0 0 6px; font-size: 13px; }
+.z80-panel code { color: #fc6; }
+.z80-panel .comment { color: #6a6; }
+.mode-label { display: inline-block; padding: 2px 8px; margin: 0 4px; border: 1px solid #555;
+    cursor: pointer; font-size: 13px; }
+.mode-label.active { background: #264; border-color: #4a8; color: #8f8; }
+</style>
+</head><body>
+<h2>Rotozoomer effect -- JS prototype (verifies Z80 ch07 approach)</h2>
+<canvas id="screen"></canvas>
+<div class="info">
+    <span id="fps">0 fps</span> |
+    angle: <span id="angle">0</span> |
+    zoom: <span id="zoom">1.00</span> |
+    mode: <span id="modeName">pixel</span> |
+    increments/frame: <span id="incrInfo">dx=0, dy=0</span>
+</div>
+<div id="controls">
+<table>
+<tr>
+    <td>Texture:</td>
+    <td>
+        <select id="texSelect">
+            <option value="xor">XOR pattern</option>
+            <option value="checker">Checkerboard 8x8</option>
+            <option value="stripe">Diagonal stripes</option>
+            <option value="sprite">Custom 8x8 sprite</option>
+            <option value="plasma">Plasma rings</option>
+        </select>
+    </td>
+    <td>Render:</td>
+    <td>
+        <span class="mode-label active" id="modePixel" onclick="setMode('pixel')">Pixel-perfect</span>
+        <span class="mode-label" id="modeAttr" onclick="setMode('attr')">Attribute 8x8</span>
+        <span class="mode-label" id="modeBoth" onclick="setMode('both')">Split view</span>
+    </td>
+</tr>
+<tr>
+    <td>Rotation speed:</td>
+    <td><input type="range" id="rotSpeed" min="0" max="10" step="0.5" value="1.5"></td>
+    <td>Zoom oscillation:</td>
+    <td>
+        <button id="btnZoomOsc" class="active" onclick="toggleZoomOsc()">ON</button>
+        Zoom: <input type="range" id="zoomBase" min="0.3" max="4.0" step="0.1" value="1.0">
+    </td>
+</tr>
+<tr>
+    <td>Colour scheme:</td>
+    <td>
+        <select id="colorScheme">
+            <option value="wb">White / Black</option>
+            <option value="gc">Green / Cyan (bright)</option>
+            <option value="yr">Yellow / Red</option>
+            <option value="mb">Magenta / Blue</option>
+            <option value="rainbow">Rainbow attrs</option>
+        </select>
+    </td>
+    <td colspan="2">
+        <button onclick="paused=!paused">Pause/Resume</button>
+        <button onclick="resetAnim()">Reset</button>
+    </td>
+</tr>
+</table>
+</div>
+
+<div class="z80-panel">
+<h3>Z80 optimisation insight: incremental texture coordinates</h3>
+<pre>
+<span class="comment">; The key trick: compute per-row and per-column increments ONCE per frame.</span>
+<span class="comment">; For each pixel, just ADD the column increment. At row start, ADD the row increment.</span>
+<span class="comment">; This makes the inner loop O(1) per pixel -- no multiply needed!</span>
+
+<span class="comment">; Per-frame setup (done once, ~50 T-states per trig lookup):</span>
+<code>col_dx  = cos(angle) * zoom    </code><span class="comment">; texture X step per screen column</span>
+<code>col_dy  = sin(angle) * zoom    </code><span class="comment">; texture Y step per screen column</span>
+<code>row_dx  = -sin(angle) * zoom   </code><span class="comment">; texture X step per screen row</span>
+<code>row_dy  = cos(angle) * zoom    </code><span class="comment">; texture Y step per screen row</span>
+
+<span class="comment">; Inner loop (Z80, ~30 T-states per pixel with 8.8 fixed-point):</span>
+<code>.pixel_loop:</code>
+<code>    ld a, h             </code><span class="comment">; 4T  -- tx integer part</span>
+<code>    xor d               </code><span class="comment">; 4T  -- XOR with ty integer part = texture lookup!</span>
+<code>    and %10000000       </code><span class="comment">; 7T  -- threshold to 1-bit</span>
+<code>    or c                </code><span class="comment">; 4T  -- merge into output byte</span>
+<code>    rrc c               </code><span class="comment">; 8T  -- shift mask</span>
+<code>    add hl, bc          </code><span class="comment">; 11T -- tx += col_dx (16-bit add!)</span>
+<code>    ex de, hl           </code>
+<code>    add hl, bc'         </code><span class="comment">; 11T -- ty += col_dy</span>
+<code>    ex de, hl           </code>
+
+<span class="comment">; Current frame values (8.8 fixed-point):</span>
+<span class="comment">; col_dx=<span id="z80_col_dx">$0000</span>  col_dy=<span id="z80_col_dy">$0000</span>  row_dx=<span id="z80_row_dx">$0000</span>  row_dy=<span id="z80_row_dy">$0000</span></span>
+<span class="comment">;</span>
+<span class="comment">; At 3.5 MHz, 256x192 pixels at ~30T each = ~1,474,560 T = ~8.4 frames.</span>
+<span class="comment">; Attribute-only mode (32x24 cells) = 23,040 T = well under 1 frame!</span>
+</pre>
+</div>
+
+<script src="zx_screen.js"></script>
+<script>
+// --- ZXScreen instances ---
+// Main canvas for single-mode rendering (pixel or attr)
+const mainCanvas = document.getElementById('screen');
+const zx = new ZXScreen(mainCanvas, 3);
+
+// Offscreen instances for split view compositing
+const splitCanvasL = document.createElement('canvas');
+const zxL = new ZXScreen(splitCanvasL, 3);
+const splitCanvasR = document.createElement('canvas');
+const zxR = new ZXScreen(splitCanvasR, 3);
+
+// --- Texture generation (256x256 tileable, stored as 8-bit values) ---
+const TEX_SIZE = 256;
+const TEX_MASK = TEX_SIZE - 1;
+
+function genTexture(type) {
+    const tex = new Uint8Array(TEX_SIZE * TEX_SIZE);
+    for (let ty = 0; ty < TEX_SIZE; ty++) {
+        for (let tx = 0; tx < TEX_SIZE; tx++) {
+            let v;
+            switch (type) {
+                case 'xor':
+                    v = (tx ^ ty) & 0xFF;
+                    break;
+                case 'checker':
+                    v = ((tx >> 3) ^ (ty >> 3)) & 1 ? 255 : 0;
+                    break;
+                case 'stripe':
+                    v = ((tx + ty) & 0x1F) < 16 ? 255 : 0;
+                    break;
+                case 'sprite':
+                    v = getSpritePixel(tx & 7, ty & 7) ? 255 : 0;
+                    break;
+                case 'plasma':
+                    v = Math.floor(128 + 127 * Math.sin(
+                        Math.sqrt((tx - 128) * (tx - 128) + (ty - 128) * (ty - 128)) * 0.08));
+                    break;
+                default:
+                    v = (tx ^ ty) & 0xFF;
+            }
+            tex[ty * TEX_SIZE + tx] = v;
+        }
+    }
+    return tex;
+}
+
+// 8x8 ZX-style sprite: diamond/star shape
+function getSpritePixel(x, y) {
+    const sprite = [
+        0b00011000,
+        0b00111100,
+        0b01111110,
+        0b11111111,
+        0b11111111,
+        0b01111110,
+        0b00111100,
+        0b00011000,
+    ];
+    return (sprite[y] >> (7 - x)) & 1;
+}
+
+let texture = genTexture('xor');
+document.getElementById('texSelect').onchange = function() {
+    texture = genTexture(this.value);
+};
+
+// --- Colour schemes ---
+const COLOR_SCHEMES = {
+    wb:  { ink: 7, paper: 0, bright: 1 },
+    gc:  { ink: 4, paper: 5, bright: 1 },
+    yr:  { ink: 6, paper: 2, bright: 1 },
+    mb:  { ink: 3, paper: 1, bright: 1 },
+};
+
+function applyColorScheme(zxInst, scheme) {
+    if (scheme === 'rainbow') {
+        for (let row = 0; row < 24; row++) {
+            for (let col = 0; col < 32; col++) {
+                const ink = ((col + row) % 7) + 1;
+                zxInst.setAttr(col, row, ZXScreen.makeAttr(ink, 0, 1));
+            }
+        }
+    } else {
+        const s = COLOR_SCHEMES[scheme] || COLOR_SCHEMES.wb;
+        zxInst.fillAttrs(ZXScreen.makeAttr(s.ink, s.paper, s.bright));
+    }
+}
+
+// --- Render mode ---
+let renderMode = 'pixel';  // 'pixel', 'attr', 'both'
+
+function setMode(mode) {
+    renderMode = mode;
+    document.getElementById('modePixel').classList.toggle('active', mode === 'pixel');
+    document.getElementById('modeAttr').classList.toggle('active', mode === 'attr');
+    document.getElementById('modeBoth').classList.toggle('active', mode === 'both');
+    document.getElementById('modeName').textContent = mode;
+}
+
+// --- Rotozoomer core ---
+
+// Threshold for 1-bit output (like Z80: test high bit of texture value)
+function texThreshold(val) {
+    return val >= 128 ? 1 : 0;
+}
+
+// Pixel-perfect rotozoomer: 1 texture sample per screen pixel.
+// Inner loop uses incremental addition only (the Z80 trick).
+function renderPixelRoto(zxInst, angle, zoomVal, offsetX, offsetY) {
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    // Per-column increments
+    const col_dx = cosA * zoomVal;
+    const col_dy = sinA * zoomVal;
+    // Per-row increments
+    const row_dx = -sinA * zoomVal;
+    const row_dy = cosA * zoomVal;
+
+    // Starting texture coordinate (top-left corner)
+    let rowTx = offsetX;
+    let rowTy = offsetY;
+
+    zxInst.clearScreen();
+
+    for (let sy = 0; sy < 192; sy++) {
+        let tx = rowTx;
+        let ty = rowTy;
+
+        // 32 bytes per scanline (256 pixels, 8 per byte) -- mirrors Z80 byte-at-a-time
+        for (let col = 0; col < 32; col++) {
+            let byte = 0;
+            for (let bit = 0; bit < 8; bit++) {
+                const itx = Math.floor(tx) & TEX_MASK;
+                const ity = Math.floor(ty) & TEX_MASK;
+                const sample = texture[ity * TEX_SIZE + itx];
+                if (texThreshold(sample)) {
+                    byte |= (0x80 >> bit);
+                }
+                tx += col_dx;
+                ty += col_dy;
+            }
+            const addr = zxInst.screenAddr(col * 8, sy);
+            zxInst.poke(addr, byte);
+        }
+
+        rowTx += row_dx;
+        rowTy += row_dy;
+    }
+
+    return { col_dx, col_dy, row_dx, row_dy };
+}
+
+// Attribute-only rotozoomer: 1 sample per 8x8 cell (the fast ZX approach).
+// Only 32x24 = 768 lookups per frame vs 49152 for pixel-perfect.
+function renderAttrRoto(zxInst, angle, zoomVal, offsetX, offsetY) {
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    // Steps per attribute cell (8 pixels wide/tall)
+    const cell_col_dx = cosA * zoomVal * 8;
+    const cell_col_dy = sinA * zoomVal * 8;
+    const cell_row_dx = -sinA * zoomVal * 8;
+    const cell_row_dy = cosA * zoomVal * 8;
+
+    // Sample at centre of first cell
+    let rowTx = offsetX + cosA * zoomVal * 4 - sinA * zoomVal * 4;
+    let rowTy = offsetY + sinA * zoomVal * 4 + cosA * zoomVal * 4;
+
+    // Fill pixel data solid so attributes show as filled blocks
+    for (let i = 0; i < 6144; i++) zxInst.poke(i, 0xFF);
+
+    const scheme = document.getElementById('colorScheme').value;
+
+    for (let row = 0; row < 24; row++) {
+        let tx = rowTx;
+        let ty = rowTy;
+
+        for (let col = 0; col < 32; col++) {
+            const itx = Math.floor(tx) & TEX_MASK;
+            const ity = Math.floor(ty) & TEX_MASK;
+            const sample = texture[ity * TEX_SIZE + itx];
+
+            let attr;
+            if (scheme === 'rainbow') {
+                const ink = (Math.floor(sample / 36) % 7) + 1;
+                attr = ZXScreen.makeAttr(ink, 0, 1);
+            } else {
+                const s = COLOR_SCHEMES[scheme] || COLOR_SCHEMES.wb;
+                if (texThreshold(sample)) {
+                    attr = ZXScreen.makeAttr(s.ink, s.paper, s.bright);
+                } else {
+                    attr = ZXScreen.makeAttr(s.paper, s.ink, s.bright);
+                }
+            }
+            zxInst.setAttr(col, row, attr);
+
+            tx += cell_col_dx;
+            ty += cell_col_dy;
+        }
+        rowTx += cell_row_dx;
+        rowTy += cell_row_dy;
+    }
+
+    return {
+        col_dx: cosA * zoomVal,
+        col_dy: sinA * zoomVal,
+        row_dx: -sinA * zoomVal,
+        row_dy: cosA * zoomVal
+    };
+}
+
+// --- Animation state ---
+let animAngle = 0;
+let animZoomPhase = 0;
+let paused = false;
+let zoomOsc = true;
+
+function toggleZoomOsc() {
+    zoomOsc = !zoomOsc;
+    document.getElementById('btnZoomOsc').classList.toggle('active', zoomOsc);
+    document.getElementById('btnZoomOsc').textContent = zoomOsc ? 'ON' : 'OFF';
+}
+
+function resetAnim() {
+    animAngle = 0;
+    animZoomPhase = 0;
+    paused = false;
+}
+
+// --- Main loop ---
+let lastTime = performance.now(), frameCounter = 0;
+
+function frame() {
+    if (!paused) {
+        const rotSpeed = parseFloat(document.getElementById('rotSpeed').value);
+        const zoomBase = parseFloat(document.getElementById('zoomBase').value);
+        const scheme = document.getElementById('colorScheme').value;
+
+        animAngle += rotSpeed * 0.02;
+        animZoomPhase += 0.03;
+
+        const zoomVal = zoomOsc
+            ? zoomBase * (1.0 + 0.5 * Math.sin(animZoomPhase))
+            : zoomBase;
+
+        // Slowly drifting offset for visual variety
+        const offsetX = 128 + Math.sin(animAngle * 0.7) * 40;
+        const offsetY = 128 + Math.cos(animAngle * 0.5) * 40;
+
+        let incrs;
+
+        if (renderMode === 'pixel') {
+            // Restore single-screen canvas size
+            if (mainCanvas.width !== 256 * 3) {
+                mainCanvas.width = 256 * 3;
+                mainCanvas.height = 192 * 3;
+                zx.ctx = mainCanvas.getContext('2d');
+                zx.ctx.imageSmoothingEnabled = false;
+                zx.imgData = zx.ctx.createImageData(256, 192);
+            }
+            applyColorScheme(zx, scheme);
+            incrs = renderPixelRoto(zx, animAngle, zoomVal, offsetX, offsetY);
+            zx.render();
+
+        } else if (renderMode === 'attr') {
+            if (mainCanvas.width !== 256 * 3) {
+                mainCanvas.width = 256 * 3;
+                mainCanvas.height = 192 * 3;
+                zx.ctx = mainCanvas.getContext('2d');
+                zx.ctx.imageSmoothingEnabled = false;
+                zx.imgData = zx.ctx.createImageData(256, 192);
+            }
+            incrs = renderAttrRoto(zx, animAngle, zoomVal, offsetX, offsetY);
+            zx.render();
+
+        } else {
+            // Split view: pixel-perfect on left, attribute-only on right
+            const splitW = 256 * 3 * 2 + 16;
+            if (mainCanvas.width !== splitW) {
+                mainCanvas.width = splitW;
+                mainCanvas.height = 192 * 3;
+            }
+
+            applyColorScheme(zxL, scheme);
+            incrs = renderPixelRoto(zxL, animAngle, zoomVal, offsetX, offsetY);
+            zxL.render();
+
+            renderAttrRoto(zxR, animAngle, zoomVal, offsetX, offsetY);
+            zxR.render();
+
+            // Composite both offscreen canvases onto main canvas
+            const ctx = mainCanvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
+            ctx.drawImage(splitCanvasL, 0, 0);
+            ctx.drawImage(splitCanvasR, 256 * 3 + 16, 0);
+
+            // Labels at bottom
+            ctx.font = '13px monospace';
+            ctx.fillStyle = '#8f8';
+            ctx.fillText('PIXEL-PERFECT (1px resolution)', 10, 192 * 3 - 8);
+            ctx.fillText('ATTRIBUTE-ONLY (8x8 cells)', 256 * 3 + 26, 192 * 3 - 8);
+        }
+
+        // Update info displays
+        const angleDeg = ((animAngle * 180 / Math.PI) % 360 + 360) % 360;
+        document.getElementById('angle').textContent = angleDeg.toFixed(1) + '\u00B0';
+        document.getElementById('zoom').textContent = zoomVal.toFixed(2);
+
+        if (incrs) {
+            document.getElementById('incrInfo').textContent =
+                'col_dx=' + incrs.col_dx.toFixed(3) + ', col_dy=' + incrs.col_dy.toFixed(3);
+
+            // Convert to 8.8 fixed-point hex for the Z80 panel
+            const to88 = function(v) {
+                const fixed = Math.round(v * 256);
+                return '$' + ((fixed & 0xFFFF) >>> 0).toString(16).toUpperCase().padStart(4, '0');
+            };
+            document.getElementById('z80_col_dx').textContent = to88(incrs.col_dx);
+            document.getElementById('z80_col_dy').textContent = to88(incrs.col_dy);
+            document.getElementById('z80_row_dx').textContent = to88(incrs.row_dx);
+            document.getElementById('z80_row_dy').textContent = to88(incrs.row_dy);
+        }
+    }
+
+    // FPS counter
+    frameCounter++;
+    const now = performance.now();
+    if (now - lastTime > 1000) {
+        document.getElementById('fps').textContent = frameCounter + ' fps';
+        frameCounter = 0;
+        lastTime = now;
+    }
+
+    requestAnimationFrame(frame);
+}
+
+frame();
+</script>
+</body></html>
