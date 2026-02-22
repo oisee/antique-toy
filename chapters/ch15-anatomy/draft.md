@@ -428,11 +428,9 @@ Let us lay out the two machines side by side, focusing on what matters for the g
 | Storage | Tape / DivMMC (esxDOS) | SD card (FAT32) |
 | Double buffering | Shadow screen (page 7) | VDP-managed |
 
-The ratio of frame budgets is approximately 5:1 in the Agon's favour. But the Agon's graphics go through a serial bottleneck, so raw CPU speed does not translate directly to rendering speed. On the Spectrum, a `PUSH HL` writes two bytes to the screen in 11 T-states. On the Agon, updating a sprite position requires sending 6+ bytes over a 384 Kbaud serial link, which takes hundreds of microseconds regardless of CPU speed.
+The frame budget ratio is approximately 5:1 in the Agon's favour. But the Agon's graphics go through a serial bottleneck, so raw CPU speed does not translate directly to rendering speed. On the Spectrum, `PUSH HL` writes two bytes to the screen in 11 T-states. On the Agon, updating a sprite position requires 6+ bytes over a 384 Kbaud link, taking hundreds of microseconds regardless of CPU speed.
 
-The Spectrum rewards low-level optimisation at the byte level. The Agon rewards architectural decisions -- choosing the right VDP mode, minimising command traffic, using hardware sprites and tilemaps efficiently.
-
-Both reward careful thinking about frame budgets. That has not changed since 1982.
+The Spectrum rewards byte-level optimisation. The Agon rewards architectural decisions. Both reward careful thinking about frame budgets.
 
 ---
 

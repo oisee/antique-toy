@@ -293,7 +293,7 @@ This is exactly what `check_player_tiles` does -- each axis is handled separatel
 
 ## Part 2: Physics
 
-The word "physics" is generous. What we are building is not a rigid-body simulation -- it is a small set of rules that produce the *feeling* of weight and momentum. Three operations cover 90% of what a platformer needs: gravity, jumping, and friction. All three operate on the fixed-point velocity fields from Chapter 18's entity structure.
+What we are building is not a rigid-body simulation -- it is a small set of rules that produce the *feeling* of weight and momentum. Three operations cover 90% of what a platformer needs: gravity, jumping, and friction.
 
 ### Gravity: Falling Convincingly
 
@@ -344,9 +344,7 @@ The terminal velocity clamp prevents entities from falling so fast they skip thr
 
 ### Why Fixed-Point Matters Here
 
-Consider what happens without fixed-point. If gravity is 1 pixel per frame, the player drops like a stone -- no acceleration, no arc, no sense of weight. If gravity is 0 pixels per frame, the player floats. There is no integer between 0 and 1. You *need* fractional values to make physics feel right, and 8.8 fixed-point gives you 256 values between each integer. A gravity of $0040 (0.25 pixels/frame^2) produces a gentle arc. A gravity of $0080 (0.5) feels heavy and fast. A gravity of $0020 (0.125) feels floaty, like a moon jump. Tuning these constants is where your game finds its character.
-
-If the fixed-point fundamentals are hazy, revisit Chapter 4 -- specifically the section on 8.8 format. Everything in this chapter assumes you are comfortable with 16-bit fixed-point add and shift operations.
+Without fixed-point, gravity is either 0 or 1 pixel per frame -- float or stone, nothing in between. 8.8 fixed-point gives you 256 values between each integer. $0040 (0.25) produces a gentle arc. $0080 (0.5) feels heavy. $0020 (0.125) feels like a moon jump. Tuning these constants is where your game finds its character. If the fixed-point fundamentals are hazy, revisit Chapter 4.
 
 ### Jump: The Anti-Gravity Impulse
 
@@ -383,11 +381,11 @@ try_jump:
     ret                    ; 10T
 ```
 
-With gravity at 0.25/frame^2 and jump force at -3.5/frame, the player rises for 14 frames (3.5 / 0.25 = 14 frames to decelerate to zero), reaching a peak height of about 24.5 pixels (the sum 3.5 + 3.25 + 3.0 + ... + 0.25), which is roughly 3 tiles. Then gravity pulls them back down over another 14 frames. Total airtime: 28 frames, just over half a second at 50 fps. That feels right for a platformer -- responsive but not twitchy.
+With gravity at 0.25/frame^2 and jump force at -3.5/frame, the player rises for 14 frames to a peak of about 24 pixels (~3 tiles), then falls for another 14 frames. Total airtime: 28 frames, just over half a second. Responsive but not twitchy.
 
 ### Variable-Height Jumps
 
-The classic trick: if the player releases the jump button while still ascending, cut the upward velocity in half. This gives the player control over jump height -- a tap produces a short hop, a hold produces a full jump.
+If the player releases the jump button while ascending, cut the upward velocity in half. A tap produces a short hop, a hold produces a full jump.
 
 ```z80
 ; check_jump_release -- Cut jump short if button released
@@ -418,11 +416,11 @@ check_jump_release:
     ret                    ; 10T
 ```
 
-This is a 16-bit arithmetic right shift: `SRA` on the high byte shifts right while preserving the sign bit, and `RRA` on the low byte picks up the carry. The result: upward velocity is halved, the player decelerates faster, and the jump arc flattens. It costs 40 T-states and gives the player a nuanced jump that feels vastly better than a fixed-height hop.
+This is a 16-bit arithmetic right shift: `SRA` preserves the sign on the high byte, `RRA` picks up the carry on the low byte. Upward velocity halves, the arc flattens. Forty T-states for a vastly better-feeling jump.
 
 ### Friction: Slowing Down on the Ground
 
-When the player releases the left/right keys, they should not stop instantly -- they should decelerate smoothly. On ice, they should slide further. On rough ground, they should stop quickly. All of this is a single operation: shift the horizontal velocity right.
+When the player releases the direction keys, they should decelerate, not stop dead. The operation is a single right-shift of horizontal velocity.
 
 ```z80
 ; apply_friction -- Decelerate horizontal movement
@@ -451,7 +449,7 @@ apply_friction:
     ret                    ; 10T
 ```
 
-Shifting right by 1 divides the velocity by 2 every frame. That is aggressive -- the player stops within a few frames. For a slippier feel (ice level, perhaps), apply friction only every other frame:
+Shifting right by 1 divides velocity by 2 every frame -- the player stops within a few frames. For ice, apply friction less frequently:
 
 ```z80
 ; apply_friction_ice -- Light friction, every other frame
@@ -462,7 +460,7 @@ Shifting right by 1 divides the velocity by 2 every frame. That is aggressive --
     jr   apply_friction   ; apply on even frames only
 ```
 
-You can also vary friction based on the tile the entity is standing on. Look up the tile type under the entity's feet (using `tile_at` from earlier), and branch to different friction strengths:
+Vary friction by surface type -- look up the tile under the entity's feet and branch:
 
 ```z80
     ; Determine surface type
@@ -484,7 +482,7 @@ You can also vary friction based on the tile the entity is standing on. Look up 
 
 ### Applying Velocity to Position
 
-With gravity updating velocity and friction decaying it, the final step is moving the entity by its velocity. This is a 16-bit fixed-point addition on each axis:
+The final step: move the entity by its velocity via 16-bit fixed-point addition on each axis:
 
 ```z80
 ; move_entity -- Apply velocity to position
@@ -533,19 +531,17 @@ update_entity_physics:
     ret
 ```
 
-The order is deliberate. Apply forces (gravity, friction) first, then move, then resolve collisions. If you collide before moving, the entity will never move into walls, but it also will never feel the "push" of being nudged away from one. If you move before applying forces, the entity will briefly be in its new position before gravity has had a chance to act, which can cause a one-frame visual glitch. The order above -- forces, move, collide -- is the industry standard for platformers.
-
-Total cost for one entity: approximately 500-700 T-states. For 16 entities: 8,000-11,200 T-states. That is about 15% of the Pentagon frame budget -- substantial but manageable, leaving plenty of room for rendering, sound, and AI.
+The order is deliberate: forces first, then move, then collide. This is the standard for platformers. Total cost per entity: approximately 500-700 T-states. For 16 entities: 8,000-11,200 T-states, about 15% of the Pentagon frame budget.
 
 ---
 
 ## Part 3: Enemy AI
 
-Artificial intelligence on a Z80 is an exercise in constrained ambition. You do not have the cycles for pathfinding, decision trees, or neural networks. What you have is a jump table and a state byte. That is enough.
+You do not have the cycles for pathfinding or decision trees. What you have is a jump table and a state byte. That is enough.
 
 ### The Finite State Machine
 
-Every enemy has a `state` byte (offset +5 in our entity structure). This byte selects which behaviour routine runs this frame. The behaviours are:
+Every enemy has a `state` byte (offset +5 in our entity structure) that selects which behaviour routine runs this frame:
 
 | State | Name    | Behaviour |
 |-------|---------|-----------|
@@ -555,11 +551,11 @@ Every enemy has a `state` byte (offset +5 in our entity structure). This byte se
 | 3     | RETREAT | Move away from the player |
 | 4     | DEATH   | Play death animation, then deactivate |
 
-State transitions happen based on simple conditions: "Is the player within detection range? Switch from PATROL to CHASE." "Has the attack cooldown expired? Switch from CHASE to ATTACK." "Is health below 25%? Switch from CHASE to RETREAT." Each condition is a comparison or bit test -- never anything expensive.
+Transitions are simple conditions: proximity checks, cooldown timers, health thresholds. Each is a comparison or bit test -- never anything expensive.
 
 ### The JP Table
 
-The core of the AI dispatcher is a **jump table**: an array of addresses indexed by the state byte. Instead of a chain of `CP state / JR Z, handler` comparisons (which gets slower as you add states), a jump table gives you O(1) dispatch regardless of how many states you have.
+The core of the AI dispatcher is a **jump table** indexed by the state byte. O(1) dispatch regardless of how many states you have:
 
 ```z80
 ; ai_dispatch -- Run the AI for one enemy entity
@@ -604,9 +600,7 @@ ai_state_table:
     dw   ai_death          ; state 4
 ```
 
-The `jp (hl)` instruction is the Z80's indirect jump -- it costs only 4 T-states and transfers control to the address held in HL. The entire dispatch overhead is about 45 T-states regardless of how many states exist. Compare this to a linear chain of CP/JR pairs, which costs 11 T-states per miss and grows linearly with the number of states.
-
-Notice that `jp (hl)` is misleadingly named -- it jumps to the address *in* HL, not the address pointed *to* by HL. The parentheses in the mnemonic are a Zilog notation quirk, not a dereference. We have already loaded the target address from the table into HL; `jp (hl)` just goes there.
+The `jp (hl)` instruction costs only 4 T-states -- the entire dispatch overhead is about 45 T-states regardless of state count. Note: `jp (hl)` jumps to the address *in* HL, not the address pointed to by HL. The parentheses are a Zilog notation quirk.
 
 ### Patrol: The Dumb Walk
 
@@ -738,11 +732,11 @@ ai_chase:
     ret
 ```
 
-The `sign of dx` technique is the cheapest possible direction-finding algorithm: subtract the player's X from the enemy's X. If the result is negative (carry set), the player is to the left. If positive, the player is to the right. Two instructions, no trigonometry, no pathfinding. It works surprisingly well in practice because platformer levels are mostly horizontal.
+The sign-of-dx technique: subtract, check carry. Carry set means player is to the left. Two instructions, no trigonometry, no pathfinding.
 
 ### Attack: Fire and Cooldown
 
-When the enemy enters ATTACK state, it fires a projectile (or performs a melee strike), then waits for a cooldown timer before it can act again. The cooldown uses the `anim_frame` field (offset +6) as a countdown timer -- we are reusing a field from the entity structure rather than adding new fields.
+The ATTACK state fires a projectile, then waits for a cooldown timer. We reuse the `anim_frame` field (offset +6) as a countdown.
 
 ```z80
 ; ai_attack -- Fire projectile, then cool down
@@ -800,11 +794,11 @@ ai_attack:
     ret
 ```
 
-The `find_free_entity` routine (which you built in Chapter 18) scans the entity array for an inactive slot. If the pool is full, the shot is simply dropped -- better to lose a bullet than to corrupt memory by writing past the array.
+The `find_free_entity` routine (from Chapter 18) scans for an inactive slot. If the pool is full, the shot is dropped.
 
 ### Retreat: The Reverse Chase
 
-Retreat is the mirror of chase: compute the sign of dx and move in the opposite direction. We could write it from scratch, but a cleaner approach reuses the chase logic with an inverted direction.
+The mirror of chase -- compute sign of dx, move the other way:
 
 ```z80
 ; ai_retreat -- Move away from the player
@@ -852,7 +846,7 @@ ai_retreat:
 
 ### Death: Animate and Remove
 
-When an entity's health reaches zero, set its state to DEATH. The death handler plays an animation, then deactivates the entity.
+Health reaches zero, state becomes DEATH. The handler plays an animation, then deactivates the entity.
 
 ```z80
 ; ai_death -- Play death animation, then deactivate
@@ -880,13 +874,11 @@ ai_death:
     ret                    ; 10T
 ```
 
-The renderer checks the active flag before drawing. Once bit 7 is cleared, the entity stops being drawn and its slot becomes available for reuse by `find_free_entity`.
+Once bit 7 is cleared, the entity vanishes from rendering and its slot becomes available for reuse.
 
 ### Optimisation: Update AI Every 2nd or 3rd Frame
 
-Here is a secret that every 8-bit game developer knows: **players cannot tell the difference between 50 Hz AI and 25 Hz AI**. The screen updates at 50 fps, and the player's character responds to input at 50 fps, but enemies only need to make decisions at 25 fps (every 2nd frame) or even 16.7 fps (every 3rd frame). The visual movement is still smooth because the entity's velocity continues to carry it between AI updates.
-
-The implementation is trivially simple:
+**Players cannot tell the difference between 50 Hz AI and 25 Hz AI.** The screen and player input run at 50 fps, but enemy decisions at 25 fps (every 2nd frame) or 16.7 fps (every 3rd) are indistinguishable. Velocity carries the entity smoothly between AI ticks.
 
 ```z80
 ; update_all_ai -- Update enemy AI on alternate frames
@@ -918,7 +910,7 @@ update_all_ai:
     ret
 ```
 
-This halves the AI cost from roughly 1,000 T-states to 500 T-states per frame (amortised). For 3rd-frame updating, change `and 1` to a modulo-3 check:
+This halves the AI cost. For 3rd-frame updating, use a modulo-3 check:
 
 ```z80
     ld   a, (frame_counter)
@@ -932,17 +924,13 @@ This halves the AI cost from roughly 1,000 T-states to 500 T-states per frame (a
     ret  nz                ; skip unless remainder is 0
 ```
 
-Or, more efficiently, maintain a separate AI tick counter that counts 0, 1, 2, 0, 1, 2... and only run AI when it is zero.
-
-The key insight: physics (gravity, velocity, collision) runs every frame. AI (decision-making, state transitions) runs every 2nd or 3rd frame. The player sees smooth movement (physics) with slightly delayed reactions (AI), and the result feels completely natural.
+The key insight: physics runs every frame for smooth movement. AI runs every 2nd or 3rd frame for decisions. The player sees fluid motion with slightly delayed reactions, and the result feels natural.
 
 ---
 
-## Part 4: Practical -- Platformer with Four Enemy Types
+## Part 4: Practical -- Four Enemy Types
 
-Let us put everything together. We will define four enemy types, each with distinct behaviour, and wire them into the entity system from Chapter 18.
-
-### The Four Enemies
+Four enemy types, each with distinct behaviour, wired into the entity system from Chapter 18.
 
 **1. The Walker** -- patrols a platform, reverses at edges. Detects the player by proximity. Chase behaviour: follow at ground level. Damage: contact only (no projectiles). Health: 1 hit.
 
@@ -1000,9 +988,9 @@ ai_patrol_swooper:
     ret
 ```
 
-The Swooper uses the sine table from Chapter 4 for its vertical motion pattern. When the player passes underneath, it switches to CHASE and dives straight down -- just set `dy` to a positive value and let gravity and the chase handler do the rest.
+The Swooper uses the sine table from Chapter 4 for vertical oscillation. When the player passes underneath, it dives.
 
-**4. The Ambusher** -- sits dormant (invisible or disguised as scenery) until the player is very close, then activates and attacks aggressively.
+**4. The Ambusher** -- sits dormant until the player is very close, then activates aggressively.
 
 ```z80
 ; ai_patrol_ambusher -- Dormant until player is adjacent
@@ -1038,11 +1026,11 @@ ai_patrol_ambusher:
     ret
 ```
 
-The Ambusher uses Manhattan distance (|dx| + |dy|) instead of Euclidean distance because it costs about 30 T-states rather than the ~200 T-states needed for a proper distance calculation involving a square root. For proximity checks, Manhattan is good enough.
+Manhattan distance (|dx| + |dy|) costs about 30 T-states versus ~200 for Euclidean. For proximity checks, it is good enough.
 
 ### Wiring It Into the Game Loop
 
-The complete per-frame update order, building on Chapter 18's main loop:
+The complete per-frame update, building on Chapter 18:
 
 ```z80
 game_frame:
@@ -1072,7 +1060,7 @@ game_frame:
     jr   game_frame
 ```
 
-The `check_all_collisions` routine iterates over all active enemy entities and checks each one against the player using `check_aabb`. It also checks bullets against enemies and bullets against the player:
+The `check_all_collisions` routine tests player vs enemies and bullets vs entities:
 
 ```z80
 ; check_all_collisions -- Test player vs enemies, bullets vs enemies

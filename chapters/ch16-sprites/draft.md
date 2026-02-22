@@ -4,13 +4,11 @@
 
 ---
 
-Every game needs things that move. Bullets, enemies, the player character, score digits, cursor arrows, explosions. On any hardware with a blitter or a GPU, the mechanics of putting a small image at an arbitrary screen position are handled for you. On the ZX Spectrum, they are your problem.
+Every game needs things that move. Bullets, enemies, the player character, explosions. On any hardware with a blitter or a GPU, the mechanics of putting a small image at an arbitrary screen position are handled for you. On the ZX Spectrum, they are your problem.
 
-The Spectrum has no hardware sprites, no blitter, no line-drawing co-processor. Every pixel of every sprite is placed by your Z80 code, one instruction at a time, into the same video memory the ULA is reading 50 times per second. And because the screen memory layout is interleaved (Chapter 2), "one row down" does not mean "+32 bytes" --- it means `INC H`, unless you are crossing a character boundary, in which case it means something considerably uglier.
+The Spectrum has no hardware sprites, no blitter, no co-processor. Every pixel of every sprite is placed by your Z80 code, one instruction at a time, into the same video memory the ULA is reading 50 times per second. And because the screen memory layout is interleaved (Chapter 2), "one row down" means `INC H` --- unless you are crossing a character boundary, in which case it means something considerably uglier.
 
-This chapter presents six methods for drawing sprites on the Spectrum, from the simplest 20-line XOR routine to compiled sprites that execute at the theoretical maximum speed of the hardware. Each method has its place. Each has trade-offs. By the end, you will have the vocabulary to choose the right approach for your game and the working code to implement it.
-
-We will also look at the Agon Light 2, where the VDP provides hardware sprites and the entire problem collapses to a handful of API calls --- a useful contrast that highlights what the Spectrum forces you to earn.
+This chapter presents six methods for drawing sprites on the Spectrum, from the simplest XOR routine to compiled sprites that execute at the theoretical maximum speed of the hardware. Each method has trade-offs. We will also look at the Agon Light 2, where the VDP provides hardware sprites and the entire problem collapses to a handful of API calls.
 
 ---
 
@@ -342,7 +340,7 @@ Compare this to Method 2's ~2,300 T-states. The stack sprite is nearly 3x faster
 
 **Pre-calculated row addresses.** You need a table of screen addresses for all 16 rows of the sprite, updated whenever the sprite moves. This is a per-frame setup cost --- not enormous, but not free.
 
-**Interrupts are off.** The entire draw is non-interruptible. For a 16x16 sprite at ~810 T-states, this is a short outage. For 8 sprites, you are looking at ~6,500 T-states with interrupts disabled. If your music runs from an IM2 handler, plan accordingly --- schedule sprite drawing immediately after HALT, before the next interrupt is due. You have nearly 70,000 T-states of margin.
+**Interrupts are off.** For 8 sprites, roughly 6,500 T-states with interrupts disabled. If your music runs from IM2, schedule sprite drawing immediately after HALT.
 
 **Data must be stored in PUSH order.** Since PUSH writes the high byte at (SP-1) and the low byte at (SP-2), and SP decrements *before* writing, the data layout requires careful attention. The sprite data is stored reversed: the rightmost byte of a row becomes the low byte loaded into the register, the leftmost becomes the high byte.
 
@@ -464,9 +462,9 @@ Per row (common case): 32 T-states. For 16 rows with 1--2 boundary crossings: ro
 - Transparent regions cost nothing if they span entire bytes --- you just skip them with `INC L` or `INC H`.
 
 **Weaknesses:**
-- **Code size.** Each visible byte in the sprite takes 2 bytes of code (`LD (HL), n` is a 2-byte instruction). A 16x16 sprite with no transparent pixels: 32 visible bytes x 2 = 64 bytes of code, plus row-advance instructions. With masking (4 instructions per byte), code size roughly triples. A full set of 8 pre-shifted compiled sprites with 4 animation frames can easily reach several kilobytes per sprite.
-- **No runtime data changes.** The pixel values are baked into the instruction operands. Changing the sprite's appearance means patching the code (self-modifying code) or having multiple compiled versions. Animation is typically handled by having a separate compiled routine for each frame.
-- **Boundary handling is baked in.** The character boundary crossings are at fixed positions in the compiled code, so the sprite must always be drawn at the same vertical alignment relative to character rows --- or you need multiple compiled versions for different alignments.
+- **Code size.** Each visible byte takes 2 bytes of code (`LD (HL), n`). With masking (4 instructions per byte), code size roughly triples. A full set of 8 pre-shifted compiled sprites with 4 animation frames can reach several kilobytes per sprite.
+- **No runtime data changes.** Pixel values are baked into instruction operands. Animation requires a separate compiled routine per frame.
+- **Boundary handling is baked in.** Character boundary crossings sit at fixed positions, so the sprite must maintain consistent vertical alignment or you need multiple compiled versions.
 
 ### Compiled sprites with masking
 
@@ -507,11 +505,11 @@ The XOR method handles this implicitly: XOR the old position to erase, XOR the n
 
 There are three common approaches:
 
-**Full screen clear.** Wipe the entire pixel area (6,144 bytes) every frame, then redraw everything. With a PUSH-based clear (~36,000 T-states from Chapter 3), this is feasible but expensive. You lose 36,000 T-states per frame on clearing alone, and you must redraw all static scenery every frame.
+**Full screen clear.** Wipe the pixel area every frame (~36,000 T-states with PUSH from Chapter 3), then redraw everything. Feasible but expensive.
 
-**Background save/restore.** Before drawing each sprite, save the screen contents behind it into a buffer. To erase, copy the saved buffer back. This is O(sprite_size) per sprite rather than O(screen_size), and it only touches the changed areas.
+**Background save/restore.** Before drawing each sprite, save the screen behind it. To erase, copy the saved buffer back. Cost is O(sprite_size) per sprite, not O(screen_size).
 
-**Dirty rectangle tracking.** A refinement of save/restore. Track which screen rectangles were modified by sprites. Each frame, restore only the dirty rectangles from the previous frame, then draw the new sprites (saving new background as you go).
+**Dirty rectangle tracking.** A refinement: track which rectangles were modified, restore only those, then draw new sprites (saving new background as you go).
 
 ### The save/restore cycle
 
@@ -754,9 +752,7 @@ The CPU cost for moving a sprite is just the cost of sending ~10 bytes over the 
 
 ### Scanline limits
 
-The VDP has a practical limit on how many sprite pixels it can draw per horizontal scanline. When too many sprites overlap on the same scanline, some sprites may flicker or disappear --- the same phenomenon seen on the NES, Master System, and other hardware-sprite systems. The exact limit depends on the VDP firmware version and the sprite sizes, but a reasonable guideline is 8 to 12 16x16 sprites on a single scanline.
-
-For a game with 8 sprites distributed across the screen, you are unlikely to hit this limit. For a horizontally-scrolling shooter with dense enemy formations, you may need to stagger sprite vertical positions or reduce sprite sizes in crowded areas.
+The VDP has a practical limit on sprite pixels per horizontal scanline. When too many sprites overlap on the same line, some may flicker --- the same phenomenon seen on the NES and Master System. A reasonable guideline is 8 to 12 16x16 sprites per scanline. For 8 sprites distributed across the screen, you are unlikely to hit this limit.
 
 ### The trade-off
 

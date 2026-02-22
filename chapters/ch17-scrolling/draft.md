@@ -54,77 +54,7 @@ To scroll up by one pixel, you need to copy the contents of row N to row N-1, fo
 
 ### The Algorithm: Scroll Up by One Pixel
 
-The approach that works with the interleave, rather than against it, uses the split-counter structure from Chapter 2. Instead of computing source and destination addresses independently for every row, we maintain two pointers (source and destination) and advance both using the screen's natural hierarchy.
-
-```z80
-; Scroll the full screen up by 1 pixel row
-; Overwrites all pixel data. Bottom row is left dirty (caller must clear).
-;
-; Uses: AF, BC, DE, HL
-;
-scroll_up_1px:
-    ld   hl, $4100          ; 10 T  source = row 1
-    ld   de, $4000          ; 10 T  dest   = row 0
-
-    ; Within first character cell: rows 1-7 -> rows 0-6
-    ; Source and dest differ by $0100 (one scan line)
-    call .copy_7_scanlines  ; 17 T  copy 7 rows (scan lines 1-7 -> 0-6)
-
-    ; Now we need to cross the character cell boundary.
-    ; Source = row 8 = $4020 (char row 1, scan line 0)
-    ; Dest   = row 7 = $4700 (char row 0, scan line 7)
-    ; These are NOT related by a constant offset.
-
-    ; For a full-screen scroll, we iterate:
-    ;   3 thirds x 8 character rows x 8 scan lines = 192 rows
-    ;   We copy rows 1-191 to rows 0-190 = 191 copies.
-
-    ; Full implementation uses split counters:
-    ld   c, 3               ; 7 T   3 thirds
-
-.third_loop:
-    ld   b, 8               ; 7 T   8 char rows per third
-
-.char_row_loop:
-    push bc                  ; 11 T  save outer counters
-
-    ; Copy 7 scan lines within this character cell
-    ; Source HL and Dest DE are set for the first pair
-    ld   b, 7               ; 7 T
-
-.scanline_loop:
-    push hl                  ; 11 T  save source start of row
-    push de                  ; 11 T  save dest start of row
-
-    ld   bc, 32              ; 10 T  32 bytes per row
-    ldir                     ; 32*21-5 = 667 T
-
-    pop  de                  ; 10 T  restore dest row start
-    pop  hl                  ; 10 T  restore source row start
-
-    inc  h                   ; 4 T   source: next scan line
-    inc  d                   ; 4 T   dest:   next scan line
-
-    pop  bc                  ; 10 T  (we need to re-push)
-    push bc                  ; 11 T
-    djnz .scanline_loop      ; 13 T
-
-    ; Advance source and dest to next character row
-    ; Source: reset scan line bits, advance L by 32
-    ; Dest:   same logic (dest is one scan line behind source)
-
-    pop  bc                  ; 10 T
-    ; ... advance pointers to next char row ...
-    djnz .char_row_loop      ; 13 T
-
-    ; Advance to next third
-    ; ... adjust H by 8, reset L ...
-    dec  c                   ; 4 T
-    jr   nz, .third_loop     ; 12 T
-    ret
-```
-
-This outline shows the structure. Let us now count the cost properly.
+The approach that works with the interleave, rather than against it, uses the split-counter structure from Chapter 2. Maintain two pointers (source and destination) and advance both using the screen's natural hierarchy: 3 thirds, 8 character rows per third, 8 scan lines per character row. Within each character cell, moving between scan lines is just `INC H` / `INC D` on the source and destination. At character row boundaries, reset the scan-line bits and add 32 to L. At third boundaries, add 8 to H and reset L. The inner loop copies 32 bytes per row with LDIR or an LDI chain, and the pointer advancement is folded into the outer loop structure.
 
 ### Cost Analysis
 
@@ -476,53 +406,35 @@ The trick for scrolling:
 This double-buffering approach eliminates tearing completely and gives you a full frame (or more) to prepare each scrolled frame. The cost is that you need to maintain two complete screen states, and each "scroll" is actually a full redraw of the play area into the back buffer.
 
 ```z80
-; Shadow screen double-buffered scrolling
+; Flip displayed screen and return back buffer address in HL
 ;
 ; screen_flag:  0 = showing page 5, drawing to page 7
 ;               1 = showing page 7, drawing to page 5
 ;
 flip_screens:
     ld   a, (screen_flag)
-    xor  1                   ; toggle
+    xor  1                   ; 4 T   toggle
     ld   (screen_flag), a
 
-    ; Compute port $7FFD value
-    ld   a, (current_bank)
-    bit  0, (iy+0)           ; check screen_flag... (simplified)
-    ; Actually, let's do this cleanly:
-
-    ld   a, (screen_flag)
+    ld   hl, $C000           ; assume drawing to page 7
     or   a
     jr   z, .show_page5
 
-.show_page7:
-    ld   a, $08              ; bit 3 set: display page 7
-    ; (preserve other bank bits as needed)
+    ; Now showing page 7, draw to page 5
+    ld   hl, $4000
+    ld   a, (current_bank)
+    or   %00001000           ; bit 3 set: display page 7
     jr   .do_flip
 
 .show_page5:
-    xor  a                   ; bit 3 clear: display page 5
+    ld   a, (current_bank)
+    and  %11110111           ; bit 3 clear: display page 5
 
 .do_flip:
     ld   bc, $7FFD
     out  (c), a
-
-    ret
-
-; Get the address of the back buffer (the screen we can draw to)
-get_back_buffer:
-    ld   a, (screen_flag)
-    or   a
-    jr   z, .draw_page7
-
-    ; Showing page 7, so draw to page 5
-    ld   hl, $4000
-    ret
-
-.draw_page7:
-    ; Showing page 5, so draw to page 7
-    ld   hl, $C000
-    ret
+    ld   (current_bank), a
+    ret                      ; HL = back buffer address
 ```
 
 ### Shadow Screen Scrolling Strategy
@@ -795,103 +707,13 @@ shift_edge_columns:
 
 ### Agon Version: Hardware Tilemap Scrolling
 
-The Agon version is dramatically simpler. Define tiles, build a tilemap, and scroll the viewport:
-
-```z80
-; Side-scroller engine — Agon Light 2
-; Uses hardware tilemap with ring-buffer column loading.
-;
-    ORG $40000               ; Agon: code in upper memory
-
-scroll_x:       DW 0        ; pixel scroll offset (16-bit)
-scroll_col:     DB 0        ; current tile column at left edge
-level_ptr:      DW level_data
-
-; --- Initialise tilemap ---
-init:
-    ; Set video mode
-    ld   a, 23
-    call vdu_write
-    ; ... configure tilemap mode, load tile definitions ...
-
-    ; Load initial visible columns into tilemap
-    call load_initial_map
-    ret
-
-; --- Main loop ---
-main:
-    call vsync               ; wait for vertical blank
-
-    ; Advance scroll offset
-    ld   hl, (scroll_x)
-    inc  hl                  ; 1 pixel per frame
-    ld   (scroll_x), hl
-
-    ; Send scroll offset to VDP
-    call set_scroll_offset   ; ~500 T via VDU commands
-
-    ; Check if a new column is needed
-    ld   a, l
-    and  7                   ; every 8 pixels = 1 tile
-    jr   nz, .no_new_col
-
-    ; Load new column into ring buffer
-    call ring_buffer_load    ; ~2,000 T
-
-.no_new_col:
-    call update_player       ; game logic
-    call update_sprites      ; hardware sprites — just set positions
-
-    jr   main
-
-; --- Set VDP scroll offset ---
-set_scroll_offset:
-    ld   a, 23               ; VDU prefix
-    call vdu_write
-    ld   a, 27               ; graphics command
-    call vdu_write
-    ld   a, 14               ; scroll offset
-    call vdu_write
-    ld   a, (scroll_x)       ; X low
-    call vdu_write
-    ld   a, (scroll_x+1)     ; X high
-    call vdu_write
-    xor  a                   ; Y = 0
-    call vdu_write
-    call vdu_write
-    ret
-
-; --- Ring buffer: load one column of tiles ---
-ring_buffer_load:
-    ; Calculate which tilemap column to update
-    ; (the one that just scrolled off the left edge)
-    ; Load 20 tile indices from level data
-    ; Write each to the tilemap via VDP commands
-    ld   b, 20
-.loop:
-    ld   a, (hl)
-    inc  hl
-    call set_tilemap_cell    ; VDP command per cell
-    djnz .loop
-    ret
-```
-
-The Agon version fits in a fraction of the frame budget. Most of the CPU time is available for game logic, AI, physics, and other work. The Spectrum version is a careful exercise in cycle-counting where every technique from Chapters 2 and 3 -- split-counter screen navigation, LDI chains, PUSH fills, self-modifying code, and shadow-screen double buffering -- comes together to achieve what the Agon does with a hardware register.
+The Agon version is dramatically simpler. The main loop calls `vsync`, increments a 16-bit scroll offset, sends it to the VDP via the `set_scroll_offset` routine (a handful of `vdu_write` calls), and every 8 pixels calls `ring_buffer_load` to update one column of tile indices. The entire scroll costs under 3,000 T-states per frame, leaving 365,000+ T-states for game logic, AI, physics, and rendering. The Spectrum version is a careful exercise in cycle-counting where every technique from Chapters 2 and 3 comes together to achieve what the Agon does with a hardware register.
 
 ---
 
 ## Vertical + Horizontal: Combined Scrolling
 
-Some games scroll in both directions simultaneously (diagonal movement, or games with both horizontal and vertical level structures). On the Spectrum, this doubles the problem. You need both the horizontal shift/copy *and* the vertical copy, both within the frame budget.
-
-The practical solution is the same combined method applied to both axes:
-
-- **Horizontal:** character scroll + pixel offset (0--7).
-- **Vertical:** character scroll + pixel offset (0--7).
-
-The character scroll in each direction happens once every 8 frames. The probability of both happening on the same frame is 1/64 (about every 1.3 seconds at 50fps). On that rare frame, the cost spikes -- but because it is so infrequent, you can either accept one dropped frame or split the work across two frames.
-
-The per-frame edge-shifting cost for both axes simultaneously: horizontal edge columns (~9,600 T) + vertical edge rows (~6,400 T) = ~16,000 T = 22% of the frame. Manageable.
+Some games scroll in both directions simultaneously. On the Spectrum, apply the combined method to both axes: character scroll + pixel offset (0--7) for each. The character scroll in each direction happens once every 8 frames. Both coinciding on the same frame is a 1/64 probability (about every 1.3 seconds) -- either accept one dropped frame or split the work. The per-frame edge-shifting cost for both axes: horizontal edge columns (~9,600 T) + vertical edge rows (~6,400 T) = ~16,000 T = 22% of the frame. Manageable.
 
 ---
 
@@ -899,22 +721,7 @@ The per-frame edge-shifting cost for both axes simultaneously: horizontal edge c
 
 ### 1. Use a Screen Address Lookup Table
 
-Pre-compute a table of 192 screen addresses (one per pixel row) and store it in RAM. This eliminates the need to calculate addresses from Y coordinates at runtime. Cost: 384 bytes of RAM. Benefit: a simple 16-bit table lookup replaces the bit-shuffling address calculation.
-
-```z80
-; scr_addr_table: 192 entries, each 2 bytes
-; scr_addr_table[y] = screen address of row y, column 0
-;
-; To get the address for row Y:
-    ld   l, y
-    ld   h, 0
-    add  hl, hl             ; HL = Y * 2
-    ld   de, scr_addr_table
-    add  hl, de             ; HL = &scr_addr_table[Y]
-    ld   e, (hl)
-    inc  hl
-    ld   d, (hl)            ; DE = screen address of row Y
-```
+Pre-compute a table of 192 screen addresses (one per pixel row) in RAM. Cost: 384 bytes. Benefit: a 16-bit table lookup (about 30 T-states) replaces the bit-shuffling address calculation (91 T-states).
 
 ### 2. Scroll Only What Is Visible
 

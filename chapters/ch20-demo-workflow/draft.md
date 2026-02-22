@@ -163,19 +163,7 @@ This matters for demo workflow at any scale. Even in a full-sized demo with a pr
 
 ## 20.4 The Toolchain in Detail
 
-Different projects use different tools, but the ZX Spectrum demo toolchain has converged on a standard set. Here is what a modern production pipeline typically looks like.
-
-### Assembler: sjasmplus
-
-sjasmplus is the workhorse. First released by Aprisobal and maintained by the community, it supports:
-
-- **Memory banking.** SLOT and PAGE directives model the 128K Spectrum's paging architecture. You write code that targets specific 16KB banks, and sjasmplus tracks which bank is active.
-- **Multiple output formats.** .tap (tape image), .sna (snapshot), .trd (TR-DOS disk image), raw binary.
-- **Macros and conditional assembly.** Essential for managing multiple effects that share common infrastructure.
-- **INCBIN.** Embed binary files (compressed data, pre-generated tables, sample data) directly in the assembly source.
-- **DISPLAY.** Print diagnostic information during assembly -- sizes, addresses, remaining space in a bank.
-
-A typical sjasmplus project structure:
+The ZX Spectrum demo toolchain has converged on a standard set. Here is a typical project layout:
 
 ```
 src/
@@ -198,46 +186,25 @@ tools/
     convert_gfx.rb      ; Ruby script: PNG to attribute data
 ```
 
+### Assembler: sjasmplus
+
+The workhorse. Memory banking via SLOT/PAGE directives, conditional assembly, macros, INCBIN for embedded data, DISPLAY for build-time diagnostics, and output to .tap/.sna/.trd. A typical demo compiles in a single sjasmplus invocation.
+
 ### Emulators
 
-**BGE (Born of Galaxy Emulator)** is the preferred choice for many Russian-scene demosceners. Its deterministic timing and accurate Pentagon emulation make it reliable for demo development.
+**BGE** (Born of Galaxy Emulator) is preferred by many Russian-scene demosceners for its deterministic timing and accurate Pentagon emulation. **Unreal Speccy** supports TR-DOS, TurboSound, and multiple clone models. **Fuse** is widely available on Linux and macOS. For source-level debugging, **DeZog** in VS Code connects to ZEsarUX and provides breakpoints, register inspection, and memory views.
 
-**Unreal Speccy** is another strong option, with support for TR-DOS, TurboSound, and multiple clone models.
+Pick one emulator for primary development. Test on others before release. Demos that work in one emulator and crash in another are a party tradition best avoided.
 
-**ZXMAK2** offers excellent debugging features and multiple machine configurations.
+### Graphics and Code Generation
 
-**Fuse** (the Free Unix Spectrum Emulator) is widely available on Linux and macOS, with good accuracy for standard machines.
+**Multipaint** enforces attribute constraints in real time -- purpose-built for 8-bit pixel art. **Photoshop, GIMP, or Aseprite** offer creative freedom but require conversion scripts (Python, Ruby, Processing) to quantise and export. **Processing** handles generative graphics and code generation -- Introspec used it to generate the chaos zoomer's unrolled code sequences (Chapter 9).
 
-For debugging -- stepping through code, inspecting registers, setting breakpoints -- **DeZog** in VS Code provides a modern IDE experience. It connects to emulators (ZEsarUX, or a built-in Z80 simulator) and provides source-level debugging for sjasmplus output.
+### Build Automation and CI
 
-The practical advice: pick one emulator as your primary development target and stick with it. Test on others before release. Demos that work perfectly in one emulator and crash in another are a party tradition best avoided.
+Your Makefile must automate the full pipeline: source assets to conversion scripts to compression to assembly. If any step requires manual intervention, it will fail at 2 AM before the deadline.
 
-### Graphics Tools
-
-**Multipaint** is a cross-platform pixel editor designed specifically for 8-bit machines. It enforces attribute constraints in real time -- you cannot paint a combination of colours that the Spectrum cannot display. This catches colour-clash errors during art creation rather than at runtime.
-
-**Photoshop, GIMP, or Aseprite** work for creating source art that will be processed by conversion scripts. The workflow is: paint freely in a full-colour canvas, then run a script that quantises to Spectrum attributes, dithers as needed, and exports raw binary data. The advantage over Multipaint is creative freedom during the art phase; the disadvantage is that the conversion step can introduce unwanted artefacts.
-
-**Processing or p5.js** for generative graphics. Introspec used Processing to generate the chaos zoomer's unrolled code sequences (Chapter 9). restorer used Ruby scripts for similar purposes. Any language that can do maths and write binary files works. The choice is personal.
-
-### Compression
-
-We covered the compressor landscape thoroughly in Chapter 14. For demo workflow, the practical consideration is build integration. Your Makefile needs rules that:
-
-1. Take source assets (images, animation frames, pre-generated data).
-2. Convert them to raw binary format.
-3. Compress them with your chosen compressor.
-4. Produce `.bin` or `.hru` files that sjasmplus can INCBIN.
-
-The compression step must be automated. If it requires manual intervention -- running a command-line tool by hand, remembering which files to compress, copying outputs to the right directory -- you will forget it, and the demo will ship with uncompressed data that does not fit in memory.
-
-### Continuous Integration
-
-This may sound incongruous for a ZX Spectrum demo, but CI (continuous integration) is increasingly common in scene productions. The setup: a GitHub repository with the demo source, a GitHub Actions workflow that runs the build pipeline on every push, and automated tests that verify the output binary is valid (correct size, correct header format, does not exceed bank boundaries).
-
-CI catches a specific class of bugs that are otherwise invisible: the demo assembles on your machine because you have a particular version of sjasmplus and a particular directory structure, but it fails to assemble on a clean machine because of an implicit dependency. CI forces you to make your build pipeline explicit and reproducible. When a collaborator (graphics artist, musician) sends updated assets, CI verifies that the demo still builds before anyone tests it manually.
-
-Lo-Fi Motion's source code is on GitHub. restorer published it as a reference implementation -- not just the final binary but the complete source, the Makefile, the conversion scripts, and the build instructions. This is unusual in the demoscene and valuable for learning. You can clone the repository, run `make`, and get a working demo binary. Then you can modify an effect and see the result. This is how knowledge transfers.
+CI via GitHub Actions is increasingly common. A workflow that builds on every push catches implicit dependencies -- the demo assembles on your machine but fails on a clean environment because of an undeclared tool version. Lo-Fi Motion's source is on GitHub, published as a reference implementation: clone it, run `make`, get a working binary. This openness is unusual in the demoscene and valuable for learning.
 
 ---
 
@@ -277,11 +244,7 @@ The process is less intimidating than it sounds.
 
 **7. Do not expect to win.** Your first entry is a learning experience. The goal is to finish something, submit it, and see it shown. Placing is a bonus. The feedback you get -- from the audience, from other sceners, from your own reaction to seeing it on a big screen -- is worth more than any prize.
 
-### Remote Participation
-
-Not every demoscener lives near a party. Remote entries are accepted at most ZX events, and the quality of remote entries has been rising steadily. Lo-Fi Motion was a remote entry at DiHalt 2020 (the pandemic made remote participation the default that year). Submitting remotely means you miss the party atmosphere but not the compo itself.
-
-Some parties also run online-only events, streamed on YouTube or Twitch. These have lower barriers to entry and attract participants who might never attend a physical party. If your nearest demoscene event is a 12-hour flight away, online compos are a viable starting point.
+Remote entries are accepted at most ZX events. Lo-Fi Motion was a remote entry at DiHalt 2020. Some parties run online-only events streamed on YouTube or Twitch. If your nearest demoscene event is a 12-hour flight away, online compos are a viable starting point.
 
 ---
 
@@ -291,27 +254,17 @@ The ZX Spectrum demoscene is small enough that most active participants know eac
 
 ### Hype (hype.retroscene.org)
 
-Hype is the primary Russian-language forum for ZX Spectrum demoscene discussion. Founded and moderated by Introspec, it hosts the making-of articles, technical tutorials, compo reviews, and design discussions that form the core source material for this book. The technical depth is exceptional -- threads routinely run to hundreds of comments, with experienced coders debating cycle counts and algorithmic choices in detail.
+The primary Russian-language forum for ZX Spectrum demoscene discussion. Founded and moderated by Introspec, it hosts the making-of articles, technical tutorials, compo reviews, and design discussions that form the core source material for this book. Threads run to hundreds of comments, with experienced coders debating cycle counts in detail. For a non-Russian speaker, browser translation tools handle the prose well enough, and Z80 assembly reads the same in every alphabet.
 
-For a non-Russian speaker, Hype is challenging but not inaccessible. Browser-based translation tools handle the prose reasonably well, and Z80 assembly is the same language in every alphabet. The code examples in Hype articles are directly usable regardless of the surrounding text's language.
-
-The culture is direct. Feedback on demos and articles is honest, sometimes blunt. Introspec's compo reviews do not spare feelings, and the comment threads can be heated. This directness is a feature: it produces genuine technical discussion rather than polite but unhelpful encouragement. If you post a demo that has a timing bug, someone will tell you exactly which T-state is wrong.
+The culture is direct. If you post a demo with a timing bug, someone will tell you exactly which T-state is wrong. This directness produces genuine technical discussion rather than polite but unhelpful encouragement.
 
 ### ZXArt (zxart.ee)
 
-ZXArt is the comprehensive archive of ZX Spectrum creative works -- demos, music, graphics, games, magazines, and their associated metadata. Every production mentioned in this book can be found on ZXArt with screenshots, credits, party results, and download links.
-
-For demo workflow, ZXArt serves as both reference library and distribution channel. When you research an effect, ZXArt lets you find the demo, watch a video capture, read the credits, and download the binary to run in an emulator. When you release a demo, ZXArt is where the scene will find it.
-
-ZXArt also hosts a digitised archive of ZX Spectrum magazines in TRD (TR-DOS disk image) format -- Spectrum Expert, Born Dead, ZX Format, and many others. These magazines, readable in emulators, contain the original articles by Dark, STS, and other authors who established the techniques this book teaches. The archive is a primary source for the history of the scene.
+The comprehensive archive of ZX Spectrum creative works -- demos, music, graphics, games, magazines, and metadata. Every production in this book can be found on ZXArt with screenshots, credits, party results, and downloads. ZXArt also hosts digitised ZX magazines in TRD format (Spectrum Expert, Born Dead, ZX Format), containing the original articles that established the techniques this book teaches.
 
 ### Pouet (pouet.net)
 
-Pouet is the global demoscene production database. Every demo, intro, music disk, and wild entry from every platform and every party is catalogued, rated, and discussed. For the ZX scene, Pouet provides a bridge to the global demoscene community -- ZX demos rated and reviewed by people who primarily watch PC or Amiga productions.
-
-The perspective shift is valuable. Comments on ZX demos from non-ZX sceners often focus on different qualities than intra-scene discussions do. A technically brilliant inner loop that impresses Hype readers might be invisible to a Pouet commenter who focuses on visual impact and music sync. Understanding both perspectives -- the technical appreciation of your peers and the aesthetic reaction of the broader audience -- makes you a better demo maker.
-
-Pouet also hosts NFO and file_id.diz files for productions. Introspec's detailed technical writeups in Eager's NFO, restorer's documentation of Lo-Fi Motion's architecture, and the credits/notes from Break Space are all accessible through Pouet. When you cannot find a making-of article on Hype, check the NFO on Pouet.
+The global demoscene production database. For the ZX scene, Pouet bridges to the wider community -- ZX demos rated by people who primarily watch PC or Amiga productions. The perspective shift is valuable: a technically brilliant inner loop that impresses Hype readers might be invisible to a Pouet commenter who focuses on visual impact and music sync. Pouet also hosts NFO files -- when you cannot find a making-of article on Hype, check the NFO on Pouet.
 
 ---
 
@@ -327,15 +280,15 @@ Then iterate. Add effects one at a time. Replace the placeholder music when the 
 
 This incremental approach is how Lo-Fi Motion was built. restorer did not write fourteen effects and then stitch them together. He built the engine and one effect, verified they worked, then added effects one by one. Each evening's work produced a slightly better demo. If he had run out of time at ten effects instead of fourteen, the demo would still have been complete and submittable.
 
-### Working with Musicians and Artists
+### Working with Collaborators
 
-Most demos are collaborations. The coder writes the engine and effects; a musician composes the soundtrack; a graphic artist creates pixel art or loading screens. Coordinating these contributions is the hardest part of demo production.
+Most demos are collaborations. Three principles keep them on track:
 
-The key principle: **establish the data format early.** The musician needs to know what music player you are using (PT3? Custom? What AY capabilities?), what restrictions apply (maximum pattern count, available channels, drum trigger mechanism). The artist needs to know the graphics format (attribute resolution? pixel resolution? colour constraints? maximum file size?). These specifications must be communicated before any creative work begins. Receiving a beautiful piece of music that uses TurboSound when your engine only supports single AY is a disaster, and it is your fault for not specifying the constraints.
+**Establish the data format early.** The musician needs to know: PT3 or custom player? Single AY or TurboSound? How are drum triggers signalled? The artist needs to know: attribute resolution or pixel resolution? Colour constraints? Maximum file size? Receiving a TurboSound composition when your engine supports only single AY is a disaster, and it is your fault for not specifying constraints.
 
-The second principle: **communicate the timeline.** When do you need the music? When do you need the graphics? If the musician will be late, when will you know? Build your timeline with buffer -- if the party is in four weeks, tell the musician you need the track in two. This gives you two weeks to integrate, debug, and handle the inevitable surprises.
+**Communicate the timeline.** If the party is in four weeks, tell the musician you need the track in two. The buffer is for integration, debugging, and surprises.
 
-The third principle: **provide placeholders.** While waiting for the final music, use a placeholder track -- any .pt3 file with the right tempo and approximate length. While waiting for final graphics, use programmer art (coloured rectangles, test patterns). The engine and effects should never depend on the final assets. When the real assets arrive, drop them into the pipeline and rebuild. If the pipeline is properly automated (Makefile, conversion scripts), this takes seconds.
+**Provide placeholders.** Use a placeholder .pt3 with the right tempo until the final track arrives. Use programmer art until the final graphics arrive. The engine should never depend on final assets. When real assets arrive, drop them into the pipeline and rebuild.
 
 ### Debugging and Testing
 
@@ -361,15 +314,13 @@ The argument is that the best demos are not the ones that do the most impressive
 
 This is Introspec's most quoted line. It means: the artistic content of a demo is not determined by its resolution, its colour depth, its polygon count, or its sample rate. Two pixels -- two attribute cells, two dots on a 32x24 grid -- can tell a story if the timing is right, the context is clear, and the intention is genuine. The technology serves the art, not the other way around.
 
-Introspec references James Houston's "Big Ideas (Don't Get Any)" -- a video where a Sinclair ZX Spectrum, a dot matrix printer, and other obsolete hardware perform a Radiohead song. The project is moving not because of the technical achievement (though it is impressive) but because the choice of hardware *means* something. The obsolescence of the machines is the point. The fragility is the beauty.
+Introspec references James Houston's "Big Ideas (Don't Get Any)" -- a video where a Sinclair ZX Spectrum, dot matrix printer, and other obsolete hardware perform a Radiohead song. The project is moving not because of the technical achievement but because the choice of hardware *means* something. The obsolescence is the point. The fragility is the beauty.
 
-The practical implication for demo workflow is this: technique is necessary but not sufficient. You can master every effect in this book -- the sphere, the rotozoomer, the tunnel, the digital drums, the compression pipeline, the scene table system -- and still produce a demo that nobody remembers. What makes a demo memorable is not what it does but what it says. The design -- Introspec's "complete aggregate of all components, both visible and concealed" -- must serve an idea.
+The practical implication: technique is necessary but not sufficient. You can master every effect in this book and still produce a demo nobody remembers. What makes a demo memorable is not what it does but what it says. Even an abstract demo has a personality: its pacing says something about tension and release; its colour palette evokes a mood; its music choice creates emotional context. The coder who treats these as afterthoughts produces a tech demo. The coder who treats them as design decisions produces a demo.
 
-This does not mean every demo needs a narrative or a political message. Many excellent demos are pure abstract visual experiences. But even an abstract demo has a personality: its pacing says something about tension and release; its colour palette evokes a mood; its music choice creates an emotional context. The coder who treats these as afterthoughts -- "I will pick a cool track and add some colour cycling" -- produces a tech demo. The coder who treats them as design decisions, as integral to the work as the inner loop, produces a demo.
+Lo-Fi Motion embraced its lo-fi aesthetic as identity. Eager turned the 32x24 grid from constraint into creative choice. NHBF found beauty in the puzzle of 256 bytes. In each case, the limitation became the medium.
 
-Lo-Fi Motion embraced its lo-fi aesthetic as identity, not limitation. Eager's attribute tunnel turned the 32x24 grid from a constraint into a creative choice. NHBF found beauty in the puzzle of fitting music and visuals into 256 bytes. In each case, the limitation became the medium. The technique served the art.
-
-This is what "MORE" demands. Not more polygons, not more colours, not more effects. More ambition. More intention. More willingness to treat a ZX Spectrum demo as an art form worthy of the same creative seriousness you would bring to any other medium.
+This is what "MORE" demands. Not more polygons, not more colours, not more effects. More ambition. More intention. More willingness to treat a ZX Spectrum demo as an art form.
 
 ---
 
