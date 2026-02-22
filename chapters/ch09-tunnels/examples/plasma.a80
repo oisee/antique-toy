@@ -1,0 +1,391 @@
+; plasma.a80 — Attribute plasma effect with 4-fold symmetry
+; From Chapter 9: Attribute Tunnels and Chaos Zoomers
+;
+; Demonstrates: sum-of-sines plasma on the 32x24 attribute grid,
+; four-fold symmetry (compute 16x12 quarter, mirror to full screen),
+; animated via advancing phase values each frame.
+;
+; The pixel memory is filled with a checkerboard pattern so that both
+; ink and paper colours are visible in each 8x8 cell.
+;
+; Assembles with: mza --target zxspectrum
+
+    ORG  $8000
+
+; ============================================================
+; Constants
+; ============================================================
+SCREEN      EQU  $4000      ; pixel area start
+ATTRS       EQU  $5800      ; attribute area start
+SCRLEN      EQU  6144       ; pixel bytes
+ATTLEN      EQU  768        ; attribute bytes (32*24)
+QUARTER_W   EQU  16         ; half of 32 columns
+QUARTER_H   EQU  12         ; half of 24 rows
+
+; ============================================================
+; Entry point
+; ============================================================
+entry:
+    di
+    ld   sp, $FFFF
+    im   1
+    ei
+
+    ; --- Fill pixel memory with checkerboard ---
+    ; Alternating $55/$AA on each line for visible ink/paper
+    ld   hl, SCREEN
+    ld   b, 192             ; 192 lines
+.fill_lines:
+    push bc
+    ld   a, b
+    and  1                  ; odd/even line
+    jr   z, .even_line
+    ld   a, $55             ; 01010101
+    jr   .do_fill
+.even_line:
+    ld   a, $AA             ; 10101010
+.do_fill:
+    ld   c, 32              ; 32 bytes per line
+.fill_byte:
+    ld   (hl), a
+    inc  hl
+    dec  c
+    jr   nz, .fill_byte
+    pop  bc
+    djnz .fill_lines
+
+    ; --- Set border to black ---
+    xor  a
+    out  ($FE), a
+
+    ; --- Initialise phase values ---
+    xor  a
+    ld   (phase1), a
+    ld   (phase2), a
+    ld   (phase3), a
+
+; ============================================================
+; Main loop
+; ============================================================
+main_loop:
+    halt                    ; wait for vsync (50Hz)
+
+    call calc_plasma        ; calculate top-left 16x12 quarter
+    call copy_four_way      ; mirror to full 32x24 attribute grid
+
+    ; Advance plasma phases at different speeds
+    ld   a, (phase1)
+    add  a, 3               ; phase1 += 3
+    ld   (phase1), a
+
+    ld   a, (phase2)
+    add  a, 2               ; phase2 += 2
+    ld   (phase2), a
+
+    ld   a, (phase3)
+    sub  1                   ; phase3 -= 1 (counter-rotating)
+    ld   (phase3), a
+
+    jr   main_loop
+
+; ============================================================
+; calc_plasma — compute plasma for top-left 16x12 quarter
+; Output: attr_quarter buffer filled with 192 attribute bytes
+;
+; Plasma = sin(col*4 + phase1)
+;        + sin(row*6 + phase2)
+;        + sin(col+row*2 + phase3)
+;
+; The three terms with different spatial frequencies create
+; the interference pattern that reads as tunnel-like rings.
+; ============================================================
+calc_plasma:
+    ld   de, attr_quarter   ; DE = output pointer
+    ld   a, 0               ; row counter (start at 0)
+    ld   (cur_row), a
+
+.row_loop:
+    xor  a
+    ld   (cur_col), a       ; reset column counter
+
+.col_loop:
+    ; --- Term 1: sin(col*4 + phase1) ---
+    ld   a, (cur_col)
+    add  a, a               ; col * 2
+    add  a, a               ; col * 4
+    ld   b, a               ; save col*4
+    ld   a, (phase1)
+    add  a, b               ; col*4 + phase1
+    ld   hl, sin_table       ; page-aligned: H is correct
+    ld   l, a
+    ld   a, (hl)            ; sin_table[col*4 + phase1]
+    ld   b, a               ; accumulate in B
+
+    ; --- Term 2: sin(row*6 + phase2) ---
+    ld   a, (cur_row)
+    add  a, a               ; row * 2
+    ld   c, a               ; save row*2
+    add  a, a               ; row * 4
+    add  a, c               ; row * 6
+    ld   c, a               ; save row*6
+    ld   a, (phase2)
+    add  a, c               ; row*6 + phase2
+    ld   l, a               ; H is still sin_table page
+    ld   a, (hl)            ; sin_table[row*6 + phase2]
+    add  a, b
+    ld   b, a               ; accumulate
+
+    ; --- Term 3: sin(col + row*2 + phase3) ---
+    ld   a, (cur_row)
+    add  a, a               ; row * 2
+    ld   c, a
+    ld   a, (cur_col)
+    add  a, c               ; col + row*2
+    ld   c, a
+    ld   a, (phase3)
+    add  a, c               ; col + row*2 + phase3
+    ld   l, a
+    ld   a, (hl)            ; sin_table[col + row*2 + phase3]
+    add  a, b               ; total plasma value in A
+
+    ; --- Map plasma value to attribute byte ---
+    ; Use the upper 3 bits as an index into the colour table
+    rrca
+    rrca
+    rrca
+    rrca
+    rrca                    ; shift right 5 = upper 3 bits now in bits 0-2
+    and  %00000111          ; isolate 3 bits (0..7)
+    ld   c, a               ; save colour index
+    ld   hl, colour_map      ; page-aligned: H is correct
+    ld   l, c
+    ld   a, (hl)            ; look up attribute byte
+    ld   (de), a            ; store in quarter buffer
+    inc  de
+
+    ; Next column
+    ld   a, (cur_col)
+    inc  a
+    ld   (cur_col), a
+    cp   QUARTER_W
+    jr   c, .col_loop
+
+    ; Next row
+    ld   a, (cur_row)
+    inc  a
+    ld   (cur_row), a
+    cp   QUARTER_H
+    jr   c, .row_loop
+
+    ret
+
+; ============================================================
+; copy_four_way — mirror 16x12 quarter to full 32x24 attrs
+;
+; For each cell (col, row) in the top-left 16x12 quarter:
+;   Top-left:     attrs[row * 32 + col]
+;   Top-right:    attrs[row * 32 + (31 - col)]
+;   Bottom-left:  attrs[(23 - row) * 32 + col]
+;   Bottom-right: attrs[(23 - row) * 32 + (31 - col)]
+; ============================================================
+copy_four_way:
+    ld   a, 0
+    ld   (cur_row), a
+
+.row_loop:
+    ; Calculate base addresses for this row
+    ; top_base = ATTRS + cur_row * 32
+    ld   a, (cur_row)
+    ld   l, a
+    ld   h, 0
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl             ; HL = cur_row * 32
+    ld   de, ATTRS
+    add  hl, de              ; HL = ATTRS + cur_row * 32
+    ld   (top_base), hl
+
+    ; bot_base = ATTRS + (23 - cur_row) * 32
+    ld   a, 23
+    ld   b, a
+    ld   a, (cur_row)
+    ld   c, a
+    ld   a, b
+    sub  c                   ; A = 23 - cur_row
+    ld   l, a
+    ld   h, 0
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl             ; HL = (23 - cur_row) * 32
+    ld   de, ATTRS
+    add  hl, de
+    ld   (bot_base), hl
+
+    ; Source pointer for this row in quarter buffer
+    ; src = attr_quarter + cur_row * QUARTER_W
+    ld   a, (cur_row)
+    ld   l, a
+    ld   h, 0
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl             ; HL = cur_row * 16
+    ld   de, attr_quarter
+    add  hl, de
+    ld   (src_ptr), hl
+
+    xor  a
+    ld   (cur_col), a
+
+.col_loop:
+    ; Read source byte
+    ld   hl, (src_ptr)
+    ld   a, (cur_col)
+    ld   e, a
+    ld   d, 0
+    add  hl, de
+    ld   a, (hl)             ; A = plasma value for (col, row)
+    ld   b, a                ; save in B
+
+    ; Top-left: top_base + col
+    ld   hl, (top_base)
+    add  hl, de              ; DE still = col
+    ld   (hl), b
+
+    ; Top-right: top_base + (31 - col)
+    ld   a, 31
+    ld   c, a
+    ld   a, (cur_col)
+    ld   e, a
+    ld   a, c
+    sub  e                   ; A = 31 - col
+    ld   e, a
+    ld   d, 0
+    ld   hl, (top_base)
+    add  hl, de
+    ld   (hl), b
+
+    ; Bottom-left: bot_base + col
+    ld   a, (cur_col)
+    ld   e, a
+    ld   d, 0
+    ld   hl, (bot_base)
+    add  hl, de
+    ld   (hl), b
+
+    ; Bottom-right: bot_base + (31 - col)
+    ld   a, 31
+    ld   c, a
+    ld   a, (cur_col)
+    ld   e, a
+    ld   a, c
+    sub  e                   ; A = 31 - col
+    ld   e, a
+    ld   d, 0
+    ld   hl, (bot_base)
+    add  hl, de
+    ld   (hl), b
+
+    ; Next column
+    ld   a, (cur_col)
+    inc  a
+    ld   (cur_col), a
+    cp   QUARTER_W
+    jr   c, .col_loop
+
+    ; Next row
+    ld   a, (cur_row)
+    inc  a
+    ld   (cur_row), a
+    cp   QUARTER_H
+    jr   c, .row_loop
+
+    ret
+
+; ============================================================
+; Data — phase values for animation
+; ============================================================
+phase1:     DB   0
+phase2:     DB   0
+phase3:     DB   0
+
+; Temporary variables for plasma/copy routines
+cur_row:    DB   0
+cur_col:    DB   0
+top_base:   DW   0
+bot_base:   DW   0
+src_ptr:    DW   0
+
+; ============================================================
+; Quarter-screen buffer (16 x 12 = 192 bytes)
+; ============================================================
+attr_quarter:
+    DS   QUARTER_W * QUARTER_H
+
+; ============================================================
+; Colour map — 8 attribute entries for plasma-to-colour mapping
+; Page-aligned for fast lookup (only low 3 bits of index used)
+;
+; Format: %0 B PPP III  (bright, paper colour, ink colour)
+; Chosen to cycle through bright spectrum colours with
+; contrasting ink/paper for visible checkerboard texture.
+; ============================================================
+    ALIGN 256
+colour_map:
+    ; Index 0..7: cycling through colour combinations
+    DB   %01000010          ; bright=1, paper=black(0), ink=red(2)
+    DB   %01011010          ; bright=1, paper=red(3), ink=red(2)
+    DB   %01001011          ; bright=1, paper=yellow(1), ink=magenta(3)
+    DB   %01110011          ; bright=1, paper=cyan(6), ink=magenta(3)
+    DB   %01101100          ; bright=1, paper=green(5), ink=green(4)
+    DB   %01110101          ; bright=1, paper=cyan(6), ink=cyan(5)
+    DB   %01111110          ; bright=1, paper=white(7), ink=yellow(6)
+    DB   %01111111          ; bright=1, paper=white(7), ink=white(7)
+
+; ============================================================
+; Sine table — 256 bytes, page-aligned
+; sin(i) = round(31 * sin(2*pi*i/256) + 32)
+; Range: 1..63 (unsigned, centred on 32)
+; ============================================================
+    ALIGN 256
+sin_table:
+    ; 0..63 (0 to ~90 degrees)
+    DB  32, 33, 33, 34, 35, 36, 36, 37
+    DB  38, 39, 39, 40, 41, 41, 42, 43
+    DB  43, 44, 45, 45, 46, 46, 47, 47
+    DB  48, 48, 49, 49, 50, 50, 50, 51
+    DB  51, 51, 52, 52, 52, 52, 53, 53
+    DB  53, 53, 53, 53, 53, 53, 53, 53
+    DB  53, 53, 53, 53, 53, 53, 53, 53
+    DB  53, 53, 52, 52, 52, 52, 51, 51
+    ; 64..127 (90 to ~180 degrees)
+    DB  51, 50, 50, 50, 49, 49, 48, 48
+    DB  47, 47, 46, 46, 45, 45, 44, 43
+    DB  43, 42, 41, 41, 40, 39, 39, 38
+    DB  37, 36, 36, 35, 34, 33, 33, 32
+    DB  32, 31, 31, 30, 29, 28, 28, 27
+    DB  26, 25, 25, 24, 23, 23, 22, 21
+    DB  21, 20, 19, 19, 18, 18, 17, 17
+    DB  16, 16, 15, 15, 14, 14, 14, 13
+    ; 128..191 (180 to ~270 degrees)
+    DB  13, 13, 12, 12, 12, 12, 11, 11
+    DB  11, 11, 11, 11, 11, 11, 11, 11
+    DB  11, 11, 11, 11, 11, 11, 11, 11
+    DB  11, 11, 12, 12, 12, 12, 13, 13
+    DB  13, 14, 14, 14, 15, 15, 16, 16
+    DB  17, 17, 18, 18, 19, 19, 20, 21
+    DB  21, 22, 23, 23, 24, 25, 25, 26
+    DB  27, 28, 28, 29, 30, 31, 31, 32
+    ; 192..255 (270 to ~360 degrees)
+    DB  32, 33, 33, 34, 35, 36, 36, 37
+    DB  38, 39, 39, 40, 41, 41, 42, 43
+    DB  43, 44, 45, 45, 46, 46, 47, 47
+    DB  48, 48, 49, 49, 50, 50, 50, 51
+    DB  51, 51, 52, 52, 52, 52, 53, 53
+    DB  53, 53, 53, 53, 53, 53, 53, 53
+    DB  53, 53, 53, 53, 53, 53, 53, 53
+    DB  53, 53, 52, 52, 52, 52, 51, 51

@@ -1,0 +1,171 @@
+; pixel_demo.a80 — Screen layout demo: pixel_addr, down_hl, patterns
+; From Chapter 2: The Screen as a Puzzle
+;
+; Draws diagonal lines across each screen third to visualize
+; the ZX Spectrum screen memory layout and boundary crossings.
+;
+; Assembles with: mza --target zxspectrum
+
+    ORG $8000
+
+SCREEN      EQU $4000
+SCREEN_END  EQU $5800
+ATTR_START  EQU $5800
+
+start:
+    ; Clear screen
+    ld   hl, SCREEN
+    ld   de, SCREEN + 1
+    ld   bc, 6143
+    ld   (hl), 0
+    ldir
+
+    ; Set attributes: bright white on black
+    ld   hl, ATTR_START
+    ld   de, ATTR_START + 1
+    ld   (hl), $47             ; bright white ink, black paper
+    ld   bc, 767
+    ldir
+
+    ; Draw vertical stripe using down_hl — column 16
+    ld   b, 16                 ; y = 16
+    ld   c, 64                 ; x = 64
+    call pixel_addr
+    ld   c, a                  ; C = pixel mask
+    ld   b, 160                ; 160 rows
+
+.vline1:
+    ld   a, c
+    or   (hl)
+    ld   (hl), a
+    push bc
+    call down_hl
+    pop  bc
+    djnz .vline1
+
+    ; Draw diagonal using pixel_addr per point
+    ld   d, 0                  ; x counter
+.diag:
+    ld   b, d                  ; y = d
+    ld   c, d                  ; x = d
+    call pixel_addr
+    or   (hl)
+    ld   (hl), a
+    inc  d
+    ld   a, d
+    cp   192
+    jr   c, .diag
+
+    ; Draw horizontal lines at third boundaries (y=0, y=64, y=128)
+    ld   e, 0
+    call draw_hline
+    ld   e, 64
+    call draw_hline
+    ld   e, 128
+    call draw_hline
+
+    ; Color each third differently
+    ; Third 0 (rows 0-7): red ink
+    ld   hl, ATTR_START
+    ld   b, 0                  ; 256 = 8 rows * 32 cols
+.attr0:
+    ld   (hl), $42             ; bright red ink, black paper
+    inc  hl
+    djnz .attr0
+    ; Third 1 (rows 8-15): green ink
+    ld   b, 0
+.attr1:
+    ld   (hl), $44             ; bright green ink
+    inc  hl
+    djnz .attr1
+    ; Third 2 (rows 16-23): cyan ink
+    ld   b, 0
+.attr2:
+    ld   (hl), $45             ; bright cyan ink
+    inc  hl
+    djnz .attr2
+
+    ; Border: black
+    xor  a
+    out  ($FE), a
+
+.wait:
+    halt
+    jr   .wait
+
+; --- draw_hline: draw horizontal line at row E ---
+draw_hline:
+    ld   b, e                  ; y = E
+    ld   c, 0                  ; x = 0
+    call pixel_addr
+    ; Fill 32 bytes with $FF
+    ld   b, 32
+.hfill:
+    ld   (hl), $FF
+    inc  hl
+    djnz .hfill
+    ret
+
+; --- pixel_addr: (B=y, C=x) → HL=addr, A=mask ---
+; From Chapter 2 draft
+pixel_addr:
+    ld   a, b              ; A = y
+    and  $07               ; scan line within char cell
+    or   $40               ; add screen base ($4000)
+    ld   h, a
+
+    ld   a, b              ; A = y
+    rra
+    rra
+    rra
+    and  $E0               ; char row bits → L high
+    ld   l, a
+
+    ld   a, b              ; A = y
+    and  $C0               ; third bits
+    rra
+    rra
+    rra
+    or   h                 ; combine with scan line
+    ld   h, a              ; H complete
+
+    ld   a, c              ; A = x
+    rra
+    rra
+    rra
+    and  $1F               ; column (x / 8)
+    or   l
+    ld   l, a              ; L complete
+
+    ; Pixel mask
+    ld   a, c
+    and  7
+    jr   z, .bit0
+    ld   d, a
+    ld   a, $80
+.shift:
+    rrca
+    dec  d
+    jr   nz, .shift
+    ret
+.bit0:
+    ld   a, $80
+    ret
+
+; --- down_hl: move HL one pixel row down ---
+; From Chapter 2 draft
+down_hl:
+    inc  h
+    ld   a, h
+    and  7
+    ret  nz
+    ; Crossed char cell boundary
+    ld   a, l
+    add  a, 32
+    ld   l, a
+    ret  c                 ; crossed third boundary (via carry)
+    ; Undo H increment into next third
+    ld   a, h
+    sub  8
+    ld   h, a
+    ret

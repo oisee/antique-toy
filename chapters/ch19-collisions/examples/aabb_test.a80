@@ -1,0 +1,257 @@
+; aabb_test.a80 — AABB collision detection test
+; From Chapter 19: Collisions, Physics, and Enemy AI
+;
+; Two rectangles move across screen; collision turns border red.
+; Demonstrates AABB overlap test adapted for mza (all IX ops via A).
+;
+; Entity layout (16 bytes):
+;   +0: x      (pixel X)
+;   +1: y      (pixel Y)
+;   +2: w      (width)
+;   +3: h      (height)
+;   +4: dx     (X velocity, signed byte as unsigned)
+;   +5: dy     (Y velocity)
+;
+; Assembles with: mza --target zxspectrum
+
+    ORG $8000
+
+ATTR_START  EQU $5800
+
+start:
+    di
+    ld   sp, $FFFF
+    im   1
+
+    ; Clear screen
+    ld   hl, $4000
+    ld   de, $4001
+    ld   bc, 6143
+    ld   (hl), 0
+    ldir
+
+    ; Set attrs: white on black
+    ld   hl, ATTR_START
+    ld   de, ATTR_START + 1
+    ld   (hl), $47
+    ld   bc, 767
+    ldir
+
+    ei
+
+; ============================================================
+; Main loop
+; ============================================================
+main_loop:
+    halt
+
+    ; Move entities
+    call move_entity_a
+    call move_entity_b
+
+    ; Clear previous rendering (attrs)
+    ld   hl, ATTR_START
+    ld   de, ATTR_START + 1
+    ld   (hl), $47
+    ld   bc, 767
+    ldir
+
+    ; Draw entity A as colored block
+    ld   hl, ent_a
+    ld   a, $42                ; red
+    call draw_entity
+
+    ; Draw entity B as colored block
+    ld   hl, ent_b
+    ld   a, $45                ; cyan
+    call draw_entity
+
+    ; Test collision
+    call check_aabb
+    jr   nc, .no_col
+
+    ; Collision! Red border
+    ld   a, 2
+    out  ($FE), a
+    jr   main_loop
+
+.no_col:
+    ; No collision: black border
+    xor  a
+    out  ($FE), a
+    jr   main_loop
+
+; ============================================================
+; check_aabb — AABB overlap test
+; Input:  ent_a, ent_b (memory)
+; Output: Carry set = collision
+; ============================================================
+check_aabb:
+    ; Test 1: A.left < B.right  (A.x < B.x + B.w)
+    ld   a, (ent_b)            ; B.x
+    ld   hl, ent_b + 2
+    add  a, (hl)               ; B.x + B.w = B.right
+    ld   b, a
+    ld   a, (ent_a)            ; A.x = A.left
+    cp   b
+    jr   nc, .no_col           ; A.left >= B.right → no collision
+
+    ; Test 2: A.right > B.left  (A.x + A.w > B.x)
+    ld   hl, ent_a + 2
+    add  a, (hl)               ; A.x + A.w = A.right
+    ld   b, a
+    ld   a, (ent_b)            ; B.x = B.left
+    cp   b
+    jr   nc, .no_col           ; B.left >= A.right → no collision
+
+    ; Test 3: A.top < B.bottom  (A.y < B.y + B.h)
+    ld   a, (ent_b + 1)       ; B.y
+    ld   hl, ent_b + 3
+    add  a, (hl)               ; B.y + B.h = B.bottom
+    ld   b, a
+    ld   a, (ent_a + 1)       ; A.y = A.top
+    cp   b
+    jr   nc, .no_col
+
+    ; Test 4: A.bottom > B.top  (A.y + A.h > B.y)
+    ld   hl, ent_a + 3
+    add  a, (hl)               ; A.y + A.h = A.bottom
+    ld   b, a
+    ld   a, (ent_b + 1)       ; B.y = B.top
+    cp   b
+    jr   nc, .no_col
+
+    scf                        ; collision!
+    ret
+
+.no_col:
+    or   a                     ; clear carry
+    ret
+
+; ============================================================
+; move_entity_a — bounce within screen
+; ============================================================
+move_entity_a:
+    ; X += dx
+    ld   a, (ent_a + 4)       ; dx
+    ld   e, a
+    ld   a, (ent_a)           ; x
+    add  a, e
+    ld   (ent_a), a
+    ; Bounce X
+    cp   240
+    jr   c, .xok1
+    ld   a, 254                ; dx = -2 (unsigned)
+    ld   (ent_a + 4), a
+    jr   .xdone1
+.xok1:
+    cp   4
+    jr   nc, .xdone1
+    ld   a, 2                  ; dx = +2
+    ld   (ent_a + 4), a
+.xdone1:
+    ; Y += dy
+    ld   a, (ent_a + 5)       ; dy
+    ld   e, a
+    ld   a, (ent_a + 1)       ; y
+    add  a, e
+    ld   (ent_a + 1), a
+    cp   180
+    jr   c, .yok1
+    ld   a, 255                ; dy = -1
+    ld   (ent_a + 5), a
+    jr   .ydone1
+.yok1:
+    cp   4
+    jr   nc, .ydone1
+    ld   a, 1
+    ld   (ent_a + 5), a
+.ydone1:
+    ret
+
+move_entity_b:
+    ld   a, (ent_b + 4)
+    ld   e, a
+    ld   a, (ent_b)
+    add  a, e
+    ld   (ent_b), a
+    cp   240
+    jr   c, .xok2
+    ld   a, 253                ; dx = -3
+    ld   (ent_b + 4), a
+    jr   .xdone2
+.xok2:
+    cp   4
+    jr   nc, .xdone2
+    ld   a, 3
+    ld   (ent_b + 4), a
+.xdone2:
+    ld   a, (ent_b + 5)
+    ld   e, a
+    ld   a, (ent_b + 1)
+    add  a, e
+    ld   (ent_b + 1), a
+    cp   180
+    jr   c, .yok2
+    ld   a, 254                ; dy = -2
+    ld   (ent_b + 5), a
+    jr   .ydone2
+.yok2:
+    cp   4
+    jr   nc, .ydone2
+    ld   a, 2
+    ld   (ent_b + 5), a
+.ydone2:
+    ret
+
+; ============================================================
+; draw_entity — draw attr block for entity at (HL), color A
+; ============================================================
+draw_entity:
+    push af                    ; save color
+    ld   a, (hl)               ; x
+    rrca
+    rrca
+    rrca
+    and  $1F                   ; column
+    ld   c, a
+    inc  hl
+    ld   a, (hl)               ; y
+    rrca
+    rrca
+    rrca
+    and  $1F                   ; row
+    ld   b, a
+
+    ; attr addr = $5800 + row*32 + col
+    ld   l, b
+    ld   h, 0
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl               ; row * 32
+    ld   d, 0
+    ld   e, c
+    add  hl, de               ; + col
+    ld   de, $5800
+    add  hl, de
+
+    pop  af                    ; color
+    ; Draw 2×2 block
+    ld   (hl), a
+    inc  hl
+    ld   (hl), a
+    ld   de, 31
+    add  hl, de
+    ld   (hl), a
+    inc  hl
+    ld   (hl), a
+    ret
+
+; ============================================================
+; Entity data
+; ============================================================
+;       x    y    w    h    dx   dy
+ent_a:  DB  40,  80,  16,  16,   2,   1
+ent_b:  DB 180, 100,  24,  16,   3,   2
