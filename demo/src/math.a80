@@ -1,18 +1,14 @@
 ; math.a80 — Math routines and lookup tables for torus demo
-; Includes: sin table, multiply, rotation, perspective projection
+; Sin/cos table, multiply, rotation, perspective projection, division
 ;
-; Assembles with: mza --target zxspectrum
 ; Included by torus.a80
 
-; ============================================================
-; SIN TABLE — 256 entries, page-aligned, signed 8-bit
-; sin(i) = round(127 * sin(2*pi*i/256))
+; --- Sin table (256 bytes, page-aligned) ---
+; sin(i) = round(127 * sin(2*pi*i/256)), signed 8-bit
 ; cos(i) = sin(i + 64)
-; ============================================================
-
     ALIGN 256
 sin_table:
-    ; 0°..90° (indices 0-63)
+    ; 0°..90°
     DB   0,   3,   6,   9,  12,  16,  19,  22
     DB  25,  28,  31,  34,  37,  40,  43,  46
     DB  49,  51,  54,  57,  60,  63,  65,  68
@@ -21,7 +17,7 @@ sin_table:
     DB 106, 107, 109, 111, 112, 113, 115, 116
     DB 117, 118, 120, 121, 122, 122, 123, 124
     DB 125, 125, 126, 126, 126, 127, 127, 127
-    ; 90°..180° (indices 64-127)
+    ; 90°..180°
     DB 127, 127, 127, 126, 126, 126, 125, 125
     DB 124, 123, 122, 122, 121, 120, 118, 117
     DB 116, 115, 113, 112, 111, 109, 107, 106
@@ -30,83 +26,61 @@ sin_table:
     DB  68,  65,  63,  60,  57,  54,  51,  49
     DB  46,  43,  40,  37,  34,  31,  28,  25
     DB  22,  19,  16,  12,   9,   6,   3,   0
-    ; 180°..270° (indices 128-191)
-    DB   0,  -3,  -6,  -9, -12, -16, -19, -22
-    DB -25, -28, -31, -34, -37, -40, -43, -46
-    DB -49, -51, -54, -57, -60, -63, -65, -68
-    DB -71, -73, -76, -78, -81, -83, -85, -88
-    DB -90, -92, -94, -96, -98,-100,-102,-104
-    DB -106,-107,-109,-111,-112,-113,-115,-116
-    DB -117,-118,-120,-121,-122,-122,-123,-124
-    DB -125,-125,-126,-126,-126,-127,-127,-127
-    ; 270°..360° (indices 192-255)
-    DB -127,-127,-127,-126,-126,-126,-125,-125
-    DB -124,-123,-122,-122,-121,-120,-118,-117
-    DB -116,-115,-113,-112,-111,-109,-107,-106
-    DB -104,-102,-100, -98, -96, -94, -92, -90
-    DB  -88, -85, -83, -81, -78, -76, -73, -71
-    DB  -68, -65, -63, -60, -57, -54, -51, -49
-    DB  -46, -43, -40, -37, -34, -31, -28, -25
-    DB  -22, -19, -16, -12,  -9,  -6,  -3,   0
+    ; 180°..270° (unsigned two's complement)
+    DB   0, 253, 250, 247, 244, 240, 237, 234
+    DB 231, 228, 225, 222, 219, 216, 213, 210
+    DB 207, 205, 202, 199, 196, 193, 191, 188
+    DB 185, 183, 180, 178, 175, 173, 171, 168
+    DB 166, 164, 162, 160, 158, 156, 154, 152
+    DB 150, 149, 147, 145, 144, 143, 141, 140
+    DB 139, 138, 136, 135, 134, 134, 133, 132
+    DB 131, 131, 130, 130, 130, 129, 129, 129
+    ; 270°..360°
+    DB 129, 129, 129, 130, 130, 130, 131, 131
+    DB 132, 133, 134, 134, 135, 136, 138, 139
+    DB 140, 141, 143, 144, 145, 147, 149, 150
+    DB 152, 154, 156, 158, 160, 162, 164, 166
+    DB 168, 171, 173, 175, 178, 180, 183, 185
+    DB 188, 191, 193, 196, 199, 202, 205, 207
+    DB 210, 213, 216, 219, 222, 225, 228, 231
+    DB 234, 237, 240, 244, 247, 250, 253,   0
 
-; ============================================================
-; MULU8 — Unsigned 8×8 multiply
-; Input:  A = multiplicand, E = multiplier
-; Output: HL = A * E (16-bit unsigned)
-; Destroys: A, D, B
-; ~170 T-states
-; ============================================================
+; --- MULU8: A × E → HL (unsigned 8×8, ~170 T) ---
 mulu8:
     ld   d, 0
     ld   h, d
-    ld   l, d            ; HL = 0, DE = 00:E
-    ld   b, 8            ; 8 bits
+    ld   l, d
+    ld   b, 8
 .loop:
-    add  hl, hl          ; shift result left       ; 11 T
-    rla                  ; shift MSB of A into carry; 4 T
-    jr   nc, .skip       ; no bit set              ; 12/7 T
-    add  hl, de          ; add multiplier           ; 11 T
+    add  hl, hl
+    rla
+    jr   nc, .skip
+    add  hl, de
 .skip:
-    djnz .loop           ;                          ; 13/8 T
+    djnz .loop
     ret
 
-; ============================================================
-; MULS8 — Signed 8×8 multiply
-; Input:  D = multiplicand (signed), E = multiplier (signed)
-; Output: HL = D * E (16-bit signed)
-; Destroys: A, B, D, E
-; ~220 T-states
-; ============================================================
+; --- MULS8: D × E → HL (signed 8×8, ~220 T) ---
 muls8:
     ld   a, d
     xor  e
-    push af              ; save result sign in bit 7
-
-    ; |D|
+    push af              ; sign in bit 7
     ld   a, d
     or   a
     jp   p, .d_pos
     neg
 .d_pos:
     ld   d, a
-
-    ; |E|
     ld   a, e
     or   a
     jp   p, .e_pos
     neg
 .e_pos:
     ld   e, a
-
-    ; Unsigned multiply: A=|D|, E=|E| → HL
     ld   a, d
-    call mulu8           ; HL = |D| * |E|
-
-    ; Apply sign
+    call mulu8
     pop  af
-    ret  p               ; positive — done
-
-    ; Negate HL
+    ret  p               ; positive result
     xor  a
     sub  l
     ld   l, a
@@ -115,90 +89,65 @@ muls8:
     ld   h, a
     ret
 
-; ============================================================
-; GET_SINCOS — Look up sin and cos from angle
-; Input:  A = angle (0-255 = 0°-360°)
-; Output: D = sin(angle), E = cos(angle)
-; Destroys: A
-; ============================================================
+; --- GET_SINCOS: angle A → D=sin, E=cos ---
 get_sincos:
-    ld   h, sin_table >> 8
-    ld   l, a
-    ld   d, (hl)         ; D = sin(angle)
+    ld   hl, sin_table
+    ld   l, a            ; page-aligned: H stays correct
+    ld   d, (hl)
     add  a, 64
     ld   l, a
-    ld   e, (hl)         ; E = cos(angle)
+    ld   e, (hl)
     ret
 
-; ============================================================
-; ROTATE_PAIR — Rotate two coordinates by sin/cos angle
-; Input:  (coord_a), (coord_b) = signed coordinates
-;         (cur_sin), (cur_cos) = sin/cos of rotation angle
-; Output: (result_a), (result_b) = rotated coordinates
-;
-; Formula: a' = (a*cos - b*sin) >> 7
-;          b' = (a*sin + b*cos) >> 7
-; (>> 7 because sin/cos are scaled by 127)
-; Destroys: A, B, D, E, HL
-; ~900 T-states (4 multiplies + overhead)
-; ============================================================
+; --- ROTATE_PAIR: 2D rotation subroutine ---
+; (coord_a, coord_b) × (cur_sin, cur_cos) → (result_a, result_b)
+; a' = (a*cos - b*sin) >> 7
+; b' = (a*sin + b*cos) >> 7
+; ~900 T (4 multiplies)
 rotate_pair:
-    ; a * cos
     ld   a, (coord_a)
     ld   d, a
     ld   a, (cur_cos)
     ld   e, a
     call muls8
-    ld   (temp_w0), hl   ; a*cos
+    ld   (temp_w0), hl
 
-    ; b * sin
     ld   a, (coord_b)
     ld   d, a
     ld   a, (cur_sin)
     ld   e, a
-    call muls8           ; HL = b*sin
+    call muls8
 
-    ; result_a = (a*cos - b*sin) >> 7
-    ex   de, hl          ; DE = b*sin
-    ld   hl, (temp_w0)   ; HL = a*cos
+    ex   de, hl
+    ld   hl, (temp_w0)
     or   a
-    sbc  hl, de          ; HL = a*cos - b*sin
-    add  hl, hl          ; << 1 so >> 7 becomes >> 8
-    ld   a, h            ; take high byte = >> 8
+    sbc  hl, de
+    add  hl, hl
+    ld   a, h
     ld   (result_a), a
 
-    ; a * sin
     ld   a, (coord_a)
     ld   d, a
     ld   a, (cur_sin)
     ld   e, a
     call muls8
-    ld   (temp_w0), hl   ; a*sin
+    ld   (temp_w0), hl
 
-    ; b * cos
     ld   a, (coord_b)
     ld   d, a
     ld   a, (cur_cos)
     ld   e, a
-    call muls8           ; HL = b*cos
+    call muls8
 
-    ; result_b = (a*sin + b*cos) >> 7
-    ld   de, (temp_w0)   ; DE = a*sin
-    add  hl, de          ; HL = a*sin + b*cos
+    ld   de, (temp_w0)
+    add  hl, de
     add  hl, hl
     ld   a, h
     ld   (result_b), a
     ret
 
-; ============================================================
-; ROTATE_XYZ — 3-axis rotation of a vertex
-; Input:  vert_in[0..2] = (x, y, z) signed bytes
-;         angle_x, angle_y, angle_z = rotation angles
-; Output: vert_out[0..2] = rotated (x', y', z')
-; ~2,800 T-states (3 × rotate_pair)
-; ============================================================
+; --- ROTATE_XYZ: 3-axis rotation (vert_in → vert_out, ~2,800 T) ---
 rotate_xyz:
-    ; Copy input → output (working buffer)
     ld   a, (vert_in+0)
     ld   (vert_out+0), a
     ld   a, (vert_in+1)
@@ -206,199 +155,144 @@ rotate_xyz:
     ld   a, (vert_in+2)
     ld   (vert_out+2), a
 
-    ; Z-axis rotation: modifies X, Y
+    ; Z-axis: X, Y
     ld   a, (angle_z)
     call get_sincos
     ld   a, d
     ld   (cur_sin), a
     ld   a, e
     ld   (cur_cos), a
-
     ld   a, (vert_out+0)
-    ld   (coord_a), a    ; x
+    ld   (coord_a), a
     ld   a, (vert_out+1)
-    ld   (coord_b), a    ; y
+    ld   (coord_b), a
     call rotate_pair
     ld   a, (result_a)
-    ld   (vert_out+0), a ; x'
+    ld   (vert_out+0), a
     ld   a, (result_b)
-    ld   (vert_out+1), a ; y'
+    ld   (vert_out+1), a
 
-    ; Y-axis rotation: modifies X, Z
+    ; Y-axis: X, Z
     ld   a, (angle_y)
     call get_sincos
     ld   a, d
     ld   (cur_sin), a
     ld   a, e
     ld   (cur_cos), a
-
     ld   a, (vert_out+0)
-    ld   (coord_a), a    ; x
+    ld   (coord_a), a
     ld   a, (vert_out+2)
-    ld   (coord_b), a    ; z
+    ld   (coord_b), a
     call rotate_pair
     ld   a, (result_a)
-    ld   (vert_out+0), a ; x'
+    ld   (vert_out+0), a
     ld   a, (result_b)
-    ld   (vert_out+2), a ; z'
+    ld   (vert_out+2), a
 
-    ; X-axis rotation: modifies Y, Z
+    ; X-axis: Y, Z
     ld   a, (angle_x)
     call get_sincos
     ld   a, d
     ld   (cur_sin), a
     ld   a, e
     ld   (cur_cos), a
-
     ld   a, (vert_out+1)
-    ld   (coord_a), a    ; y
+    ld   (coord_a), a
     ld   a, (vert_out+2)
-    ld   (coord_b), a    ; z
+    ld   (coord_b), a
     call rotate_pair
     ld   a, (result_a)
-    ld   (vert_out+1), a ; y'
+    ld   (vert_out+1), a
     ld   a, (result_b)
-    ld   (vert_out+2), a ; z'
+    ld   (vert_out+2), a
     ret
 
-; ============================================================
-; PROJECT — Perspective projection of a single vertex
-; Input:  vert_out[0..2] = rotated (x, y, z)
-; Output: screen_x, screen_y = 8-bit screen coordinates
-;         Carry set if vertex is clipped (behind camera)
-;
-; Formula: scale = VIEWER_DIST * 128 / (z + VIEWER_DIST)
-;          sx = 128 + (x * scale) >> 7
-;          sy = 96  + (y * scale) >> 7
-; ~600 T-states
-; ============================================================
-VIEWER_DIST EQU 200
-
+; --- PROJECT: 3D → 2D perspective (~600 T) ---
+; vert_out → screen_x, screen_y
+; scale = VIEWER_DIST * 128 / (z + VIEWER_DIST)
 project:
-    ; z + VIEWER_DIST
-    ld   a, (vert_out+2) ; z (signed)
+    ld   a, (vert_out+2)
     ld   e, a
     ld   d, 0
     bit  7, a
     jr   z, .zpos
-    dec  d               ; sign-extend to 16-bit
+    dec  d
 .zpos:
     ld   hl, VIEWER_DIST
-    add  hl, de          ; HL = z + D
+    add  hl, de
 
-    ; Clip if z + D <= 0
     bit  7, h
     jr   nz, .clip
     ld   a, h
     or   l
     jr   z, .clip
 
-    ; scale = VIEWER_DIST * 128 / (z + D)
-    ; Numerator = 25600, fits in 16 bits
     ld   b, h
-    ld   c, l            ; BC = z + D (divisor)
+    ld   c, l
     ld   hl, VIEWER_DIST * 128
-    call div16           ; HL = quotient (scale factor)
+    call div16
 
-    ; Clamp scale to 255 max
     ld   a, h
     or   a
     jr   z, .scale_ok
-    ld   l, 255          ; clamp
+    ld   l, 255
 .scale_ok:
     ld   a, l
     ld   (proj_scale), a
 
-    ; sx = 128 + (x * scale) >> 7
-    ld   a, (vert_out+0) ; x
+    ld   a, (vert_out+0)
     ld   d, a
     ld   a, (proj_scale)
     ld   e, a
-    call muls8           ; HL = x * scale
-    add  hl, hl          ; << 1 (so >> 7 = >> 8 of this)
-    ld   a, h
-    add  a, 128          ; center X
-    ld   (screen_x), a
-
-    ; sy = 96 + (y * scale) >> 7
-    ld   a, (vert_out+1) ; y
-    ld   d, a
-    ld   a, (proj_scale)
-    ld   e, a
-    call muls8           ; HL = y * scale
+    call muls8
     add  hl, hl
     ld   a, h
-    add  a, 96           ; center Y
+    add  a, 128
+    ld   (screen_x), a
+
+    ld   a, (vert_out+1)
+    ld   d, a
+    ld   a, (proj_scale)
+    ld   e, a
+    call muls8
+    add  hl, hl
+    ld   a, h
+    add  a, 96
     ld   (screen_y), a
 
-    or   a               ; clear carry (not clipped)
+    or   a
     ret
 
 .clip:
     ld   a, 255
     ld   (screen_x), a
     ld   (screen_y), a
-    scf                  ; set carry = clipped
+    scf
     ret
 
-; ============================================================
-; DIV16 — 16-bit unsigned division
-; Input:  HL = dividend, BC = divisor (non-zero)
-; Output: HL = quotient, DE = remainder
-; Destroys: A
-; ~500 T-states
-;
-; Standard restoring division: shifts dividend left, quotient
-; bits fill in from the right as dividend bits shift out.
-; ============================================================
+; --- DIV16: HL / BC → HL quotient, DE remainder (~500 T) ---
 div16:
-    ld   de, 0           ; DE = remainder
-    ld   a, 16           ; 16 iterations
-
+    ld   de, 0
+    ld   a, 16
 .loop:
-    add  hl, hl          ; shift dividend MSB → carry, bit 0 = 0
+    add  hl, hl
     rl   e
-    rl   d               ; carry → remainder
-
-    ; remainder >= divisor?
+    rl   d
     push hl
-    ex   de, hl          ; HL = remainder
-    or   a               ; clear carry (note: or a doesn't change A)
-    sbc  hl, bc          ; try subtract
+    ex   de, hl
+    or   a
+    sbc  hl, bc
     jr   c, .too_small
-
-    ; Fits: keep subtracted remainder, set quotient bit
-    ex   de, hl          ; DE = new remainder
+    ex   de, hl
     pop  hl
-    inc  l               ; set bit 0 of quotient
+    inc  l
     dec  a
     jr   nz, .loop
     ret
-
 .too_small:
-    add  hl, bc          ; restore remainder
-    ex   de, hl          ; DE = remainder (unchanged)
+    add  hl, bc
+    ex   de, hl
     pop  hl
-    ; bit 0 stays 0
     dec  a
     jr   nz, .loop
     ret
-
-; ============================================================
-; Temporary variables — used by rotation and projection
-; ============================================================
-vert_in:     DS 3        ; input vertex (x, y, z)
-vert_out:    DS 3        ; output / rotated vertex
-angle_x:     DB 0        ; rotation angles
-angle_y:     DB 0
-angle_z:     DB 0
-cur_sin:     DB 0
-cur_cos:     DB 0
-coord_a:     DB 0
-coord_b:     DB 0
-result_a:    DB 0
-result_b:    DB 0
-temp_w0:     DW 0        ; 16-bit temp
-proj_scale:  DB 0
-screen_x:    DB 0
-screen_y:    DB 0

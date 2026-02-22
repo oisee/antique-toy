@@ -1,160 +1,74 @@
-; torus_data.a80 — Torus geometry data and derivation routines
-; 8 rings × 6 hex vertices = 48 vertices, 96 edges
+; torus_data.a80 — Torus geometry: derivation, data, edge list
+; 8 rings × 6 hex = 48 vertices, 96 edges
+; Midpoint derivation (Dark's method, SE#02, 1998)
 ;
-; Assembles with: mza --target zxspectrum
 ; Included by torus.a80
-;
-; Midpoint derivation (Dark's method from SE#02):
-; 4 cardinal rings from rotation, 4 intermediate from averaging.
-; The averaging undershoots the true circle by ~30% (cos 45°),
-; creating the characteristic "faceted torus" look.
 
-; ============================================================
-; Constants
-; ============================================================
-TORUS_R      EQU 45      ; major radius (center to ring center)
-TORUS_r      EQU 18      ; minor radius (hex cross-section)
-NUM_RINGS    EQU 8
-NUM_HEX      EQU 6
-NUM_VERTS    EQU NUM_RINGS * NUM_HEX   ; 48
-NUM_EDGES    EQU 96      ; 48 ring + 48 spoke
-
-; ============================================================
-; BASIS HEX VERTICES — Unrotated 3D positions
-; Format: x, y, z (signed bytes)
-;
-; Ring 0 (0°): hex centered at (R, 0, 0) in XY plane
-;   Hex offsets at 0°,60°,120°,180°,240°,300° from center
-;   cos60 = 0.5, sin60 ≈ 0.866
-;   r*cos60 = 9, r*sin60 ≈ 16
-;
-; Ring 2 (90°): hex centered at (0, 0, R) in YZ plane
-;   Same hex shape rotated 90° around Y axis
-; ============================================================
-basis_hex:
-    ;              x    y    z
-    DB  63,   0,   0   ; v0: center + (r, 0, 0)
-    DB  54,  16,   0   ; v1: center + (r/2, r*sin60, 0)
-    DB  36,  16,   0   ; v2: center + (-r/2, r*sin60, 0)
-    DB  27,   0,   0   ; v3: center + (-r, 0, 0)
-    DB  36, -16,   0   ; v4: center + (-r/2, -r*sin60, 0)
-    DB  54, -16,   0   ; v5: center + (r/2, -r*sin60, 0)
-
-basis_hex_r2:
-    ;              x    y    z
-    DB   0,   0,  63   ; v0: (0, 0, R+r)
-    DB   0,  16,  54   ; v1
-    DB   0,  16,  36   ; v2
-    DB   0,   0,  27   ; v3: (0, 0, R-r)
-    DB   0, -16,  36   ; v4
-    DB   0, -16,  54   ; v5
-
-; ============================================================
-; VERTEX BUFFER — 48 vertices × 3 bytes = 144 bytes
-; Layout: ring 0 (6 verts), ring 1, ..., ring 7
-; ============================================================
-vertices:    DS NUM_VERTS * 3
-
-; ============================================================
-; 2D PROJECTED BUFFER — 48 vertices × 2 bytes = 96 bytes
-; Format: screen_x, screen_y per vertex
-; ============================================================
-proj_buf:    DS NUM_VERTS * 2
-
-; ============================================================
-; DERIVE_TORUS — Build all 48 vertices from rotation + midpoints
-;
-; Ring layout (8 rings at 45° intervals):
-;   Ring 0 (0°):   12 rotations (6 hex verts)
-;   Ring 2 (90°):  12 rotations (6 hex verts)
-;   Ring 4 (180°): negate X,Z of ring 0
-;   Ring 6 (270°): negate X,Z of ring 2
-;   Ring 1 (45°):  average(ring 0, ring 2)
-;   Ring 3 (135°): average(ring 2, ring 4)
-;   Ring 5 (225°): average(ring 4, ring 6)
-;   Ring 7 (315°): average(ring 6, ring 0)
-;
-; Total: 12 rotations + 12 negations + 72 averages
-; ~12 × 2800 + 12 × 24 + 72 × 36 ≈ 36,480 T
-; (Heavy, but correct. Can optimise rotation count later.)
-; ============================================================
+; --- DERIVE_TORUS: 48 vertices from rotation + midpoints ---
 derive_torus:
-    ; --- Cardinal ring 0 (0°): full rotation ---
+    ; Ring 0 (0°): rotate 6 hex verts
     ld   ix, basis_hex
-    ld   iy, vertices            ; ring 0 = vertices[0..5]
+    ld   iy, vertices
     call rotate_6_hex
 
-    ; --- Cardinal ring 2 (90°): full rotation ---
+    ; Ring 2 (90°): rotate 6 hex verts
     ld   ix, basis_hex_r2
-    ld   iy, vertices + 2*18     ; ring 2 = vertices[12..17]
+    ld   iy, vertices + 2*18
     call rotate_6_hex
 
-    ; --- Ring 4 (180°): negate X,Z of ring 0 ---
-    ld   ix, vertices            ; source: ring 0
-    ld   iy, vertices + 4*18     ; dest: ring 4
+    ; Ring 4 (180°): negate X,Z of ring 0
+    ld   ix, vertices
+    ld   iy, vertices + 4*18
     call negate_ring_xz
 
-    ; --- Ring 6 (270°): negate X,Z of ring 2 ---
-    ld   ix, vertices + 2*18     ; source: ring 2
-    ld   iy, vertices + 6*18     ; dest: ring 6
+    ; Ring 6 (270°): negate X,Z of ring 2
+    ld   ix, vertices + 2*18
+    ld   iy, vertices + 6*18
     call negate_ring_xz
 
-    ; --- Midpoint ring 1 (45°): avg(ring 0, ring 2) ---
-    ld   ix, vertices            ; ring 0
-    ld   iy, vertices + 2*18     ; ring 2
-    ld   hl, vertices + 1*18     ; dest: ring 1
+    ; Ring 1 (45°): avg(ring 0, ring 2)
+    ld   ix, vertices
+    ld   iy, vertices + 2*18
+    ld   hl, vertices + 1*18
     call average_ring
 
-    ; --- Midpoint ring 3 (135°): avg(ring 2, ring 4) ---
+    ; Ring 3 (135°): avg(ring 2, ring 4)
     ld   ix, vertices + 2*18
     ld   iy, vertices + 4*18
     ld   hl, vertices + 3*18
     call average_ring
 
-    ; --- Midpoint ring 5 (225°): avg(ring 4, ring 6) ---
+    ; Ring 5 (225°): avg(ring 4, ring 6)
     ld   ix, vertices + 4*18
     ld   iy, vertices + 6*18
     ld   hl, vertices + 5*18
     call average_ring
 
-    ; --- Midpoint ring 7 (315°): avg(ring 6, ring 0) ---
+    ; Ring 7 (315°): avg(ring 6, ring 0)
     ld   ix, vertices + 6*18
     ld   iy, vertices
     ld   hl, vertices + 7*18
     call average_ring
-
     ret
 
-; ============================================================
-; ROTATE_6_HEX — Rotate 6 basis hex vertices through rotate_xyz
-; Input:  IX = source hex vertices (6 × 3 bytes)
-;         IY = destination in vertex buffer
-; Uses:   vert_in, vert_out, angle_x/y/z (globals)
-; ~16,800 T (6 × 2800 T per rotation)
-; ============================================================
+; --- ROTATE_6_HEX: rotate 6 basis vertices ---
 rotate_6_hex:
     ld   b, 6
 .loop:
     push bc
-
-    ; Copy basis vertex → vert_in
     ld   a, (ix+0)
     ld   (vert_in), a
     ld   a, (ix+1)
     ld   (vert_in+1), a
     ld   a, (ix+2)
     ld   (vert_in+2), a
-
-    call rotate_xyz      ; vert_in → vert_out
-
-    ; Copy vert_out → destination
+    call rotate_xyz
     ld   a, (vert_out)
     ld   (iy+0), a
     ld   a, (vert_out+1)
     ld   (iy+1), a
     ld   a, (vert_out+2)
     ld   (iy+2), a
-
     ld   bc, 3
     add  ix, bc
     add  iy, bc
@@ -162,92 +76,77 @@ rotate_6_hex:
     djnz .loop
     ret
 
-; ============================================================
-; NEGATE_RING_XZ — Derive opposite ring by negating X and Z
-; Input:  IX = source ring (6 × 3 bytes)
-;         IY = destination ring
-; ~144 T (6 vertices × 24 T each)
-; ============================================================
+; --- NEGATE_RING_XZ: derive opposite ring ---
 negate_ring_xz:
     ld   b, 6
 .loop:
     ld   a, (ix+0)
     neg
-    ld   (iy+0), a       ; x' = -x
+    ld   (iy+0), a
     ld   a, (ix+1)
-    ld   (iy+1), a       ; y' = y (unchanged)
+    ld   (iy+1), a
     ld   a, (ix+2)
     neg
-    ld   (iy+2), a       ; z' = -z
+    ld   (iy+2), a
     ld   de, 3
     add  ix, de
     add  iy, de
     djnz .loop
     ret
 
-; ============================================================
-; AVERAGE_RING — Midpoint average of two rings
-; Input:  IX = ring A, IY = ring B, HL = destination ring
-; Each coordinate: dest = (a + b) / 2 (signed)
-; 18 bytes per ring (6 verts × 3 coords)
-; ~432 T (18 × 24 T per byte)
-; ============================================================
+; --- AVERAGE_RING: midpoint of two rings ---
+; IX=ring A, IY=ring B, HL=dest
 average_ring:
-    ld   b, 18           ; 6 verts × 3 coords = 18 bytes
+    ld   b, 18
 .loop:
     ld   a, (ix+0)
     ld   c, a
     ld   a, (iy+0)
-    add  a, c            ; a + b (won't overflow: max |val| = 63)
-    sra  a               ; signed /2
+    add  a, c
+    sra  a
     ld   (hl), a
-
     inc  ix
     inc  iy
     inc  hl
     djnz .loop
     ret
 
-; ============================================================
-; EDGE LIST — 96 edges as pairs of vertex indices
-; Vertex index = ring * 6 + hex_position (0..47)
-;
-; Ring edges: connect adjacent hex vertices within each ring
-; Spoke edges: connect same hex vertex between adjacent rings
-; ============================================================
-edge_list:
-    ; --- Ring edges (8 rings × 6 edges = 48) ---
-    ; Ring 0
-    DB  0, 1,  1, 2,  2, 3,  3, 4,  4, 5,  5, 0
-    ; Ring 1
-    DB  6, 7,  7, 8,  8, 9,  9,10, 10,11, 11, 6
-    ; Ring 2
-    DB 12,13, 13,14, 14,15, 15,16, 16,17, 17,12
-    ; Ring 3
-    DB 18,19, 19,20, 20,21, 21,22, 22,23, 23,18
-    ; Ring 4
-    DB 24,25, 25,26, 26,27, 27,28, 28,29, 29,24
-    ; Ring 5
-    DB 30,31, 31,32, 32,33, 33,34, 34,35, 35,30
-    ; Ring 6
-    DB 36,37, 37,38, 38,39, 39,40, 40,41, 41,36
-    ; Ring 7
-    DB 42,43, 43,44, 44,45, 45,46, 46,47, 47,42
+; --- Basis hex vertices ---
+; Ring 0 at (R, 0, 0): hex in XY plane
+basis_hex:
+    DB  63,   0,   0
+    DB  54,  16,   0
+    DB  36,  16,   0
+    DB  27,   0,   0
+    DB  36, 240,   0     ; y = -16
+    DB  54, 240,   0
 
-    ; --- Spoke edges (8 × 6 = 48, wrapping ring 7 → ring 0) ---
-    ; Ring 0 → 1
+; Ring 2 at (0, 0, R): hex in YZ plane
+basis_hex_r2:
+    DB   0,   0,  63
+    DB   0,  16,  54
+    DB   0,  16,  36
+    DB   0,   0,  27
+    DB   0, 240,  36     ; y = -16
+    DB   0, 240,  54
+
+; --- Edge list: 96 edges (vertex index pairs) ---
+edge_list:
+    ; Ring edges (8 × 6 = 48)
+    DB  0, 1,  1, 2,  2, 3,  3, 4,  4, 5,  5, 0
+    DB  6, 7,  7, 8,  8, 9,  9,10, 10,11, 11, 6
+    DB 12,13, 13,14, 14,15, 15,16, 16,17, 17,12
+    DB 18,19, 19,20, 20,21, 21,22, 22,23, 23,18
+    DB 24,25, 25,26, 26,27, 27,28, 28,29, 29,24
+    DB 30,31, 31,32, 32,33, 33,34, 34,35, 35,30
+    DB 36,37, 37,38, 38,39, 39,40, 40,41, 41,36
+    DB 42,43, 43,44, 44,45, 45,46, 46,47, 47,42
+    ; Spoke edges (8 × 6 = 48, ring 7 wraps to ring 0)
     DB  0, 6,  1, 7,  2, 8,  3, 9,  4,10,  5,11
-    ; Ring 1 → 2
     DB  6,12,  7,13,  8,14,  9,15, 10,16, 11,17
-    ; Ring 2 → 3
     DB 12,18, 13,19, 14,20, 15,21, 16,22, 17,23
-    ; Ring 3 → 4
     DB 18,24, 19,25, 20,26, 21,27, 22,28, 23,29
-    ; Ring 4 → 5
     DB 24,30, 25,31, 26,32, 27,33, 28,34, 29,35
-    ; Ring 5 → 6
     DB 30,36, 31,37, 32,38, 33,39, 34,40, 35,41
-    ; Ring 6 → 7
     DB 36,42, 37,43, 38,44, 39,45, 40,46, 41,47
-    ; Ring 7 → 0 (wrap)
     DB 42, 0, 43, 1, 44, 2, 45, 3, 46, 4, 47, 5

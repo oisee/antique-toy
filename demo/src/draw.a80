@@ -1,50 +1,35 @@
 ; draw.a80 — Drawing routines for torus demo
 ; Pixel addressing, Bresenham line, screen clear
 ;
-; Assembles with: mza --target zxspectrum
 ; Included by torus.a80
 
-SCREEN      EQU $4000
-SCREEN_END  EQU $5800
-ATTR_START  EQU $5800
-
-; ============================================================
-; PIXEL_ADDR — Screen address and bit mask for pixel (x, y)
-; Input:  B = x (0-255), C = y (0-191)
-; Output: HL = screen byte address, A = pixel bit mask
-; Destroys: D
-;
-; Spectrum layout: H = 010 Y7Y6 Y2Y1Y0, L = Y5Y4Y3 XXXXX
-; ============================================================
+; --- PIXEL_ADDR: (B=x, C=y) → HL=addr, A=mask ---
 pixel_addr:
-    ; H = 010 Y7Y6 Y2Y1Y0
-    ld   a, c            ; y
-    and  $C0             ; Y7 Y6
+    ld   a, c
+    and  $C0
     rrca
     rrca
-    rrca                 ; >> 3 → bits 4,3
+    rrca
     ld   h, a
     ld   a, c
-    and  $07             ; Y2 Y1 Y0
+    and  $07
     or   h
-    or   $40             ; screen base
+    or   $40
     ld   h, a
 
-    ; L = Y5Y4Y3 X7X6X5X4X3
-    ld   a, c            ; y
-    and  $38             ; Y5 Y4 Y3
+    ld   a, c
+    and  $38
     rlca
-    rlca                 ; << 2 → bits 7,6,5
+    rlca
     ld   l, a
-    ld   a, b            ; x
+    ld   a, b
     rrca
     rrca
-    rrca                 ; >> 3
-    and  $1F             ; column 0-31
+    rrca
+    and  $1F
     or   l
     ld   l, a
 
-    ; Mask = $80 >> (x & 7)
     ld   a, b
     and  7
     jr   z, .bit0
@@ -59,75 +44,57 @@ pixel_addr:
     ld   a, $80
     ret
 
-; ============================================================
-; DOWN_HL — Move screen address one scan line down
-; Input/Output: HL
-; Destroys: A
-; ~18 T average (fast path: 15 T)
-; ============================================================
+; --- DOWN_HL / UP_HL: screen address ±1 scan line ---
 down_hl:
     inc  h
     ld   a, h
     and  7
-    ret  nz              ; still in char cell — done    ; 15 T
-
-    ; Crossed char cell: L += 32, fix H
+    ret  nz
     ld   a, l
     add  a, 32
     ld   l, a
-    ret  c               ; third boundary — H already correct
+    ret  c
     ld   a, h
     sub  8
     ld   h, a
     ret
 
-; ============================================================
-; UP_HL — Move screen address one scan line up
-; Input/Output: HL
-; Destroys: A
-; ============================================================
 up_hl:
     dec  h
     ld   a, h
     and  7
     cp   7
-    ret  nz              ; still in char cell
-
-    ; Crossed char cell upward
+    ret  nz
     ld   a, l
     sub  32
     ld   l, a
-    ret  c               ; third boundary — H correct
+    ret  c
     ld   a, h
     add  a, 8
     ld   h, a
     ret
 
-; ============================================================
-; DRAW_LINE — Bresenham line from (x0,y0) to (x1,y1)
-; Input:  line_x0, line_y0, line_x1, line_y1
-; Destroys: all registers
-;
-; Normalises to left-to-right (dx >= 0), then runs
-; horizontal-major or vertical-major inner loop.
-; Uses self-modifying code for dx comparison in inner loop.
-; ~75 T per pixel (horizontal-major, no Y step)
-; ============================================================
+step_y:
+    ld   a, (y_dir)
+    or   a
+    jr   z, up_hl
+    jr   down_hl
+
+; --- DRAW_LINE: Bresenham (~75 T/pixel) ---
+; Normalises to left-to-right, self-modifying inner loop
 draw_line:
-    ; Ensure x0 <= x1 (draw left-to-right)
     ld   a, (line_x1)
     ld   b, a
     ld   a, (line_x0)
     cp   b
-    jr   c, .no_swap     ; x0 < x1
-    jr   z, .no_swap     ; x0 == x1
+    jr   c, .no_swap
+    jr   z, .no_swap
 
-    ; Swap both endpoints
-    ld   c, a            ; C = old x0
+    ld   c, a
     ld   a, b
-    ld   (line_x0), a    ; x0 = old x1
+    ld   (line_x0), a
     ld   a, c
-    ld   (line_x1), a    ; x1 = old x0
+    ld   (line_x1), a
     ld   a, (line_y0)
     ld   c, a
     ld   a, (line_y1)
@@ -136,7 +103,6 @@ draw_line:
     ld   (line_y1), a
 .no_swap:
 
-    ; dx = x1 - x0 (>= 0)
     ld   a, (line_x1)
     ld   b, a
     ld   a, (line_x0)
@@ -145,162 +111,113 @@ draw_line:
     sub  c
     ld   (line_dx), a
 
-    ; dy = |y1 - y0|, Y direction
     ld   a, (line_y0)
     ld   b, a
     ld   a, (line_y1)
-    sub  b               ; A = y1 - y0
-    jr   nc, .y_down     ; y1 >= y0: going down
-
-    ; Going up
-    neg                  ; A = |dy|
+    sub  b
+    jr   nc, .y_down
+    neg
     ld   (line_dy), a
     xor  a
-    ld   (y_dir), a      ; 0 = up
+    ld   (y_dir), a
     jr   .setup
-
 .y_down:
     ld   (line_dy), a
     ld   a, 1
-    ld   (y_dir), a      ; 1 = down
+    ld   (y_dir), a
 
 .setup:
-    ; Starting pixel address
     ld   a, (line_x0)
     ld   b, a
     ld   a, (line_y0)
     ld   c, a
-    call pixel_addr      ; HL = addr, A = mask
-    ld   c, a            ; C = pixel mask
+    call pixel_addr
+    ld   c, a
 
-    ; Self-modify dx into CP and SUB instructions
     ld   a, (line_dx)
     ld   (smc_hcmp + 1), a
     ld   (smc_hsub + 1), a
-    ld   (smc_vcmp + 1), a
-    ld   (smc_vsub + 1), a
 
-    ; Choose major axis
     ld   a, (line_dx)
     ld   d, a
     ld   a, (line_dy)
-    cp   d               ; dy vs dx
-    jr   nc, .vmaj       ; dy >= dx → vertical-major
+    cp   d
+    jr   nc, .vmaj
 
-; ============================================================
-; Horizontal-major inner loop
-; B = dx+1 pixels, E = dy, C = mask, HL = screen addr
-; A = Bresenham error accumulator
-; ============================================================
+    ; === Horizontal-major ===
     ld   a, (line_dx)
     ld   b, a
-    inc  b               ; pixels = dx + 1
+    inc  b
     ld   a, (line_dy)
-    ld   e, a            ; E = dy
-    xor  a               ; error = 0
+    ld   e, a
+    xor  a
 
 .h_pixel:
-    ; --- Plot ---
-    ld   d, a            ; save error
-    ld   a, c
-    or   (hl)
-    ld   (hl), a
-    ld   a, d            ; restore error
-
-    dec  b
-    ret  z               ; all pixels drawn
-
-    ; --- Step X right ---
-    rrc  c               ; mask >>= 1
-    jr   nc, .h_no_byte
-    inc  l               ; crossed byte → next column
-.h_no_byte:
-
-    ; --- Bresenham ---
-    add  a, e            ; error += dy
-smc_hcmp:
-    cp   0               ; error >= dx? (self-modified)
-    jr   c, .h_pixel     ; no → next pixel
-smc_hsub:
-    sub  0               ; error -= dx (self-modified)
-
-    ; --- Step Y ---
-    push af
-    call step_y
-    pop  af
-    jr   .h_pixel
-
-; ============================================================
-; Vertical-major inner loop
-; B = dy+1 pixels, E = dx, C = mask, HL = screen addr
-; ============================================================
-.vmaj:
-    ; Self-modify dy into comparison
-    ld   a, (line_dy)
-    ld   (smc_vcmp + 1), a
-    ld   (smc_vsub + 1), a
-
-    ld   a, (line_dy)
-    ld   b, a
-    inc  b               ; pixels = dy + 1
-    ld   a, (line_dx)
-    ld   e, a            ; E = dx
-    xor  a               ; error = 0
-
-.v_pixel:
-    ; --- Plot ---
     ld   d, a
     ld   a, c
     or   (hl)
     ld   (hl), a
     ld   a, d
-
     dec  b
     ret  z
-
-    ; --- Step Y (always) ---
+    rrc  c
+    jr   nc, .h_nb
+    inc  l
+.h_nb:
+    add  a, e
+smc_hcmp:
+    cp   0
+    jr   c, .h_pixel
+smc_hsub:
+    sub  0
     push af
     call step_y
     pop  af
+    jr   .h_pixel
 
-    ; --- Bresenham ---
-    add  a, e            ; error += dx
+    ; === Vertical-major ===
+.vmaj:
+    ld   a, (line_dy)
+    ld   (smc_vcmp + 1), a
+    ld   (smc_vsub + 1), a
+
+    ld   a, (line_dy)
+    ld   b, a
+    inc  b
+    ld   a, (line_dx)
+    ld   e, a
+    xor  a
+
+.v_pixel:
+    ld   d, a
+    ld   a, c
+    or   (hl)
+    ld   (hl), a
+    ld   a, d
+    dec  b
+    ret  z
+    push af
+    call step_y
+    pop  af
+    add  a, e
 smc_vcmp:
-    cp   0               ; error >= dy? (self-modified)
+    cp   0
     jr   c, .v_pixel
 smc_vsub:
-    sub  0               ; error -= dy (self-modified)
-
-    ; --- Step X right ---
+    sub  0
     rrc  c
     jr   nc, .v_pixel
     inc  l
     jr   .v_pixel
 
-; ============================================================
-; STEP_Y — Step one scan line in current Y direction
-; Reads y_dir flag: 0=up, 1=down
-; Destroys: A
-; ============================================================
-step_y:
-    ld   a, (y_dir)
-    or   a
-    jr   z, up_hl
-    jr   down_hl         ; tail-call optimisation
-
-; ============================================================
-; CLEAR_SCREEN — PUSH-based fast screen clear
-; Clears 6144 bytes of pixel data.
-; ~34,000 T-states
-; ============================================================
+; --- CLEAR_SCREEN: PUSH-based fast clear (~34,000 T) ---
 clear_screen:
     di
     ld   (cs_sp + 1), sp
-
     ld   sp, SCREEN_END
     ld   hl, 0
-    ld   b, 192          ; 192 × 16 pushes × 2 bytes = 6144
-.cs_loop:
+    ld   b, 192
+.loop:
     push hl
     push hl
     push hl
@@ -317,17 +234,13 @@ clear_screen:
     push hl
     push hl
     push hl
-    djnz .cs_loop
-
+    djnz .loop
 cs_sp:
-    ld   sp, 0           ; self-modified: restore SP
+    ld   sp, 0
     ei
     ret
 
-; ============================================================
-; SET_ATTRS — Fill attribute area with single colour
-; Input:  A = attribute byte
-; ============================================================
+; --- SET_ATTRS: fill attribute area ---
 set_attrs:
     ld   hl, ATTR_START
     ld   de, ATTR_START + 1
@@ -335,14 +248,3 @@ set_attrs:
     ld   bc, 767
     ldir
     ret
-
-; ============================================================
-; Variables
-; ============================================================
-line_x0:   DB 0
-line_y0:   DB 0
-line_x1:   DB 0
-line_y1:   DB 0
-line_dx:   DB 0
-line_dy:   DB 0
-y_dir:     DB 0          ; 0 = up, 1 = down
