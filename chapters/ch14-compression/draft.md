@@ -22,11 +22,7 @@ These are not theoretical exercises. They are production techniques from a demo 
 
 Introspec articulated the insight that elevates compression from a storage trick to a performance technique: **compression acts as a method to increase effective memory bandwidth**.
 
-Consider a demo effect that needs 2 kilobytes of data per frame --- lookup tables, precalculated coordinates, animation data. At 3.5 MHz, the Z80 can read roughly 69,888 bytes per frame if it did nothing but `ld a, (hl) : inc hl` in a tight loop (each iteration: 11 T-states, 69,888 / 11 = 6,353 bytes, so the real throughput is lower). But you are not doing nothing else --- you are running an effect, playing music, handling the demo engine. Your actual data bandwidth is a fraction of the theoretical maximum.
-
-Now suppose you store that 2 KB of data compressed to 800 bytes with a fast decompressor. You read 800 bytes from memory and decompress them into 2,048 bytes in a buffer. If the decompressor runs at 34 cycles per output byte (as LZ4 does), decompressing 2,048 bytes costs 69,632 T-states --- almost exactly one frame. But you can overlap decompression with other work. You can decompress during the border period while the ULA is not contending for the bus. You can decompress a frame ahead and double-buffer.
-
-The result: you are effectively piping more data through the system than the bus could deliver if you were reading it raw. The decompressor is a data amplifier. On a machine where every memory access costs precious T-states, that amplification can be the difference between an effect that fits in one frame and one that takes three.
+Suppose an effect needs 2 KB of data per frame. Store it compressed to 800 bytes and decompress with LZ4 at 34 T-states per output byte. The decompression costs 69,632 T-states --- almost exactly one frame. But you can overlap it with border time, double-buffer a frame ahead, and interleave with effect rendering. The result: more data flowing through the system than the bus could deliver from uncompressed storage. The decompressor is a data amplifier.
 
 ---
 
@@ -160,52 +156,31 @@ Not everything needs a full LZ compressor. Two simpler techniques handle specifi
 
 ### RLE: Run-Length Encoding
 
-The simplest compression scheme: replace a run of identical bytes with a count and a value. "Seventeen zeros" becomes two bytes instead of seventeen.
-
-```
-Uncompressed: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-RLE encoded:  11 00   (17 repetitions of $00)
-```
-
-The decompressor is trivial --- a few dozen bytes of Z80 code:
+The simplest scheme: replace a run of identical bytes with a count and a value. The decompressor is trivial:
 
 ```z80
-; Minimal RLE decompressor
-; HL = source, DE = destination
+; Minimal RLE decompressor — HL = source, DE = destination
 rle_decompress:
         ld      a, (hl)         ; read count
         inc     hl
         or      a
-        ret     z               ; count = 0 means end of stream
-        ld      b, a            ; B = count
+        ret     z               ; count = 0 means end
+        ld      b, a
         ld      a, (hl)         ; read value
         inc     hl
-.fill:  ld      (de), a         ; write value
+.fill:  ld      (de), a
         inc     de
-        djnz    .fill           ; repeat count times
-        jr      rle_decompress  ; next run
+        djnz    .fill
+        jr      rle_decompress
 ```
 
-RLE compresses beautifully when data contains long runs --- blank screens, solid-colour backgrounds, attribute fills with repeated values. It compresses terribly when data has few runs --- photographic images, random data, complex pixel art.
-
-**When to use RLE:** Loading screens with large uniform areas. Attribute-only animations where most of the screen stays one colour. Initial screen clears. Simple tilemap backgrounds. Any data where you *know* runs will dominate.
-
-The advantage over LZ is simplicity: the decompressor is smaller (under 30 bytes is achievable), faster per byte for run data, and trivial to debug. For size-coded intros where even ZX0's 70 bytes feel expensive, a custom RLE scheme can free precious space.
+Under 30 bytes of decompressor code. RLE compresses beautifully when data contains long runs --- blank screens, solid-colour backgrounds, attribute fills. It compresses terribly on complex pixel art. The advantage over LZ: for size-coded intros where even ZX0's 70 bytes feel expensive, a custom RLE scheme frees precious space.
 
 ### Delta coding: store what changed
 
-Delta coding stores the difference between consecutive values rather than absolute values. For animation frames that change incrementally, this can be devastating effective.
+Delta coding stores differences between consecutive values rather than absolute values. Two animation frames that are 90% identical? Store only the changed bytes --- a list of (position, new_value) pairs. If only 691 bytes differ out of 6,912, the delta is 2,073 bytes (3 bytes per change) instead of a full frame. Apply LZ on top of the delta stream and it compresses further --- the difference stream has more zeros and repeated small values than raw frame data.
 
-Consider two consecutive frames of an animation where 90% of the screen is identical. Frame 2 differs from Frame 1 in only 691 bytes scattered across the screen. Rather than storing the full 6,912-byte Frame 2, store a delta: a list of (position, new_value) pairs for the 691 changed bytes. If each pair costs 3 bytes (2 for position, 1 for value), the delta is 2,073 bytes --- 70% smaller than the full frame.
-
-Delta coding combines naturally with other compressors:
-
-1. **Delta + RLE:** If the changes cluster spatially (as they often do in animations), the position differences between consecutive changes form runs, which RLE compresses further.
-2. **Delta + LZ:** Apply delta coding to produce the difference stream, then compress the result with ZX0 or another LZ compressor. The difference stream has more structure (more zeros, more repeated small values) than the raw frame, so LZ compresses it better.
-
-The Break Space Magen Fractal is an example of this principle in action. Those 122 frames at 6,912 bytes each, compressed to 10,512 bytes total, relied on exploiting the inter-frame redundancy. Each frame differs from the previous by a small amount. The compressor (or the data preparation pipeline) exploits this.
-
-**When to use delta coding:** Multi-frame animations. Sprite animations where the figure changes pose but the background stays fixed. Tilemaps that scroll smoothly (each new frame differs from the previous by one column or row). Music pattern data where consecutive rows share most values.
+The Break Space Magen Fractal exploits this: 122 frames at 6,912 bytes each, compressed to 10,512 bytes total, because each frame differs from the previous by a small amount. Delta + LZ is the standard pipeline for multi-frame animations, scrolling tilemaps, and sprite animations where the figure changes pose but the background stays fixed.
 
 ---
 
@@ -232,105 +207,64 @@ At runtime, decompress with a simple call:
 
 ### Makefile integration
 
-The compression step belongs in your Makefile, not in your head. Every time you rebuild, every asset should be automatically recompressed:
+The compression step belongs in your Makefile, not in your head:
 
 ```makefile
-# Compress assets as part of the build
-ASSETS_RAW = assets/screen.scr assets/level1.bin assets/music.pt3
-ASSETS_ZX0 = $(ASSETS_RAW:.scr=.zx0) $(ASSETS_RAW:.bin=.zx0) $(ASSETS_RAW:.pt3=.zx0)
-
 %.zx0: %.scr
 	zx0 $< $@
 
-%.zx0: %.bin
-	zx0 $< $@
-
-%.zx0: %.pt3
-	zx0 $< $@
-
-demo.tap: main.asm $(ASSETS_ZX0)
+demo.tap: main.asm assets/screen.zx0
 	sjasmplus main.asm --raw=demo.bin
 	bin2tap demo.bin demo.tap
 ```
 
-Now `make` will recompress any asset whose source has changed, rebuild the assembly, and produce a fresh .tap file. No manual steps. No forgotten recompression. This is how professional demo and game development works on the Spectrum in 2026.
+Change a source PNG, run `make`, and the compressed binary is regenerated automatically. No manual steps, no forgotten recompression.
 
 ### Example: loading screen with ZX0
 
-Here is a complete, minimal example. A demo loads a compressed loading screen, decompresses it to video memory, and waits for a keypress.
+A complete minimal example --- decompress a loading screen to video memory and wait for a keypress:
 
 ```z80
-; loading_screen.asm
-; Assemble with: sjasmplus loading_screen.asm
-
+; loading_screen.asm — assemble with sjasmplus
         org  $8000
-
 start:
-        ; Decompress the loading screen into video memory
         ld   hl, compressed_screen
-        ld   de, $4000          ; screen memory base
+        ld   de, $4000
         call dzx0_standard
 
-        ; Wait for a keypress
 .wait:  xor  a
         in   a, ($fe)
         cpl
         and  $1f
         jr   z, .wait
-
         ret
 
-; --- ZX0 decompressor (include the standard version) ---
         include "dzx0_standard.asm"
 
-; --- Compressed loading screen ---
 compressed_screen:
         incbin "screen.zx0"
 
-        ; Size report
-        display "Code + decompressor: ", /d, dzx0_standard - start, " bytes"
-        display "Compressed screen: ", /d, $ - compressed_screen, " bytes"
         display "Total: ", /d, $ - start, " bytes"
 ```
 
-The DISPLAY directives are an SjASMPlus feature that prints size information during assembly. Use them. Always know exactly how large your compressed data is. If a loading screen compresses to 4,200 bytes with ZX0 but 3,800 bytes with Exomizer, and you are only decompressing it once at startup, Exomizer may be worth the larger decompressor. If you are decompressing it every time you return to the title screen, ZX0's faster decompression might matter more.
+Use SjASMPlus's DISPLAY directive to print size information during assembly. Always know exactly how large your compressed data is --- the difference between ZX0 and Exomizer on a single loading screen can be 400 bytes, and over 8 scenes that adds up.
 
-### Choosing the right compressor: a decision tree
+### Choosing the right compressor
 
-Ask these questions in order:
-
-1. **Is this a size-coded intro (256b, 512b, 1K)?** Use ZX0 or ZX7. The 69--70 byte decompressor is non-negotiable. You cannot afford Exomizer's 170 bytes.
-
-2. **Do you need to decompress during playback (streaming)?** Use LZ4. At ~34 T-states per output byte, it can decompress over 2,000 bytes per frame. No other tool comes close. You sacrifice 10 percentage points of compression ratio for 7x the decompression speed of Exomizer.
-
-3. **Is this a one-time decompression at load time?** Use Exomizer for maximum compression ratio. The 250 T-states per byte do not matter if you are decompressing once during a loading screen. The user will not notice an extra half-second of loading. They will notice if the demo runs out of memory because you chose a worse compressor.
-
-4. **Do you need a balance?** ApLib (~105 T/byte, 49.2% ratio) or Pletter 5 (~69 T/byte, 51.5% ratio). Both sit on the Pareto frontier --- no tool beats them on both dimensions simultaneously.
-
-5. **Is your data mostly runs of identical bytes?** Consider RLE first, then compress the RLE stream with LZ if needed. Two-stage compression can outperform either stage alone on the right data.
-
-6. **Is your data a sequence of similar frames?** Apply delta coding first, then compress the deltas with ZX0 or your chosen LZ compressor. The delta stream will compress dramatically better than the raw frames.
+Ask in order: (1) Size-coded intro? ZX0/ZX7 --- the 69--70 byte decompressor is non-negotiable. (2) Real-time streaming? LZ4 --- nothing else is fast enough. (3) One-time load? Exomizer --- maximum ratio, speed irrelevant. (4) Need a balance? ApLib or Pletter 5, both on the Pareto frontier. (5) Data full of identical runs? Custom RLE. (6) Sequential animation frames? Delta coding first, then LZ.
 
 ---
 
 ## The MegaLZ Revival
 
-A postscript that illustrates why the demoscene's compression landscape keeps evolving.
+In 2017, Introspec declared MegaLZ "morally obsolete." Two years later, he resurrected it himself.
 
-In 2017, Introspec declared MegaLZ "morally obsolete" --- its compression ratio was similar to Pletter 5, but its decompressor was slower. The format was dead.
+The insight: the compression *format* and the *decompressor implementation* are separable problems. MegaLZ's format was good --- the first Spectrum compressor to use an optimal parser (LVD, 2005), with Elias gamma codes and a slightly larger window than Pletter 5. What was bad was the Z80 decompressor. Introspec wrote two new ones:
 
-Two years later, Introspec himself resurrected it.
+- **Compact:** 92 bytes, ~98 T-states per byte
+- **Fast:** 234 bytes, ~63 T-states per byte --- faster than three consecutive LDIRs
 
-The key insight: the compression *format* and the *decompressor implementation* are separable problems. MegaLZ's format was actually good --- it had been the first Spectrum compressor to use an optimal parser (LVD, 2005), and its Elias gamma codes and 500-byte-larger window gave it a slight compression edge over Pletter 5. What was bad was the Z80 decompressor code.
-
-Introspec wrote two new decompressors for MegaLZ:
-
-- **Compact version:** 92 bytes, ~98 T-states per byte (down from 110 bytes and much slower)
-- **Fast version:** 234 bytes, ~63 T-states per byte --- faster than three consecutive LDIRs
-
-With the new decompressors, MegaLZ "handily beats Pletter 5 and ZX7" on the combined compression-ratio-plus-speed metric. Introspec kept MegaLZ in his own demo engine because it compressed his specific data "noticeably better" than the alternatives.
-
-The lesson for the practitioner: do not assume a compressor is forever dead. The format is the hard part --- getting optimal parsing right, choosing the right code lengths, balancing the encoding. The decompressor is "just" Z80 code, and Z80 code can always be rewritten. If you find a format that compresses your data well but has a slow decompressor, the format may be worth saving.
+With these decompressors, MegaLZ "handily beats Pletter 5 and ZX7" on the combined ratio-plus-speed metric. The lesson: do not assume a compressor is dead. The format is the hard part. The decompressor is Z80 code, and Z80 code can always be rewritten.
 
 ---
 
