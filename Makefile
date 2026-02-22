@@ -10,7 +10,9 @@
 #   make test               # assemble all, report errors
 #   make clean              # remove build artifacts
 
-ASM ?= mza
+# Full path needed because mza may be a shell alias
+MZA_PATH := $(HOME)/dev/minz-ts/minzc/mza
+ASM ?= $(MZA_PATH)
 BUILD_DIR := build
 CHAPTERS := $(wildcard chapters/ch*/examples/*.a80)
 

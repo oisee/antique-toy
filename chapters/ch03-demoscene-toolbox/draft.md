@@ -22,9 +22,7 @@ Consider the simplest possible inner loop: clearing 256 bytes of memory.
     djnz .loop           ; 13 T  (8 on last iteration)
 ```
 
-Each iteration costs 7 + 6 + 13 = 26 T-states to store a single byte. Of those 26 T-states, only 7 actually do the work --- `ld (hl), a` writes the byte. The other 19 T-states are overhead: incrementing the pointer and looping back. That is 73% overhead. For 256 bytes, the total is 256 x 26 - 5 = 6,651 T-states.
-
-On a machine where you have 69,888 T-states per frame (or 71,680 on a Pentagon), those wasted cycles hurt.
+Each iteration costs 7 + 6 + 13 = 26 T-states to store a single byte. Only 7 of those T-states do the work --- the rest is overhead. That is 73% waste. For 256 bytes: 256 x 26 - 5 = 6,651 T-states. On a machine where you have 69,888 T-states per frame, those wasted cycles hurt.
 
 ### Unrolling: trade ROM for speed
 
@@ -44,19 +42,19 @@ The solution is brutal and effective: write out the loop body N times and delete
 
 Each byte now costs 7 + 6 = 13 T-states. No DJNZ. No loop counter. Total: 256 x 13 = 3,328 T-states --- half the looped version.
 
-The cost is code size. Those 256 repetitions of `ld (hl), a : inc hl` occupy 512 bytes. The looped version was 7 bytes. You are paying 505 bytes of ROM for a 50% speed gain. In a 48K demo, that is a real trade-off. In a 128K production with banked memory, it is usually worth it.
+The cost is code size: 256 repetitions occupy 512 bytes vs. 7 for the loop. You are trading ROM for speed.
 
-**When to unroll:** Inner loops that execute thousands of times per frame --- screen clearing, sprite drawing, data copying. These are the loops where the DJNZ overhead dominates your frame budget.
+**When to unroll:** Inner loops that execute thousands of times per frame --- screen clearing, sprite drawing, data copying.
 
-**When NOT to unroll:** Outer loops that run once or twice per frame. If your setup loop runs 24 times (once per character row), the 5 T-states you save per iteration buy you 120 T-states total --- less than the time it takes to execute three NOPs. Not worth the code bloat.
+**When NOT to unroll:** Outer loops that run once or twice per frame. Saving 5 T-states across 24 iterations buys you 120 T-states --- less than three NOPs. Not worth the bloat.
 
-A practical middle ground is *partial unrolling*. Unroll 8 or 16 iterations inside the loop, then use DJNZ for the outer count. The `push_fill.a80` example in this chapter's `examples/` directory does exactly this: 16 PUSHes per iteration, 192 iterations. You get most of the speed benefit at a fraction of the code cost.
+The practical middle ground is *partial unrolling*: unroll 8 or 16 iterations inside the loop, keep DJNZ for the outer count. The `push_fill.a80` example in this chapter's `examples/` directory does exactly this: 16 PUSHes per iteration, 192 iterations.
 
 ### Self-modifying code: the Z80's secret weapon
 
-The Z80 has no instruction cache. No prefetch buffer. No pipeline. When the CPU fetches an instruction byte from RAM, it reads whatever is there *right now*. If you changed that byte one cycle ago, the CPU sees the new value. This is not a hack or an exploit --- it is a guaranteed property of the architecture.
+The Z80 has no instruction cache, no prefetch buffer, no pipeline. When the CPU fetches an instruction byte from RAM, it reads whatever is there *right now*. If you changed that byte one cycle ago, the CPU sees the new value. This is a guaranteed property of the architecture.
 
-Self-modifying code (SMC) means writing to instruction bytes at runtime, changing what the program does as it runs. The classic pattern is patching an immediate operand:
+Self-modifying code (SMC) means writing to instruction bytes at runtime. The classic pattern is patching an immediate operand:
 
 ```z80
 ; Self-modifying code: fill with a runtime-determined value
@@ -68,9 +66,7 @@ patch:
     ; ...
 ```
 
-The `ld (patch + 1), a` instruction writes into the second byte of the `ld (hl), $00` instruction --- the immediate operand. After the patch, `ld (hl), $00` becomes `ld (hl), $AA` or whatever value you loaded. The CPU has no idea anything happened. It just executes whatever bytes it finds.
-
-This is enormously powerful. Some common SMC patterns:
+The `ld (patch + 1), a` writes into the immediate operand of the next `ld (hl), $00`, changing it to `ld (hl), $AA` or whatever you loaded. The CPU executes whatever bytes it finds. Some common SMC patterns:
 
 **Patching opcodes.** You can even replace the instruction itself. Need a loop that sometimes increments HL and sometimes decrements it? Before the loop, write the opcode for INC HL ($23) or DEC HL ($2B) into the instruction byte. Inside the inner loop, there is no branch at all --- the right instruction is already in place. Compare this to a branch-per-iteration approach that would cost 12 T-states (JR NZ) on every single pixel.
 
@@ -83,9 +79,9 @@ restore_sp:
     ld   sp, $0000                ; self-modified: the $0000 was overwritten
 ```
 
-The `ld (nn), sp` instruction saves the current SP value directly into the two bytes that form the operand of the later `ld sp, nn`. No temporary variable, no extra memory access. This is idiomatic Z80 demoscene code --- you will see it in virtually every production that touches the stack pointer.
+The `ld (nn), sp` saves the current SP directly into the operand of the later `ld sp, nn`. No temporary variable. This is idiomatic Z80 demoscene code.
 
-**A word of caution.** Self-modifying code is safe and instant on the Z80, the eZ80, and every Spectrum clone. It is *not* safe on modern cached CPUs (x86, ARM) without explicit cache flush instructions. If you are porting to a different architecture, this is the first thing that breaks.
+**A word of caution.** SMC is safe on the Z80, the eZ80, and every Spectrum clone. It is *not* safe on modern cached CPUs (x86, ARM) without explicit cache flush instructions. If you port to a different architecture, this is the first thing that breaks.
 
 ---
 
@@ -103,9 +99,7 @@ The PUSH instruction writes 2 bytes to memory and decrements SP, all in 11 T-sta
 | `ldir` (per byte) | 1 | 21 | 21.0 |
 | `push hl` | 2 | 11 | **5.5** |
 
-PUSH writes two bytes in 11 T-states --- 5.5 T-states per byte. That is roughly 2.4x faster than the fastest single-byte alternative (`ld (hl), a` + `inc l`) and nearly 4x faster than LDIR.
-
-The catch is that PUSH writes to where SP points, and SP is normally your stack. To use PUSH as a data pipe, you must hijack the stack pointer.
+PUSH writes two bytes in 11 T-states --- 5.5 T-states per byte. Nearly 4x faster than LDIR. The catch: PUSH writes to where SP points, and SP is normally your stack. To use PUSH as a data pipe, you must hijack the stack pointer.
 
 ### The technique
 
@@ -153,9 +147,7 @@ restore_sp:
     ret
 ```
 
-The 16-PUSH inner body writes 32 bytes in 176 T-states. With the DJNZ overhead, the total for 6,144 bytes (the entire pixel area) comes to roughly 36,000 T-states. Compare that to LDIR for the same job: 6,144 x 21 - 5 = 129,019 T-states. The PUSH method is about 3.6x faster.
-
-For a full-screen clear, that difference is the difference between fitting comfortably in one frame and bleeding into the next.
+The 16-PUSH inner body writes 32 bytes in 176 T-states. Total for the full 6,144-byte pixel area: roughly 36,000 T-states. Compare LDIR: 6,144 x 21 - 5 = 129,019 T-states. The PUSH method is about 3.6x faster --- the difference between fitting in one frame and bleeding into the next.
 
 ### Where PUSH tricks are used
 
@@ -171,14 +163,14 @@ The price you pay: interrupts are off. If your music player runs from an IM2 int
 
 ### LDI vs LDIR
 
-The Z80 has two flavours of block copy: LDI (copy one byte) and LDIR (repeat until BC = 0). Both copy a byte from (HL) to (DE), increment HL and DE, and decrement BC. The difference is timing:
+LDI copies one byte from (HL) to (DE), increments both, and decrements BC. LDIR does the same but repeats until BC = 0. The difference is timing:
 
 | Instruction | T-states | Notes |
 |-------------|----------|-------|
 | LDI | 16 | Copies 1 byte, always 16 T |
 | LDIR (per byte) | 21 | Copies 1 byte, loops back. Last byte: 16 T |
 
-LDIR costs 5 extra T-states per byte because, after each copy, it checks whether BC has reached zero and, if not, decrements PC by 2 to re-execute itself. Those 5 T-states add up fast.
+LDIR costs 5 extra T-states per byte for its internal loop-back check. Those 5 T-states add up fast.
 
 For 256 bytes:
 - LDIR: 255 x 21 + 16 = 5,371 T-states
@@ -189,9 +181,9 @@ A chain of individual LDI instructions is just 256 repetitions of the two-byte o
 
 ### When LDI chains shine
 
-The sweet spot for LDI chains is copying blocks where you know the size at assembly time and the size is not too large. Copying a 32-byte sprite row? A chain of 32 LDIs costs 64 bytes of code and saves 160 T-states over LDIR. For 24 character rows of sprite data, that is 3,840 T-states saved per frame. Worthwhile.
+The sweet spot is copying blocks of known size. A chain of 32 LDIs saves 160 T-states over LDIR for a sprite row. Across 24 rows, that is 3,840 T-states per frame.
 
-The real power of LDI chains emerges when you combine them with *entry point arithmetic*. If you have a chain of 256 LDIs and you want to copy only 100 bytes, you can jump into the chain at position 156. No loop counter, no setup --- just calculate the entry point and JP to it. This technique is used in Introspec's chaos zoomer in the demo Eager (2015):
+But the real power emerges when you combine LDI chains with *entry point arithmetic*. If you have a chain of 256 LDIs and want to copy only 100 bytes, jump into the chain at position 156. No loop counter, no setup. This technique is used in Introspec's chaos zoomer in Eager (2015):
 
 ```z80
 ; Chaos zoomer inner loop (simplified from Eager)
@@ -219,15 +211,11 @@ This variable-length copy with zero per-byte loop overhead is a technique you si
 
 ### The most powerful technique
 
-Everything above --- unrolling, self-modification, PUSH tricks, LDI chains --- is a fixed optimisation. You write the code once, and it runs the same way every frame. Code generation goes further: your program writes the program that draws the screen.
-
-This is the technique that separates good demos from impossible ones.
-
-There are two variants: offline code generation (before assembly) and runtime code generation (during execution).
+Everything above is a fixed optimisation --- the code runs the same way every frame. Code generation goes further: your program writes the program that draws the screen. There are two variants: offline (before assembly) and runtime (during execution).
 
 ### Offline: generating assembly from a higher-level language
 
-Introspec used Processing (a Java-based creative coding environment) to generate Z80 assembly code for the chaos zoomer in his demo Eager (2015). The idea: a chaos zoomer changes its magnification and position every frame. Each frame, different pixels from the source image map to different screen locations. Rather than computing these mappings at runtime --- which would require division, multiplication, and branching deep in the inner loop --- the Processing script pre-calculated every mapping and output .a80 source files containing nothing but optimised LDI chains and LD instructions.
+Introspec used Processing (a Java-based creative coding environment) to generate Z80 assembly for the chaos zoomer in Eager (2015). A chaos zoomer changes magnification every frame --- different source pixels map to different screen locations. Rather than computing these mappings at runtime, the Processing script pre-calculated every mapping and output .a80 source files containing optimised LDI chains and LD instructions.
 
 The workflow: a Processing script calculates, for each frame, which source byte maps to which screen byte. It outputs Z80 assembly source --- sequences of `ld hl, source_addr` and `ldi` instructions --- which the assembler (SjASMPlus) builds alongside the hand-written engine code. At runtime, the engine simply calls into the pre-generated code for the current frame.
 
@@ -235,9 +223,7 @@ This is not "cheating." It is the fundamental insight that division of labour be
 
 ### Runtime: the program writes machine code during execution
 
-Sometimes the parameters change every frame, so offline generation is not enough. In these cases, the program generates machine code into a RAM buffer at runtime, then executes it.
-
-The sphere-mapping routine in X-Trade's legendary Illusion (ENLiGHT'96) uses this approach. The sphere geometry changes as it rotates: different pixels need different skip distances, different source addresses. Before each frame, the engine writes Z80 machine code bytes --- actual opcode bytes --- into a buffer. The code might look something like this:
+Sometimes parameters change every frame, so offline generation is not enough. The sphere-mapping routine in X-Trade's Illusion (ENLiGHT'96) generates machine code into a RAM buffer at runtime. The sphere geometry changes as it rotates --- different pixels need different skip distances. Before each frame, the engine emits opcode bytes into a buffer, then executes them:
 
 ```z80
 ; Runtime code generation (conceptual, simplified from Illusion)
@@ -270,9 +256,7 @@ The sphere-mapping routine in X-Trade's legendary Illusion (ENLiGHT'96) uses thi
     call code_buffer
 ```
 
-The generated code is a straight-line sequence with no branches, no lookups, no loop overhead. It runs as fast as hand-written unrolled code, but it is *different code every frame*.
-
-When your inner loop changes shape every frame --- because a rotozoomer changes direction, or a sphere rotates, or a tunnel shifts --- runtime code generation avoids branches entirely. Instead of "if pixel_skip == 3 then..." at 12 T-states per branch, you emit the exact instructions needed and execute them branch-free.
+The generated code is a straight-line sequence with no branches, no lookups, no loop overhead --- but it is *different code every frame*. Instead of "if pixel_skip == 3 then..." at 12 T-states per branch, you emit the exact instructions needed and execute them branch-free.
 
 **When to generate code:** If the same operations happen every frame with only data changes, self-modifying code (patching operands) suffices. If the *structure* changes --- different numbers of iterations, different instruction sequences --- generate the code. If you can precompute the variations on a modern machine, prefer offline generation: it is debuggable, verifiable, and imposes zero runtime cost. Runtime generation pays off when the generated code executes far more often than it costs to generate.
 
@@ -282,7 +266,7 @@ When your inner loop changes shape every frame --- because a rotozoomer changes 
 
 ### Turning the stack into a dispatch table
 
-In 2025, DenisGrachev published a technique on Hype that he developed for his game Dice Legends. The problem: rendering a tile-based playfield requires drawing dozens of tiles per frame, each at a different screen position. The naive approach calls each tile-drawing routine with CALL:
+In 2025, DenisGrachev published a technique on Hype developed for his game Dice Legends. The problem: rendering a tile-based playfield requires drawing dozens of tiles per frame. The naive approach uses CALL:
 
 ```z80
 ; Naive approach: call each tile renderer
@@ -292,9 +276,9 @@ In 2025, DenisGrachev published a technique on Hype that he developed for his ga
     ; ...
 ```
 
-Each CALL costs 17 T-states. For a 30 x 18 playfield (540 tiles), that is 9,180 T-states spent just on CALL instructions --- not counting the tile drawing itself.
+Each CALL costs 17 T-states. For a 30 x 18 playfield (540 tiles), that is 9,180 T-states on dispatch alone.
 
-DenisGrachev's insight: set SP to a *render list* --- a table of addresses in memory --- and end each tile-drawing procedure with RET. RET pops 2 bytes from (SP) into PC and increments SP. If SP points to your render list, RET does not return to the caller --- it jumps to the next tile-drawing routine in the list.
+DenisGrachev's insight: set SP to a *render list* --- a table of addresses --- and end each tile-drawing procedure with RET. RET pops 2 bytes from (SP) into PC. If SP points to your render list, RET does not return to the caller --- it jumps to the next routine in the list.
 
 ```z80
 ; RET-chaining: zero call overhead
@@ -324,7 +308,7 @@ restore_sp:
     ei
 ```
 
-Each "call" now costs just 10 T-states (the cost of RET) instead of 17 (CALL). For 540 tiles, that saves 540 x 7 = 3,780 T-states. But the real gain is deeper: because each tile routine can be a different procedure --- wide tile, narrow tile, blank tile, animated tile --- you get free dispatch. No jump table lookup, no indirect call, no switch statement. The render list *is* the program.
+Each dispatch now costs 10 T-states (RET) instead of 17 (CALL). For 540 tiles: 3,780 T-states saved. But the real gain is free dispatch --- each entry can point to a different procedure (wide tile, blank tile, animated tile). No jump table, no indirect call. The render list *is* the program.
 
 ### Three strategies for the render list
 
@@ -340,9 +324,7 @@ Using the byte-based approach, he expanded the playfield from 26 x 15 tiles (the
 
 ### The trade-offs
 
-RET-chaining shares the same fundamental constraint as all stack tricks: interrupts must be disabled while SP is hijacked. If your music engine runs from IM2, you need to schedule the rendering carefully --- either finish all RET-chaining before the interrupt fires, or run the music engine from the main loop instead.
-
-The technique also requires that each tile routine be a self-contained procedure that ends with RET and does not itself use CALL (since the stack is not available for nested calls). In practice, tile routines are short and simple enough that this is not a limitation.
+Like all stack tricks, interrupts must be disabled while SP is hijacked. Each tile routine must be self-contained --- ending with RET and not using CALL, since the real stack is unavailable. In practice, tile routines are short enough that this is not a limitation.
 
 ---
 

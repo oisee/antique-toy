@@ -225,27 +225,21 @@ The resulting table is a piecewise parabolic approximation. Plot it against true
 
 ## Bresenham's Line Drawing
 
-Drawing lines is fundamental to wireframe 3D. Every edge of a rotating object is a line from (x1,y1) to (x2,y2), and you need to draw it fast. Dark's treatment of line drawing in Spectrum Expert #01 is the longest section of his article, because he works through three progressively faster approaches before arriving at his final solution.
+Every edge of a wireframe object is a line from (x1,y1) to (x2,y2), and you need to draw it fast. Dark's treatment in Spectrum Expert #01 is the longest section of his article, working through three progressively faster approaches.
 
-### The Classic Algorithm
+### The Classic Algorithm and Xopha Modification
 
-Bresenham's line algorithm is well known. You step along the major axis (whichever of x or y covers more distance) one pixel at a time, maintaining an error accumulator that tells you when to step along the minor axis. The error term starts at zero, increases by dy (or dx) at each step, and when it exceeds the threshold, you step sideways and subtract dx (or dy) from the error.
+Bresenham's algorithm steps along the major axis one pixel at a time, maintaining an error accumulator for minor-axis steps. On the Spectrum, "set a pixel" is expensive -- the interleaved screen memory means computing a byte address and bit position costs real cycles. The ROM routine takes over 1000 T-states per pixel. Even a hand-optimised Bresenham loop costs ~80 T-states per pixel.
 
-On the ZX Spectrum, "set a pixel" is not a simple operation. The screen memory is interleaved -- row 0 is at $4000, row 1 at $4100, row 2 at $4200, and so on in a non-sequential pattern that makes vertical movement expensive. Setting a single pixel requires computing a byte address and a bit position within that byte. The standard Spectrum ROM routine for pixel plotting takes over 1000 T-states per pixel. Even a hand-optimised Bresenham loop costs around 80 T-states per pixel.
-
-### The Xopha Modification
-
-Dark mentions an optimisation he attributes to Xopha: instead of computing pixel addresses from scratch each time, you maintain a screen pointer (HL) and advance it incrementally. Moving one pixel right means rotating a bit mask; moving one pixel down means adjusting HL with the DOWN_HL macro (itself a multi-instruction sequence due to the interleaved screen layout). This helps, but the core problem remains.
+Dark mentions Xopha's improvement: maintain a screen pointer (HL) and advance it incrementally rather than recomputing from scratch. Moving right means rotating a bit mask; moving down means the multi-instruction DOWN_HL adjustment. Better, but the core problem remains.
 
 ### Dark's Matrix Method: 8x8 Pixel Grids
 
 Then Dark makes his key observation: **"87.5% of checks are wasted."**
 
-Here is what he means. In a Bresenham loop, at every pixel you ask: should I step sideways? For a nearly horizontal line, the answer is almost always no -- you just keep moving along the major axis. For a 45-degree line, you step sideways every time. But on average, across all possible line slopes, seven out of eight checks produce no side-step. You are burning cycles on a conditional branch that almost never fires.
+In a Bresenham loop, at every pixel you ask: should I step sideways? For a nearly horizontal line, the answer is almost always no. On average, seven out of eight checks produce no side-step. You are burning cycles on a conditional branch that almost never fires.
 
-Dark's solution: pre-compute the pixel pattern for each possible line slope within an 8x8 pixel grid, and unroll the drawing loop to output entire grid cells at once.
-
-Think of it this way. A line segment within an 8x8 pixel area can be described by its entry point, its exit point, and the set of pixels it passes through. For each octant (there are eight, due to x/y symmetry and positive/negative slopes), you can enumerate all possible 8-pixel patterns. Each pattern is a sequence of `SET bit,(HL)` instructions with appropriate address increments between them.
+Dark's solution: pre-compute the pixel pattern for each line slope within an 8x8 pixel grid, and unroll the drawing loop to output entire grid cells at once. A line segment within an 8x8 area is fully determined by its slope. For each of the eight octants, enumerate all possible 8-pixel patterns as straight sequences of `SET bit,(HL)` instructions with address increments between them.
 
 ```z80
 ; Example: one unrolled 8-pixel segment of a nearly-horizontal line
@@ -266,36 +260,36 @@ Think of it this way. A line segment within an 8x8 pixel area can be described b
     set  0, (hl)        ; pixel 7 (rightmost bit in byte)
 ```
 
-No conditional branches. No error accumulator updates. Just a straight sequence of `SET` instructions with a couple of address adjustments. The `SET bit,(HL)` instruction takes 15 T-states. Eight of them plus a couple of `INC H` operations gives roughly 130 T-states per 8-pixel segment, or about 16 T-states per pixel. Even accounting for the overhead of looking up which segment routine to call and advancing to the next character cell, Dark achieves approximately **48 T-states per pixel** in the inner drawing loop -- nearly half the cost of the classical Bresenham approach.
+No conditional branches. No error accumulator. `SET bit,(HL)` takes 15 T-states; eight of them plus a couple of `INC H` operations gives ~130 T-states per 8-pixel segment, or about 16 T-states per pixel. With lookup and cell-advance overhead, Dark achieves approximately **48 T-states per pixel** -- nearly half the classical Bresenham cost.
 
-The price is memory. You need a separate unrolled routine for each possible slope within each octant. Dark estimates about **3KB of memory** for the pre-unrolled octant loops. On a 128K Spectrum, that is a modest investment for a massive speed gain.
+The price is memory: a separate unrolled routine for each slope per octant, about **3KB total**. On a 128K Spectrum, a modest investment for a massive speed gain.
 
-### How the Trap-Based Termination Works
+### Trap-Based Termination
 
-An additional optimisation: instead of checking a loop counter at every pixel ("have I drawn the full line yet?"), Dark sets a trap. He calculates where the line ends and plants a sentinel value in the routine. When the drawing code hits the sentinel, it exits. This eliminates the `DEC counter / JR NZ` overhead from the inner loop entirely.
+Instead of checking a loop counter at every pixel, Dark plants a sentinel where the line ends. When the drawing code hits the sentinel, it exits -- eliminating the `DEC counter / JR NZ` overhead entirely.
 
-The complete line-drawing system -- setup, octant selection, segment lookup, and unrolled drawing -- is one of the most impressive pieces of code in Spectrum Expert #01. And it is exactly what powers the wireframe 3D engine in *Illusion*. When Introspec disassembled the demo in 2017, he found this matrix method at work, drawing the wireframe objects that filled the screen at full frame rate.
+The complete system -- octant selection, segment lookup, unrolled drawing, trap termination -- is one of the most impressive pieces of code in Spectrum Expert #01. When Introspec disassembled *Illusion* in 2017, he found this matrix method at work, drawing the wireframes at full frame rate.
 
 ---
 
 ## Fixed-Point Arithmetic
 
-Before we leave the world of Z80 maths, we need to formalise something that has been lurking behind every algorithm in this chapter: fixed-point numbers.
+Every algorithm in this chapter assumes something we have not yet made explicit: fixed-point numbers.
 
-The Z80 has no floating-point unit. It has no concept of decimal points. Every register holds an integer. But demo effects need fractional values -- a rotation angle of 0.7 radians, a velocity of 1.5 pixels per frame, a perspective scale factor of 0.003. The solution is fixed-point: you pick a convention for where the "decimal point" lives within an integer, and then do all your arithmetic in integers while keeping track of the scaling mentally.
+The Z80 has no floating-point unit. Every register holds an integer. But demo effects need fractional values -- rotation angles, sub-pixel velocities, scale factors. The solution is fixed-point: pick a convention for where the "decimal point" lives within an integer, then do all arithmetic in integers while tracking the scaling mentally.
 
 ### Format 8.8
 
-The most common fixed-point format on the Z80 is **8.8**: the high byte holds the integer part (signed or unsigned), and the low byte holds the fractional part. A 16-bit register pair like HL holds one fixed-point number:
+The most common format on the Z80 is **8.8**: high byte = integer part, low byte = fractional part. One 16-bit register pair holds one fixed-point number:
 
 ```
 H = integer part    (-128..+127 signed, or 0..255 unsigned)
 L = fractional part (0..255, representing 0/256 to 255/256)
 ```
 
-So `HL = $0180` represents 1.5 (H=1, L=128, and 128/256 = 0.5). `HL = $FF80` in signed interpretation represents -0.5 (H=$FF = -1 in two's complement, but L=$80 adds back 0.5, giving -1 + 0.5 = -0.5).
+`HL = $0180` represents 1.5 (H=1, L=128, and 128/256 = 0.5). `HL = $FF80` signed is -0.5 (H=$FF = -1 in two's complement, L=$80 adds 0.5).
 
-The beauty of this format is that **addition and subtraction are free**. They are just normal 16-bit operations:
+The beauty: **addition and subtraction are free** -- just normal 16-bit operations:
 
 ```z80
 ; Fixed-point 8.8 addition: result = a + b
@@ -307,13 +301,11 @@ The beauty of this format is that **addition and subtraction are free**. They ar
     sbc  hl, de          ; 15 T-states.
 ```
 
-The processor does not know or care that you are treating these as fixed-point numbers. The binary addition works identically whether the bits represent 16-bit integers or 8.8 fixed-point values, because the positional arithmetic is the same.
+The processor does not care that you are treating these as fixed-point. Binary addition is the same whether the bits represent integers or 8.8 values.
 
 ### Fixed-Point Multiplication
 
-Multiplication is where fixed-point gets interesting. If you multiply two 8.8 numbers, you get a result in **16.16 format** -- 32 bits total, with 16 bits of fraction. But you only want an 8.8 result. So you need to multiply, then shift right by 8 bits (discarding the lowest byte of the 32-bit product) to get back to 8.8 format.
-
-In practice, if the integer parts of your operands are small (which they usually are in demo effects -- coordinates within the screen, rotation factors between -1 and +1), you can use a simplified approach: multiply just the key bytes and assemble the result:
+Multiplying two 8.8 numbers produces a 16.16 result -- 32 bits. You want 8.8 back, so you take bits 8..23 of the product (effectively shifting right by 8). In practice, with small integer parts (coordinates, rotation factors between -1 and +1), you can decompose the multiply into partial products:
 
 ```z80
 ; Fixed-point 8.8 multiply (simplified)
@@ -355,21 +347,19 @@ fixmul88:
     ret
 ```
 
-The exact implementation depends on your precision needs. For a sine-table-driven rotation where the sine values are 8-bit signed (-128 to +127 representing -1.0 to +0.996), you multiply an 8-bit coordinate by an 8-bit sine value using the `mulu112` routine from earlier in this chapter, and the 16-bit result is already in 8.8 format -- the high byte is your rotated integer coordinate, the low byte is the fractional part you can either use or discard.
+For sine-table-driven rotation where sine values are 8-bit signed (-128 to +127, representing -1.0 to +0.996), multiplying an 8-bit coordinate by a sine value via `mulu112` gives a 16-bit result already in 8.8 format -- high byte is the rotated integer coordinate, low byte is the fraction.
 
 ### Why Fixed-Point Matters
 
-Fixed-point arithmetic is the bridge between the integer-only Z80 and the continuous mathematics of demo effects. Every 3D rotation, every scrolling trajectory, every smooth animation relies on it. The format 8.8 is the sweet spot for the Z80: it fits in a register pair, add/subtract are free, multiply costs roughly 200 T-states (using `mulu112`), and the precision is sufficient for screen-resolution effects.
-
-Higher precision formats exist -- 4.12 gives more fractional bits at the expense of integer range, 12.4 gives more integer range at the expense of smoothness -- but 8.8 covers the vast majority of use cases. The game development chapters later in this book use 8.8 exclusively for entity positions, velocities, and physics calculations.
+Format 8.8 is the sweet spot for the Z80: fits in a register pair, add/subtract are free, multiply costs ~200 T-states, and precision is sufficient for screen-resolution effects. Other formats exist -- 4.12 for more fractional precision, 12.4 for more integer range -- but 8.8 covers the vast majority of use cases. The game development chapters later in this book use 8.8 exclusively.
 
 ---
 
 ## Theory and Practice
 
-The algorithms in this chapter are not isolated techniques. They form a system. The multiply routine feeds the rotation matrix. The rotation matrix outputs coordinates that need perspective division. The division uses log tables. The rotated, projected vertices connect with lines drawn by the matrix Bresenham method. And all of it runs on fixed-point arithmetic, with sine and cosine values pulled from the parabolic lookup table.
+These algorithms are not isolated techniques. They form a system. Multiply feeds the rotation matrix. Rotation outputs coordinates needing perspective division. Division uses log tables. Projected vertices connect with lines drawn by the matrix method. All of it runs on fixed-point arithmetic, with sine values from the parabolic table.
 
-Dark understood this in 1997. He wrote these algorithms as separate sections of a magazine article, but he designed them as components of a single engine -- the engine that powered *Illusion*. When you see a wireframe cube spinning on a Spectrum at full frame rate, every routine in this chapter is executing, dozens of times per frame, in a carefully budgeted pipeline:
+Dark designed these as components of a single engine -- the engine that powered *Illusion*. A wireframe cube spinning at full frame rate exercises every routine in this chapter:
 
 1. **Read the rotation angle** from the sine table (parabolic approximation, ~20 T-states per lookup)
 2. **Multiply** vertex coordinates by rotation factors (shift-and-add for accuracy, or square-table for speed -- ~200 or ~60 T-states per multiply, 12 multiplies per vertex)
@@ -383,17 +373,17 @@ For a simple cube (8 vertices, 12 edges), the total per-frame cost is roughly:
 - Line drawing: 12 edges x ~40 pixels x 48 T-states = 23,040 T-states
 - **Total: ~42,720 T-states** -- comfortably within the ~70,000 T-state frame budget
 
-Switch to the fast square-table multiply and rotation drops to 5,760 T-states. The vertices will jitter slightly, but you now have headroom for more complex objects or additional effects. This is the trade-off Dark described: speed or accuracy. In a demo, you make that choice for every effect, every frame.
+Switch to the fast square-table multiply and rotation drops to 5,760 T-states. The vertices jitter slightly, but you now have headroom for more complex objects. Speed or accuracy -- in a demo, you make that choice for every effect, every frame.
 
 ---
 
 ## What Dark Got Right
 
-Looking back at Spectrum Expert #01 from nearly thirty years' distance, what strikes you is not just the quality of the algorithms -- which are solid, practical, and well-optimised -- but the quality of the thinking. Dark presents each algorithm, explains the trade-offs honestly, admits when his derivation has gaps ("something is not right here"), and trusts the reader to be intelligent enough to fill those gaps themselves.
+Looking back at Spectrum Expert #01 from nearly thirty years' distance, what strikes you is not just the quality of the algorithms but the quality of the thinking. Dark presents each one, explains the trade-offs honestly, admits when his derivation has gaps, and trusts the reader to fill those gaps.
 
-He was writing for an audience of Spectrum coders in Russia in the late 1990s -- a community that was building some of the most impressive 8-bit demos in the world, on hardware that the rest of the world had abandoned a decade earlier. The algorithms in this chapter are the building blocks they used. When you write your first 3D engine for the Spectrum, these are the routines that will make it possible.
+He was writing for Spectrum coders in Russia in the late 1990s -- a community building some of the most impressive 8-bit demos in the world, on hardware the rest of the world had abandoned. These are the building blocks they used. When you write your first 3D engine for the Spectrum, these routines will make it possible.
 
-In the next chapter, we will see how Dark and STS extended this mathematical foundation to build a complete 3D system: the midpoint method for vertex interpolation, backface culling, and solid polygon rendering. The maths in this chapter is the foundation. Chapter 5 is the architecture built on top of it.
+In the next chapter, Dark and STS extend this mathematical foundation into a complete 3D system: the midpoint method for vertex interpolation, backface culling, and solid polygon rendering. The maths here is the foundation. Chapter 5 is the architecture built on top.
 
 ---
 
