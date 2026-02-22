@@ -1,0 +1,21 @@
+---
+title: "Coding the Impossible"
+subtitle: "Z80 Demoscene Techniques for Modern Makers"
+author: "Alice Vinogradova"
+date: "2026"
+lang: en
+documentclass: book
+classoption:
+  - openany
+mainfont: "DejaVu Serif"
+sansfont: "DejaVu Sans"
+monofont: "DejaVu Sans Mono"
+monofontoptions:
+  - Scale=0.85
+toc: true
+toc-depth: 2
+highlight-style: tango
+header-includes: |
+  \usepackage{fvextra}
+  \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+---

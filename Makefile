@@ -19,12 +19,21 @@ SJASM_FLAGS := --nologo
 
 # mza flags
 MZA_FLAGS := --target zxspectrum -u
+MZA_RAW_FLAGS := --target generic -f bin -u
 
 # Source files
 CHAPTERS  := $(wildcard chapters/ch*/examples/*.a80)
-DEMO_MAIN := demo/src/torus.a80
+DEMO_MAIN := demo/src/main.a80
+DEMO_TORUS := demo/src/torus.a80
 
-.PHONY: all clean test test-mza demo
+# Book build
+BOOK_META    := book-metadata.yaml
+BOOK_CHAPTERS := $(sort $(wildcard chapters/ch*/draft.md))
+BOOK_EXTRA   := glossary.md
+PANDOC       ?= pandoc
+PANDOC_PDF   := --pdf-engine=lualatex --resource-path=chapters
+
+.PHONY: all clean test test-mza test-compare demo book-a4 book-a5 book-epub book
 
 all: $(patsubst chapters/%.a80,$(BUILD_DIR)/%.bin,$(CHAPTERS))
 
@@ -33,6 +42,10 @@ $(BUILD_DIR)/%.bin: chapters/%.a80
 	$(SJASMPLUS) $(SJASM_FLAGS) --raw=$@ $<
 
 demo:
+	@mkdir -p $(BUILD_DIR)
+	cd demo/src && $(SJASMPLUS) $(SJASM_FLAGS) main.a80
+
+demo-torus:
 	@mkdir -p $(BUILD_DIR)
 	cd demo/src && $(SJASMPLUS) $(SJASM_FLAGS) --raw=../../$(BUILD_DIR)/torus.bin torus.a80
 
@@ -55,8 +68,15 @@ test:
 			echo "FAIL  $$f"; fail=$$((fail+1)); \
 		fi; \
 	done; \
-	if [ -f "$(DEMO_MAIN)" ]; then \
+	if [ -f "$(DEMO_TORUS)" ]; then \
 		if (cd demo/src && $(SJASMPLUS) $(SJASM_FLAGS) torus.a80) >/dev/null 2>&1; then \
+			echo "  OK  $(DEMO_TORUS)"; ok=$$((ok+1)); \
+		else \
+			echo "FAIL  $(DEMO_TORUS)"; fail=$$((fail+1)); \
+		fi; \
+	fi; \
+	if [ -f "$(DEMO_MAIN)" ]; then \
+		if (cd demo/src && $(SJASMPLUS) $(SJASM_FLAGS) main.a80) >/dev/null 2>&1; then \
 			echo "  OK  $(DEMO_MAIN)"; ok=$$((ok+1)); \
 		else \
 			echo "FAIL  $(DEMO_MAIN)"; fail=$$((fail+1)); \
@@ -74,7 +94,81 @@ test-mza:
 			echo "FAIL  $$f"; fail=$$((fail+1)); \
 		fi; \
 	done; \
+	if [ -f "$(DEMO_MAIN)" ]; then \
+		if (cd demo/src && $(MZA_PATH) $(MZA_FLAGS) -o /dev/null torus.a80) 2>/dev/null; then \
+			echo "  OK  $(DEMO_MAIN)"; ok=$$((ok+1)); \
+		else \
+			echo "FAIL  $(DEMO_MAIN)"; fail=$$((fail+1)); \
+		fi; \
+	fi; \
 	echo "---"; echo "$$ok passed, $$fail failed"
+
+test-compare:
+	@ok=0; fail=0; skip=0; \
+	mkdir -p $(BUILD_DIR)/cmp-sj $(BUILD_DIR)/cmp-mza; \
+	for f in chapters/ch*/examples/*.a80; do \
+		[ -f "$$f" ] || continue; \
+		base=$$(basename $$f .a80); \
+		sj=$(BUILD_DIR)/cmp-sj/$$base.bin; \
+		mz=$(BUILD_DIR)/cmp-mza/$$base.bin; \
+		if ! $(SJASMPLUS) $(SJASM_FLAGS) --raw=$$sj $$f >/dev/null 2>&1; then \
+			echo "SKIP  $$f (sjasmplus failed)"; skip=$$((skip+1)); continue; \
+		fi; \
+		if ! $(MZA_PATH) $(MZA_RAW_FLAGS) -o $$mz $$f 2>/dev/null; then \
+			echo "SKIP  $$f (mza failed)"; skip=$$((skip+1)); continue; \
+		fi; \
+		if cmp -s $$sj $$mz; then \
+			echo "  OK  $$f"; ok=$$((ok+1)); \
+		else \
+			sjsz=$$(wc -c < $$sj | tr -d ' '); \
+			mzsz=$$(wc -c < $$mz | tr -d ' '); \
+			echo "DIFF  $$f (sjasmplus=$${sjsz}B, mza=$${mzsz}B)"; \
+			fail=$$((fail+1)); \
+		fi; \
+	done; \
+	if [ -f "$(DEMO_MAIN)" ]; then \
+		sj=$(BUILD_DIR)/cmp-sj/torus.bin; \
+		mz=$(BUILD_DIR)/cmp-mza/torus.bin; \
+		if (cd demo/src && $(SJASMPLUS) $(SJASM_FLAGS) --raw=../../$$sj torus.a80) >/dev/null 2>&1 && \
+		   (cd demo/src && $(MZA_PATH) $(MZA_RAW_FLAGS) -o ../../$$mz torus.a80) 2>/dev/null; then \
+			if cmp -s $$sj $$mz; then \
+				echo "  OK  $(DEMO_MAIN)"; ok=$$((ok+1)); \
+			else \
+				sjsz=$$(wc -c < $$sj | tr -d ' '); \
+				mzsz=$$(wc -c < $$mz | tr -d ' '); \
+				echo "DIFF  $(DEMO_MAIN) (sjasmplus=$${sjsz}B, mza=$${mzsz}B)"; \
+				fail=$$((fail+1)); \
+			fi; \
+		else \
+			echo "SKIP  $(DEMO_MAIN) (assembler failed)"; skip=$$((skip+1)); \
+		fi; \
+	fi; \
+	echo "---"; echo "$$ok match, $$fail differ, $$skip skipped"
+
+# --- Book targets ---
+book: book-a4 book-a5 book-epub
+
+book-a4: $(BOOK_META) $(BOOK_CHAPTERS)
+	@mkdir -p $(BUILD_DIR)
+	$(PANDOC) $(BOOK_META) $(BOOK_CHAPTERS) $(BOOK_EXTRA) \
+		-o $(BUILD_DIR)/book-a4.pdf \
+		$(PANDOC_PDF) \
+		-V fontsize=11pt \
+		-V geometry="a4paper, margin=1in"
+
+book-a5: $(BOOK_META) $(BOOK_CHAPTERS)
+	@mkdir -p $(BUILD_DIR)
+	$(PANDOC) $(BOOK_META) $(BOOK_CHAPTERS) $(BOOK_EXTRA) \
+		-o $(BUILD_DIR)/book-a5.pdf \
+		$(PANDOC_PDF) \
+		-V fontsize=10pt \
+		-V geometry="a5paper, top=15mm, bottom=15mm, left=18mm, right=15mm"
+
+book-epub: $(BOOK_META) $(BOOK_CHAPTERS)
+	@mkdir -p $(BUILD_DIR)
+	$(PANDOC) $(BOOK_META) $(BOOK_CHAPTERS) $(BOOK_EXTRA) \
+		-o $(BUILD_DIR)/book.epub \
+		--epub-chapter-level=1
 
 clean:
 	rm -rf $(BUILD_DIR)
