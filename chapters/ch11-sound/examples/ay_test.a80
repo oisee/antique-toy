@@ -1,0 +1,155 @@
+; Chapter 11: AY-3-8910 Sound Test
+; Plays a simple melody on channel A with noise drums on channel C.
+; Demonstrates register access and basic chiptune techniques.
+;
+; Assembles with: mza --target zxspectrum
+
+    ORG $8000
+
+AY_REG   EQU $FFFD       ; AY register select port
+AY_DATA  EQU $BFFD       ; AY data write port
+
+; AY Registers
+R_TONE_A_LO   EQU 0
+R_TONE_A_HI   EQU 1
+R_TONE_B_LO   EQU 2
+R_TONE_B_HI   EQU 3
+R_TONE_C_LO   EQU 4
+R_TONE_C_HI   EQU 5
+R_NOISE        EQU 6
+R_MIXER        EQU 7      ; THE most important register
+R_VOL_A       EQU 8
+R_VOL_B       EQU 9
+R_VOL_C       EQU 10
+R_ENV_LO      EQU 11
+R_ENV_HI      EQU 12
+R_ENV_SHAPE   EQU 13
+
+; Note periods (for 1.7734 MHz AY clock, octave 4)
+NOTE_C4   EQU 426
+NOTE_D4   EQU 379
+NOTE_E4   EQU 338
+NOTE_F4   EQU 319
+NOTE_G4   EQU 284
+NOTE_A4   EQU 253
+NOTE_B4   EQU 225
+NOTE_C5   EQU 213
+
+start:
+    call ay_init
+    ld   hl, melody
+    ld   b, MELODY_LEN
+
+.play_loop:
+    push bc
+    push hl
+
+    ; Read note from melody table: [period_lo, period_hi, duration]
+    ld   e, (hl)         ; low byte of period
+    inc  hl
+    ld   d, (hl)         ; high byte of period
+    inc  hl
+    ld   c, (hl)         ; duration in frames
+
+    ; Set tone on channel A
+    ld   a, R_TONE_A_LO
+    call ay_write_de_lo
+    ld   a, R_TONE_A_HI
+    call ay_write_de_hi
+
+    ; Volume on
+    ld   a, R_VOL_A
+    ld   e, 12           ; volume 12/15
+    call ay_write_e
+
+    ; Wait duration frames
+.wait_note:
+    halt
+    dec  c
+    jr   nz, .wait_note
+
+    ; Advance to next note
+    pop  hl
+    ld   de, 3
+    add  hl, de
+    pop  bc
+    djnz .play_loop
+
+    ; Silence and loop
+    ld   a, R_VOL_A
+    ld   e, 0
+    call ay_write_e
+
+    jr   start
+
+; ============================================================
+; AY Helper Routines
+; ============================================================
+
+; Initialize AY: silence all, set mixer
+ay_init:
+    ; Silence all channels
+    ld   a, R_VOL_A
+    ld   e, 0
+    call ay_write_e
+    ld   a, R_VOL_B
+    call ay_write_e
+    ld   a, R_VOL_C
+    call ay_write_e
+
+    ; Mixer: tone A on, rest off
+    ; Bits: --NNNTTT (0=on, 1=off)
+    ;        CBA CBA
+    ; We want: tone A on = bit 0 = 0, rest off = 1
+    ; = 111110 = $3E
+    ld   a, R_MIXER
+    ld   e, $3E
+    call ay_write_e
+    ret
+
+; Write E to AY register A
+ay_write_e:
+    ld   bc, AY_REG
+    out  (c), a          ; select register
+    ld   b, $BF          ; AY_DATA high byte
+    out  (c), e          ; write value
+    ret
+
+; Write low byte of DE to AY register A
+ay_write_de_lo:
+    ld   bc, AY_REG
+    out  (c), a
+    ld   b, $BF
+    out  (c), e
+    ret
+
+; Write high byte of DE to AY register A
+ay_write_de_hi:
+    ld   bc, AY_REG
+    out  (c), a
+    ld   b, $BF
+    out  (c), d
+    ret
+
+; ============================================================
+; Melody data: period_lo, period_hi, duration_frames
+; Simple ascending scale
+; ============================================================
+melody:
+    DW NOTE_C4
+    DB 12
+    DW NOTE_D4
+    DB 12
+    DW NOTE_E4
+    DB 12
+    DW NOTE_F4
+    DB 12
+    DW NOTE_G4
+    DB 24
+    DW NOTE_A4
+    DB 12
+    DW NOTE_B4
+    DB 12
+    DW NOTE_C5
+    DB 24
+MELODY_LEN EQU 8

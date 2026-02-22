@@ -1,0 +1,38 @@
+; Chapter 2: Fill Screen + Attributes
+; Fills pixel area with a pattern, then sets attributes to white on blue.
+;
+; Assembles with: mza --target zxspectrum
+;                 sjasmplus
+
+    ORG $8000
+
+SCREEN  EQU $4000       ; pixel area start
+ATTRS   EQU $5800       ; attribute area start
+SCRLEN  EQU 6144        ; pixel bytes (256*192/8)
+ATTLEN  EQU 768         ; attribute bytes (32*24)
+
+start:
+    ; --- Fill pixels with checkerboard pattern ---
+    ld   hl, SCREEN
+    ld   de, SCREEN + 1
+    ld   bc, SCRLEN - 1
+    ld   (hl), $55       ; checkerboard: 01010101
+    ldir
+
+    ; --- Fill attributes: white ink on blue paper ---
+    ; Attribute byte: flash=0, bright=1, paper=001 (blue), ink=111 (white)
+    ; = 01 001 111 = $4F
+    ld   hl, ATTRS
+    ld   de, ATTRS + 1
+    ld   bc, ATTLEN - 1
+    ld   (hl), $4F
+    ldir
+
+    ; --- Border: blue ---
+    ld   a, 1
+    out  ($FE), a
+
+    ; Infinite loop
+.wait:
+    halt
+    jr   .wait

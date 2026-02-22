@@ -1,0 +1,39 @@
+; Chapter 1: Timing Harness
+; Measures how many T-states a code block takes by changing border colour.
+; Red border = code running, black border = idle.
+; Wider red stripe = slower code.
+;
+; Assembles with: mza --target zxspectrum
+;                 sjasmplus (use ORG $8000)
+
+    ORG $8000
+
+start:
+    ; Wait for HALT (frame start — interrupt fires)
+    halt
+
+    ; --- Set border to RED (code under test begins) ---
+    ld   a, 2          ; red
+    out  ($FE), a
+
+    ; ===== CODE UNDER TEST =====
+    ; Replace this block with whatever you're measuring.
+    ; Example: 256 iterations of a NOP loop
+
+    ld   b, 0          ; B=256 (0 wraps to 256 iterations)
+.loop:
+    nop                 ; 4 T-states
+    nop                 ; 4 T-states
+    nop                 ; 4 T-states
+    nop                 ; 4 T-states — 16 T per iteration
+    djnz .loop          ; 13/8 T-states
+    ; Total: 256 * (16+13) - 5 = 7,419 T-states
+
+    ; ===== END CODE UNDER TEST =====
+
+    ; --- Set border to BLACK (idle) ---
+    xor  a
+    out  ($FE), a
+
+    ; Loop forever
+    jr   start

@@ -1,0 +1,27 @@
+Full title:     Eager (to live)
+Label:          Life on Mars
+
+Credits:        spke^lom (Code, Design)
+                nq^skrju (Music)
+
+Party:          3BM OpenAir 2015
+Compo:          ZX Spectrum Demo
+
+Requirements:   ZX Spectrum 128K/+2/+2a/b/+3/Pentagon
+                This demo absolutely requires 3.5MHz CPU
+                It may start without it, but you won't enjoy it
+
+Duration:       2:00 (the demo is looped)
+Contacts:       zxintrospec@gmail.com
+
+Notes:          <3 for Summer, 3BM and Hype.
+                Special thank you to diver^4d for the cool tip.
+
+                Sorry I did not have time to do proper platform
+                testing this time around. The party version is
+                buggy as hell (it is likely to be the hardest
+                thing I've done in a demo thus far). My brain
+                is not coping with asynchronous coding well.
+                Will do quick post-party fixes asap.
+
+                Please do not upload this version onto the Pouet.
