@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Torus — verify Z80 (ch23 / Not Eager)</title>
+<style>
+body { background: #222; color: #ccc; font-family: monospace; text-align: center; }
+canvas { border: 4px solid #444; display: block; margin: 20px auto; image-rendering: pixelated; }
+.info { margin: 10px; font-size: 14px; }
+#controls { margin: 10px; }
+button { margin: 0 5px; padding: 5px 15px; }
+</style>
+</head><body>
+<h2>Torus wireframe — JS prototype (verifies Z80 math.a80 + torus_data.a80)</h2>
+<canvas id="screen"></canvas>
+<div class="info">
+    <span id="fps">0 fps</span> |
+    angles: X=<span id="ax">0</span> Y=<span id="ay">0</span> Z=<span id="az">0</span> |
+    <span id="verts">0</span> verts, <span id="edges">0</span> edges
+</div>
+<div id="controls">
+    <button onclick="paused=!paused">Pause/Resume</button>
+    <button onclick="speedX=!speedX">Toggle X rot</button>
+    <button onclick="speedZ=!speedZ">Toggle Z rot</button>
+</div>
+<script src="zx_screen.js"></script>
+<script>
+const zx = new ZXScreen(document.getElementById('screen'), 3);
+zx.fillAttrs(ZXScreen.makeAttr(7, 0, 1)); // bright white on black
+
+// --- Torus geometry (matches torus_data.a80) ---
+const NUM_RINGS = 8, NUM_HEX = 6;
+const NUM_VERTS = NUM_RINGS * NUM_HEX; // 48
+const VIEWER_DIST = 200;
+
+// Basis hex vertices — ring 0 at (R, 0, 0)
+const basisHex = [
+    [63,   0,  0], [54,  16,  0], [36,  16,  0],
+    [27,   0,  0], [36, -16,  0], [54, -16,  0],
+];
+// Basis hex — ring 2 at (0, 0, R)
+const basisHexR2 = [
+    [0,   0,  63], [0,  16,  54], [0,  16,  36],
+    [0,   0,  27], [0, -16,  36], [0, -16,  54],
+];
+
+// Edge list (96 edges: 48 ring + 48 spoke)
+const edges = [];
+// Ring edges
+for (let r = 0; r < 8; r++) {
+    const base = r * 6;
+    for (let i = 0; i < 6; i++) edges.push([base + i, base + (i + 1) % 6]);
+}
+// Spoke edges (ring n connects to ring n+1, ring 7 wraps to ring 0)
+for (let r = 0; r < 8; r++) {
+    const base = r * 6;
+    const next = ((r + 1) % 8) * 6;
+    for (let i = 0; i < 6; i++) edges.push([base + i, next + i]);
+}
+
+document.getElementById('edges').textContent = edges.length;
+document.getElementById('verts').textContent = NUM_VERTS;
+
+// --- Derive torus (matches derive_torus in torus_data.a80) ---
+function deriveTorus(ax, ay, az) {
+    const verts = new Array(48);
+
+    // Rotate 6 hex verts through rotate_xyz
+    function rotateHex(basis, destOffset) {
+        for (let i = 0; i < 6; i++) {
+            const [x, y, z] = ZXMath.rotateXYZ(basis[i][0], basis[i][1], basis[i][2], ax, ay, az);
+            verts[destOffset + i] = [x, y, z];
+        }
+    }
+
+    // Ring 0 (0°): rotate basis hex
+    rotateHex(basisHex, 0);
+    // Ring 2 (90°): rotate basis hex r2
+    rotateHex(basisHexR2, 12);
+
+    // Ring 4 (180°): negate X,Z of ring 0
+    for (let i = 0; i < 6; i++) {
+        const [x, y, z] = verts[i];
+        verts[24 + i] = [(-x << 24) >> 24, y, (-z << 24) >> 24];
+    }
+    // Ring 6 (270°): negate X,Z of ring 2
+    for (let i = 0; i < 6; i++) {
+        const [x, y, z] = verts[12 + i];
+        verts[36 + i] = [(-x << 24) >> 24, y, (-z << 24) >> 24];
+    }
+
+    // Midpoint rings (matches average_ring with sra a)
+    function avgRing(ringA, ringB, dest) {
+        for (let i = 0; i < 6; i++) {
+            verts[dest + i] = [
+                (verts[ringA + i][0] + verts[ringB + i][0]) >> 1,
+                (verts[ringA + i][1] + verts[ringB + i][1]) >> 1,
+                (verts[ringA + i][2] + verts[ringB + i][2]) >> 1,
+            ];
+        }
+    }
+    avgRing(0, 12, 6);   // Ring 1 (45°): avg(ring 0, ring 2)
+    avgRing(12, 24, 18);  // Ring 3 (135°): avg(ring 2, ring 4)
+    avgRing(24, 36, 30);  // Ring 5 (225°): avg(ring 4, ring 6)
+    avgRing(36, 0, 42);   // Ring 7 (315°): avg(ring 6, ring 0)
+
+    return verts;
+}
+
+// --- Project & draw ---
+function projectAll(verts) {
+    return verts.map(([x, y, z]) => ZXMath.project(x, y, z, VIEWER_DIST));
+}
+
+// --- Animation ---
+let angleX = 0, angleY = 0, angleZ = 0;
+let paused = false, speedX = true, speedZ = false;
+let lastTime = performance.now(), frameCounter = 0;
+
+function frame() {
+    if (!paused) {
+        zx.clearScreen();
+
+        const verts3d = deriveTorus(angleX, angleY, angleZ);
+        const proj = projectAll(verts3d);
+
+        // Draw edges
+        let drawn = 0;
+        for (const [a, b] of edges) {
+            const pa = proj[a], pb = proj[b];
+            if (!pa || !pb) continue;
+            if (pa[1] >= 192 || pb[1] >= 192) continue;
+            zx.drawLine(pa[0], pa[1], pb[0], pb[1]);
+            drawn++;
+        }
+
+        zx.render();
+
+        // Animate (matches Z80: Y += 3, X += 1)
+        angleY = (angleY + 3) & 0xFF;
+        if (speedX) angleX = (angleX + 1) & 0xFF;
+        if (speedZ) angleZ = (angleZ + 1) & 0xFF;
+
+        document.getElementById('ax').textContent = angleX;
+        document.getElementById('ay').textContent = angleY;
+        document.getElementById('az').textContent = angleZ;
+    }
+
+    frameCounter++;
+    const now = performance.now();
+    if (now - lastTime > 1000) {
+        document.getElementById('fps').textContent = frameCounter + ' fps';
+        frameCounter = 0;
+        lastTime = now;
+    }
+
+    requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body></html>
