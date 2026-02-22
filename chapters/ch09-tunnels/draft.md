@@ -92,7 +92,7 @@ The complication is that the source addresses change every frame as the zoom pro
 
 ## Code Generation: Processing Writes Z80
 
-Introspec did not write the zoomer's unrolled code by hand. The address sequences are different for every zoom level, and calculating them at runtime would consume the frame budget. Instead, he wrote the code generator in Processing, the Java-based creative coding environment. A Processing sketch calculated, for each frame and each output cell, which source cell should be sampled, then output a complete `.a80` source file containing the unrolled `ld hl,nn : ldi` sequence with all addresses filled in. SjASMPlus compiled this generated source alongside the hand-written engine code.
+Introspec did not write the zoomer's unrolled code by hand. The address sequences are different for every zoom level, and calculating them at runtime would consume the frame budget. Instead, he wrote the code generator in Processing, the Java-based creative coding environment. A Processing sketch calculated, for each frame and each output cell, which source cell should be sampled, then output a complete `.a80` source file containing the unrolled `ld hl,nn : ldi` sequence with all addresses filled in. sjasmplus compiled this generated source alongside the hand-written engine code.
 
 The pipeline: Processing calculates the zoom mapping, writes `.a80` source, the assembler compiles it, and at runtime the scripting engine selects which pre-generated frame to execute. The Z80 does not compute the mapping. It merely plays it back.
 
@@ -108,7 +108,7 @@ Introspec's answer is characteristically nuanced. The art, he argues, is not in 
 
 He has a point. The chaos zoomer's visual quality depends on the source data, the mapping function, the zoom curve, the colour palette, and the interplay with the music. All of these are artistic decisions. The fact that the address calculations happen at compile time rather than runtime is an implementation detail -- one that enables a visual quality impossible with real-time computation at 3.5MHz. The machine's constraints -- its memory, its instruction set, its timing -- shaped every decision. That the shaping happened partly in Processing and partly in Z80 assembly does not diminish the result.
 
-For this book's purposes, the takeaway is practical: code generation is a legitimate and powerful technique. If your effect requires calculations that exceed the Z80's frame budget, consider moving them to build time. Your assembler's macro language, a Lua script inside SjASMPlus, or an external program in Python or Processing can all serve as code generators. The Z80 gets to do what it does best: copy data at maximum speed.
+For this book's purposes, the takeaway is practical: code generation is a legitimate and powerful technique. If your effect requires calculations that exceed the Z80's frame budget, consider moving them to build time. Your assembler's macro language, a Lua script inside sjasmplus, or an external program in Python or Processing can all serve as code generators. The Z80 gets to do what it does best: copy data at maximum speed.
 
 ---
 
@@ -165,7 +165,7 @@ Every 8x8 cell will now display alternating ink and paper pixels. When we change
 
 ### Step 2: Sine Table
 
-Page-align a 256-byte sine table for fast indexing. This can be generated at assembly time using SjASMPlus's Lua scripting (as we saw in Chapter 4), or pre-calculated and included as binary data:
+Page-align a 256-byte sine table for fast indexing. This can be generated at assembly time using sjasmplus's Lua scripting, or pre-calculated and included as binary data:
 
 ```z80
     ALIGN 256

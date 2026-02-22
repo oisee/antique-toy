@@ -1,0 +1,239 @@
+; engine.a80 — Demo engine: timeline reader, effect dispatch, main loop
+;
+; Ring buffer of 8 × 768-byte attribute frames at BUF_BASE ($C000).
+; Main loop generates frames ahead; ISR copies them to screen at 50Hz.
+; Timeline is a sequence of 5-byte entries driving effect transitions.
+
+; ============================================================
+; ENGINE_INIT — reset engine state
+; ============================================================
+engine_init:
+    xor  a
+    ld   (buf_write_idx), a
+    ld   (buf_read_idx), a
+    ld   (buf_count), a
+    ld   (torus_mode), a
+    ld   (cur_effect), a
+
+    ld   hl, timeline
+    ld   (tl_ptr), hl
+    ld   (tl_frames), hl     ; will be overwritten by load_next_effect
+
+    ; Load first effect from timeline
+    call load_next_effect
+    ret
+
+; ============================================================
+; ENGINE_MAIN — main loop (never returns)
+; ============================================================
+engine_main:
+    ; --- Check if buffer has room ---
+    ld   a, (buf_count)
+    cp   BUF_SLOTS
+    jr   nc, .wait           ; buffer full → wait for ISR to consume
+
+    ; --- Generate one frame ---
+    ; Border colour = timing indicator
+    ld   a, 2                ; red
+    out  ($FE), a
+
+    ; Get write buffer pointer → DE
+    call get_write_ptr       ; DE = buffer slot address
+
+    ; Call current effect's frame routine
+    call dispatch_frame
+
+    ; Advance write pointer (unless torus mode — torus writes directly)
+    ld   a, (torus_mode)
+    or   a
+    jr   nz, .skip_buf_advance
+
+    ld   a, (buf_write_idx)
+    inc  a
+    cp   BUF_SLOTS
+    jr   c, .no_wrap_w
+    xor  a
+.no_wrap_w:
+    ld   (buf_write_idx), a
+
+    ; Increment buffer count (atomic: disable interrupts briefly)
+    di
+    ld   a, (buf_count)
+    inc  a
+    ld   (buf_count), a
+    ei
+
+.skip_buf_advance:
+    ; Border black = idle
+    xor  a
+    out  ($FE), a
+
+    ; --- Advance timeline ---
+    ld   hl, (tl_frames)
+    dec  hl
+    ld   (tl_frames), hl
+    ld   a, h
+    or   l
+    jr   nz, engine_main     ; frames remaining → continue
+
+    ; Duration expired — deinit current effect, load next
+    call dispatch_deinit
+    call load_next_effect
+    jr   engine_main
+
+.wait:
+    halt                     ; wait for ISR to consume a frame
+    jr   engine_main
+
+; ============================================================
+; GET_WRITE_PTR — buf_write_idx → DE = BUF_BASE + idx * $300
+; ============================================================
+get_write_ptr:
+    ld   a, (buf_write_idx)
+    ld   d, a
+    ld   e, 0                ; DE = idx * 256
+    ; Need idx * $300 = idx * 256 + idx * 512... no.
+    ; $300 = 768. idx * 768 = idx * 512 + idx * 256
+    ; Simpler: idx * 3 → high byte offset, low byte = 0
+    ; BUF_BASE + idx*$300: high byte = $C0 + idx*3
+    ld   e, a
+    add  a, a                ; a = idx * 2
+    add  a, e                ; a = idx * 3
+    add  a, BUF_BASE >> 8   ; a = $C0 + idx * 3
+    ld   d, a
+    ld   e, 0
+    ret
+
+; ============================================================
+; GET_READ_PTR — buf_read_idx → HL = BUF_BASE + idx * $300
+; ============================================================
+get_read_ptr:
+    ld   a, (buf_read_idx)
+    ld   l, a
+    add  a, a
+    add  a, l
+    add  a, BUF_BASE >> 8
+    ld   h, a
+    ld   l, 0
+    ret
+
+; ============================================================
+; LOAD_NEXT_EFFECT — read timeline entry, call init
+; ============================================================
+load_next_effect:
+    ld   hl, (tl_ptr)
+
+    ; Check for end marker
+    ld   a, (hl)
+    cp   EFFECT_END
+    jr   nz, .not_end
+
+    ; Loop: restart timeline
+    ld   hl, timeline
+    ld   (tl_ptr), hl
+    ld   a, (hl)
+
+.not_end:
+    ; Read effect ID
+    ld   (cur_effect), a
+    inc  hl
+
+    ; Read duration (16-bit LE)
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+    inc  hl
+    ld   (tl_frames), de
+
+    ; Read param pointer (16-bit LE) — currently unused, skip
+    inc  hl
+    inc  hl
+
+    ; Advance timeline pointer
+    ld   (tl_ptr), hl
+
+    ; Reset ring buffer (flush stale frames from previous effect)
+    di
+    xor  a
+    ld   (buf_count), a
+    ld   (buf_write_idx), a
+    ld   (buf_read_idx), a
+    ei
+
+    ; Call effect init
+    call dispatch_init
+    ret
+
+; ============================================================
+; DISPATCH_INIT / DISPATCH_FRAME / DISPATCH_DEINIT
+; ============================================================
+dispatch_init:
+    ld   a, (cur_effect)
+    add  a, a                ; ×2 for word table
+    ld   l, a
+    ld   h, 0
+    ld   de, init_table
+    add  hl, de
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+    ex   de, hl
+    jp   (hl)
+
+dispatch_frame:
+    ld   a, (cur_effect)
+    add  a, a
+    ld   l, a
+    ld   h, 0
+    ld   bc, frame_table
+    add  hl, bc
+    ld   c, (hl)
+    inc  hl
+    ld   b, (hl)
+    push bc
+    ret                      ; jp (bc) via push/ret
+
+dispatch_deinit:
+    ld   a, (cur_effect)
+    add  a, a
+    ld   l, a
+    ld   h, 0
+    ld   de, deinit_table
+    add  hl, de
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+    ex   de, hl
+    jp   (hl)
+
+; ============================================================
+; Jump tables — indexed by effect ID
+; ============================================================
+init_table:
+    DW effect_plasma_init    ; 0 = EFFECT_PLASMA
+    DW effect_colour_init    ; 1 = EFFECT_COLOUR
+    DW effect_torus_init     ; 2 = EFFECT_TORUS
+    DW effect_zoomer_init    ; 3 = EFFECT_ZOOMER
+
+frame_table:
+    DW effect_plasma_frame
+    DW effect_colour_frame
+    DW effect_torus_frame
+    DW effect_zoomer_frame
+
+deinit_table:
+    DW effect_plasma_deinit
+    DW effect_colour_deinit
+    DW effect_torus_deinit
+    DW effect_zoomer_deinit
+
+; ============================================================
+; Stub effects (Phase 2 — not yet implemented)
+; ============================================================
+effect_colour_init:
+effect_colour_frame:
+effect_colour_deinit:
+effect_zoomer_init:
+effect_zoomer_frame:
+effect_zoomer_deinit:
+    ret

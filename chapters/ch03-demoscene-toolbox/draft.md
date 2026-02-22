@@ -22,7 +22,7 @@ Consider the simplest possible inner loop: clearing 256 bytes of memory.
     djnz .loop           ; 13 T  (8 on last iteration)
 ```
 
-Each iteration costs 7 + 6 + 13 = 26 T-states to store a single byte. Only 7 of those T-states do the work --- the rest is overhead. That is 73% waste. For 256 bytes: 256 x 26 - 5 = 6,651 T-states. On a machine where you have 69,888 T-states per frame, those wasted cycles hurt.
+Each iteration costs 7 + 6 + 13 = 26 T-states to store a single byte. Only 7 of those T-states do the work --- the rest is overhead. That is 73% waste. For 256 bytes: 256 x 26 - 5 = 6,651 T-states. On a machine where you have 69,888 T-states per frame, those wasted T-states hurt.
 
 ### Unrolling: trade ROM for speed
 
@@ -217,7 +217,7 @@ Everything above is a fixed optimisation --- the code runs the same way every fr
 
 Introspec used Processing (a Java-based creative coding environment) to generate Z80 assembly for the chaos zoomer in Eager (2015). A chaos zoomer changes magnification every frame --- different source pixels map to different screen locations. Rather than computing these mappings at runtime, the Processing script pre-calculated every mapping and output .a80 source files containing optimised LDI chains and LD instructions.
 
-The workflow: a Processing script calculates, for each frame, which source byte maps to which screen byte. It outputs Z80 assembly source --- sequences of `ld hl, source_addr` and `ldi` instructions --- which the assembler (SjASMPlus) builds alongside the hand-written engine code. At runtime, the engine simply calls into the pre-generated code for the current frame.
+The workflow: a Processing script calculates, for each frame, which source byte maps to which screen byte. It outputs Z80 assembly source --- sequences of `ld hl, source_addr` and `ldi` instructions --- which the assembler (sjasmplus) builds alongside the hand-written engine code. At runtime, the engine simply calls into the pre-generated code for the current frame.
 
 This is not "cheating." It is the fundamental insight that division of labour between compile time and runtime can eliminate branches, lookups, and arithmetic from the inner loop entirely. The Processing script does the hard maths once, slowly, on a modern machine. The Z80 does the easy part --- copying bytes --- as fast as physically possible.
 
@@ -320,7 +320,7 @@ DenisGrachev explored three approaches to constructing the render list:
 
 3. **Byte-based with 256-byte lookup tables.** Each tile type is a single byte (the tile index). A 256-byte lookup table maps tile indices to routine addresses. The render list is built by iterating through the tilemap bytes and looking up each address. This is the approach DenisGrachev chose for Dice Legends.
 
-Using the byte-based approach, he expanded the playfield from 26 x 15 tiles (the limit of his previous engine) to 30 x 18 tiles while maintaining the target frame rate. The savings from eliminating CALL overhead, combined with the zero-cost dispatch, freed enough cycles to render 40% more tiles.
+Using the byte-based approach, he expanded the playfield from 26 x 15 tiles (the limit of his previous engine) to 30 x 18 tiles while maintaining the target frame rate. The savings from eliminating CALL overhead, combined with the zero-cost dispatch, freed enough T-states to render 40% more tiles.
 
 ### The trade-offs
 

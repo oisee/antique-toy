@@ -55,7 +55,9 @@ The number of T-states between one interrupt and the next -- the **frame budget*
 | ZX Spectrum 128K | 70,908 | 311 | 50.02 |
 | Pentagon 128 | 71,680 | 320 | 48.83 |
 
-That is everything you have. If your main loop -- input handling, game logic, sound update, screen rendering -- takes more T-states than one frame, you drop frames. Things slow down. The border stripe trick we will build later in this chapter will make that painfully visible.
+Those are *total* T-states between interrupts. The practical budget is less -- subtract the interrupt handler cost (a PT3 music player typically consumes 3,000--5,000 T-states per frame), HALT overhead, and on non-Pentagon machines, contention penalties. On a Pentagon with a music player, expect roughly 66,000--68,000 T-states for your main loop. Chapter 15 has the detailed tact-maps.
+
+If your main loop -- input handling, game logic, sound update, screen rendering -- takes more T-states than one frame, you drop frames. Things slow down. The border stripe trick we will build later in this chapter will make that painfully visible.
 
 To put these numbers in perspective: a single `LDIR` copying 6,912 bytes (one full screen of pixel data) costs approximately 6,912 x 21 = 145,152 T-states. That is more than two entire frames on a 48K Spectrum. You cannot even copy the screen once per frame with the simplest possible method. This is the kind of constraint that forces creativity.
 
@@ -77,7 +79,7 @@ This makes cycle-counting on original Spectrums a nightmare. Your carefully calc
 
 The Pentagon 128, the most popular Soviet ZX Spectrum clone, took a different approach. Its designers gave the ULA its own memory access window that does not conflict with the CPU. **There is no contended memory on the Pentagon.** Every instruction takes exactly the number of T-states listed in the datasheet, regardless of where the code lives or what memory it accesses.
 
-This is why the Pentagon has a different frame size -- 71,680 T-states, 320 scanlines. The ULA timing is slightly different because there is no need to interleave CPU and ULA access. But the payoff is enormous: you can count cycles with absolute confidence. When your inner loop says it costs 36 T-states per iteration, it costs 36 T-states per iteration, every single time, everywhere in the frame.
+This is why the Pentagon has a different frame length -- 71,680 T-states, 320 scanlines. The ULA timing is slightly different because there is no need to interleave CPU and ULA access. But the payoff is enormous: you can count cycles with absolute confidence. When your inner loop says it costs 36 T-states per iteration, it costs 36 T-states per iteration, every single time, everywhere in the frame.
 
 This clean timing is why the Pentagon became the standard platform for the ZX Spectrum demoscene, particularly in the Former Soviet Union where these clones were ubiquitous. When you watch demos from groups like X-Trade, 4th Dimension, or Life on Mars, they are overwhelmingly targeting Pentagon timing. When Introspec wrote his legendary technical teardown of Illusion by X-Trade, the cycle counts he quoted assumed Pentagon.
 
@@ -134,7 +136,7 @@ Before we write our first timing harness, you need a working toolchain. The setu
 1. **VS Code** -- your editor and integrated environment.
 2. **Z80 Macro Assembler extension** by mborik (`mborik.z80-macroasm`) -- syntax highlighting, code completion, symbol resolution for Z80 assembly. Install from the VS Code marketplace.
 3. **Z80 Assembly Meter** by Nestor Sancho -- displays the byte count and cycle count of the currently selected instruction(s) in the status bar. This is invaluable. Select a block of code and see its total T-state cost instantly.
-4. **SjASMPlus** -- the assembler itself. Cross-platform, open source, supports macros, Lua scripting, multiple output formats. Download from https://github.com/z00m128/sjasmplus and place the binary somewhere in your PATH.
+4. **sjasmplus** -- the assembler itself. Cross-platform, open source, supports macros, Lua scripting, multiple output formats. Download from https://github.com/z00m128/sjasmplus and place the binary somewhere in your PATH.
 5. **Unreal Speccy** (Windows) or **Fuse** (cross-platform) -- the emulator. Unreal Speccy is preferred for demo development because it emulates Pentagon timing accurately and has a built-in debugger.
 
 ### Project Structure
@@ -329,7 +331,7 @@ When you sit down to write an effect, you are not asking "how do I draw this pic
 
 And the first constraint on any scheme is the budget. 71,680 T-states. Can you evolve your computation within that budget? If not, can you find a cheaper scheme that produces a similar visual? Can you precompute part of the scheme into tables? Can you spread the computation across multiple frames? Can you exploit symmetry to compute half the screen and mirror the other half?
 
-These are the questions that drive every chapter in this book. They start here, with counting cycles.
+These are the questions that drive every chapter in this book. They start here, with counting T-states.
 
 ---
 

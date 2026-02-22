@@ -251,7 +251,7 @@ select_preshift:
     ret
 ```
 
-The draw time is the same as Method 2: ~2,300 T-states. But you have eliminated the per-pixel shift cost entirely. The price is paid in memory, not cycles.
+The draw time is the same as Method 2: ~2,300 T-states. But you have eliminated the per-pixel shift cost entirely. The price is paid in memory, not T-states.
 
 ---
 

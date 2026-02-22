@@ -537,7 +537,7 @@ The order is deliberate: forces first, then move, then collide. This is the stan
 
 ## Part 3: Enemy AI
 
-You do not have the cycles for pathfinding or decision trees. What you have is a jump table and a state byte. That is enough.
+You do not have the T-states for pathfinding or decision trees. What you have is a jump table and a state byte. That is enough.
 
 ### The Finite State Machine
 

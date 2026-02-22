@@ -16,15 +16,15 @@ derive_torus:
     ld   iy, vertices + 2*18
     call rotate_6_hex
 
-    ; Ring 4 (180°): negate X,Z of ring 0
-    ld   ix, vertices
+    ; Ring 4 (180°): rotate 6 hex verts
+    ld   ix, basis_hex_r4
     ld   iy, vertices + 4*18
-    call negate_ring_xz
+    call rotate_6_hex
 
-    ; Ring 6 (270°): negate X,Z of ring 2
-    ld   ix, vertices + 2*18
+    ; Ring 6 (270°): rotate 6 hex verts
+    ld   ix, basis_hex_r6
     ld   iy, vertices + 6*18
-    call negate_ring_xz
+    call rotate_6_hex
 
     ; Ring 1 (45°): avg(ring 0, ring 2)
     ld   ix, vertices
@@ -76,24 +76,6 @@ rotate_6_hex:
     djnz .loop
     ret
 
-; --- NEGATE_RING_XZ: derive opposite ring ---
-negate_ring_xz:
-    ld   b, 6
-.loop:
-    ld   a, (ix+0)
-    neg
-    ld   (iy+0), a
-    ld   a, (ix+1)
-    ld   (iy+1), a
-    ld   a, (ix+2)
-    neg
-    ld   (iy+2), a
-    ld   de, 3
-    add  ix, de
-    add  iy, de
-    djnz .loop
-    ret
-
 ; --- AVERAGE_RING: midpoint of two rings ---
 ; IX=ring A, IY=ring B, HL=dest
 average_ring:
@@ -129,6 +111,24 @@ basis_hex_r2:
     DB   0,   0,  27
     DB   0, -16,  36
     DB   0, -16,  54
+
+; Ring 4 at (-R, 0, 0): hex in XY plane, opposite side
+basis_hex_r4:
+    DB -63,   0,   0
+    DB -54,  16,   0
+    DB -36,  16,   0
+    DB -27,   0,   0
+    DB -36, -16,   0
+    DB -54, -16,   0
+
+; Ring 6 at (0, 0, -R): hex in YZ plane, opposite side
+basis_hex_r6:
+    DB   0,   0, -63
+    DB   0,  16, -54
+    DB   0,  16, -36
+    DB   0,   0, -27
+    DB   0, -16, -36
+    DB   0, -16, -54
 
 ; --- Edge list: 96 edges (vertex index pairs) ---
 edge_list:

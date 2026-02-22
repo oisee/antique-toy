@@ -57,7 +57,7 @@ Row 14:  $4620     Third 0, char row 1, scan line 6
 Row 15:  $4720     Third 0, char row 1, scan line 7
 ```
 
-Look at the pattern. The first 8 rows are the 8 scan lines of character row 0 -- but they are 256 bytes apart, not 32. Within those 8 rows, the high byte of the address increments by 1 each time: `$40`, `$41`, `$42`, ... `$47`. Then row 8 jumps to `$4020` -- back to a high byte of `$40`, but with the low byte advanced by 32.
+Look at the pattern. The first 8 rows are the 8 scanlines of character row 0 -- but they are 256 bytes apart, not 32. Within those 8 rows, the high byte of the address increments by 1 each time: `$40`, `$41`, `$42`, ... `$47`. Then row 8 jumps to `$4020` -- back to a high byte of `$40`, but with the low byte advanced by 32.
 
 Here is the complete picture for the top third of the screen:
 
@@ -78,7 +78,7 @@ The middle third starts at `$4800` and follows the same pattern. The bottom thir
 
 The reason is the ULA -- the Uncommitted Logic Array that generates the video signal. The ULA reads one byte of pixel data and one byte of attribute data for every 8-pixel character cell it draws. It needs both bytes at specific moments as it rasters across the screen.
 
-The interleaved layout meant that the ULA's address counter logic could be built with fewer gates. As the ULA scans left to right across a character row, it increments the low 5 bits of the address (the column). When it reaches the right edge, it increments the high byte to move to the next scan line within the same character row. When it finishes all 8 scan lines, it wraps the high byte and advances the low-byte row bits.
+The interleaved layout meant that the ULA's address counter logic could be built with fewer gates. As the ULA scans left to right across a character row, it increments the low 5 bits of the address (the column). When it reaches the right edge, it increments the high byte to move to the next scanline within the same character row. When it finishes all 8 scanlines, it wraps the high byte and advances the low-byte row bits.
 
 This is elegant from a hardware perspective. The ULA's address generation is a simple combination of counters -- no multiplication, no complex address arithmetic. The PCB routing was simpler, the gate count was lower, and the chip was cheaper to manufacture.
 
@@ -97,7 +97,7 @@ Low byte:   L L L C C C C C
 
 Where:
 - `TT` = which third of the screen (0, 1, or 2). Bits 7--6 of y.
-- `SSS` = scan line within the character cell (0--7). Bits 2--0 of y.
+- `SSS` = scanline within the character cell (0--7). Bits 2--0 of y.
 - `LLL` = character row within the third (0--7). Bits 5--3 of y.
 - `CCCCC` = column in bytes (0--31). This is x / 8, or equivalently bits 7--3 of x.
 
@@ -165,15 +165,15 @@ pixel_addr:
 
 ## DOWN_HL: Moving One Pixel Row Down
 
-You have a pointer in HL to some byte on the screen. You want to move it one pixel row down -- to the byte at the same column, one scan line lower. How hard can this be?
+You have a pointer in HL to some byte on the screen. You want to move it one pixel row down -- to the byte at the same column, one scanline lower. How hard can this be?
 
 On a linear framebuffer, you add 32 (the number of bytes per row). One `ADD HL, DE` with DE = 32: 11 T-states, done.
 
 On the Spectrum, it is a puzzle within the puzzle. Moving one pixel row down means:
 
-1. **Within a character cell** (scan lines 0--6 to 1--7): increment H. The scan line bits are in the low 3 bits of H, so `INC H` moves you one scan line down.
+1. **Within a character cell** (scanlines 0--6 to 1--7): increment H. The scanline bits are in the low 3 bits of H, so `INC H` moves you one scanline down.
 
-2. **Crossing a character cell boundary** (scan line 7 to scan line 0 of the next row): reset the scan line bits of H back to 0, and add 32 to L to move to the next character row.
+2. **Crossing a character cell boundary** (scanline 7 to scanline 0 of the next row): reset the scanline bits of H back to 0, and add 32 to L to move to the next character row.
 
 3. **Crossing a third boundary** (bottom of char row 7 in one third to top of char row 0 in the next): reset L back, and add 8 to H to move to the next third. Equivalently, add `$0800` to the address.
 
@@ -215,7 +215,7 @@ This routine takes different amounts of time depending on which case it hits:
 
 The common case -- staying within a character cell -- is fast: 20 T-states. But the uncommon case (crossing a character row boundary within the same third) is slow: 77 T-states. Averaged over all 192 rows, the cost works out to about **24.6 T-states per call**.
 
-That average hides a problem. If you are iterating down the full screen and calling DOWN_HL on every row, those occasional 77-T-state calls spike your per-line timing unpredictably. For a demo effect that needs consistent timing per scan line, this jitter is unacceptable.
+That average hides a problem. If you are iterating down the full screen and calling DOWN_HL on every row, those occasional 77-T-state calls spike your per-line timing unpredictably. For a demo effect that needs consistent timing per scanline, this jitter is unacceptable.
 
 ### Introspec's Optimisation
 
@@ -282,7 +282,7 @@ iterate_screen:
     jr   nz, .third_loop    ; 12T/7T
 ```
 
-The `REPT 7` directive (supported by SjASMPlus) repeats the block 7 times at assembly time -- a partial unroll. Inside that block, moving down one scan line is a single `INC H`. No testing, no branching. The character-row advance and third-advance happen at the fixed outer loop boundaries.
+The `REPT 7` directive (supported by sjasmplus) repeats the block 7 times at assembly time -- a partial unroll. Inside that block, moving down one scanline is a single `INC H`. No testing, no branching. The character-row advance and third-advance happen at the fixed outer loop boundaries.
 
 ---
 
@@ -475,7 +475,7 @@ Load `fill_screen.a80` in your assembler and emulator. Then experiment:
 - Change `$55` to `$AA` for the inverse checkerboard, or to `$FF` for solid fill, or `$81` for vertical bars.
 - Change `$4F` to `$07` to see the same pattern without BRIGHT, or to `$38` for white paper with black ink (the inverse of default).
 - Try `$C7` -- that sets the flash bit. Watch the characters alternate between ink and paper colours at about 1.6 Hz.
-- Replace the LDIR pixel fill with a DOWN_HL loop that writes different patterns to different rows. Now you will see the interleave in action: if you write `$FF` to rows 0-7 (the first character cell's scan lines), the filled area will appear as 8 horizontal stripes separated by gaps -- because those rows are 256 bytes apart, not 32.
+- Replace the LDIR pixel fill with a DOWN_HL loop that writes different patterns to different rows. Now you will see the interleave in action: if you write `$FF` to rows 0-7 (the first character cell's scanlines), the filled area will appear as 8 horizontal stripes separated by gaps -- because those rows are 256 bytes apart, not 32.
 
 ---
 
@@ -658,9 +658,9 @@ Every technique in the rest of this book is shaped by the screen layout describe
 
 **Screen clearing** (Chapter 3) uses the PUSH trick -- setting SP to `$5800` and pushing data downward through the pixel area. The interleave does not matter for clearing because every byte gets the same value. But for *patterned* clears (striped backgrounds, gradient fills), the interleave means you must think carefully about which rows get which data.
 
-**Scrolling** (Chapter 7 in the expanded outline) is where the layout hurts most. Scrolling the screen up by one pixel means moving each row's 32 bytes to the address of the row above it. On a linear framebuffer, this is one big block copy. On the Spectrum, the source and destination addresses for each row are related by the DOWN_HL logic -- not by a fixed offset. A scroll routine must navigate the interleave for every row it copies.
+**Scrolling** (Chapter 17) is where the layout hurts most. Scrolling the screen up by one pixel means moving each row's 32 bytes to the address of the row above it. On a linear framebuffer, this is one big block copy. On the Spectrum, the source and destination addresses for each row are related by the DOWN_HL logic -- not by a fixed offset. A scroll routine must navigate the interleave for every row it copies.
 
-**Attribute effects** (Chapters 7-8) are where the layout helps. Because the attribute area is linear and small (768 bytes), updating colours is fast. A full-screen attribute update with LDIR costs about 16,000 T-states -- less than a quarter of a frame. This is why attribute-based effects (tunnels, plasmas, colour cycling) are a staple of Spectrum demoscene work.
+**Attribute effects** (Chapters 8--9) are where the layout helps. Because the attribute area is linear and small (768 bytes), updating colours is fast. A full-screen attribute update with LDIR costs about 16,000 T-states -- less than a quarter of a frame. This is why attribute-based effects (tunnels, plasmas, colour cycling) are a staple of Spectrum demoscene work.
 
 ---
 

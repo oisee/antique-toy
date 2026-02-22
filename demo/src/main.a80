@@ -1,0 +1,234 @@
+; main.a80 — "Not Eager" multi-effect demo
+; ZX Spectrum 128K, sjasmplus
+;
+; Entry point: IM2 setup, checkerboard init, engine main loop
+; Assembles with: sjasmplus --nologo main.a80
+
+    DEVICE ZXSPECTRUM48
+
+; ============================================================
+; Memory map constants
+; ============================================================
+SCREEN      EQU $4000
+SCREEN_END  EQU $5800
+ATTR_START  EQU $5800
+ATTR_SIZE   EQU 768
+VIEWER_DIST EQU 200
+
+; Ring buffer: 8 × 768 bytes at $C000
+BUF_BASE    EQU $C000
+BUF_SLOTS   EQU 8
+BUF_SLOT_SZ EQU 768           ; $300
+
+; Workspace for effects at $E000
+WORKSPACE   EQU $E000
+
+; IM2: vector table at $FE00 (257×$FF), trampoline at $FFF4
+IM2_VEC     EQU $FE00
+
+; Stack in free area $6000-$7FFF (below code at $8000)
+STACK_TOP   EQU $7FFE
+
+; Torus constants
+TORUS_MAJ   EQU 45
+TORUS_MIN   EQU 18
+NUM_RINGS   EQU 8
+NUM_HEX     EQU 6
+NUM_VERTS   EQU NUM_RINGS * NUM_HEX   ; 48
+NUM_EDGES   EQU 96
+
+; Effect IDs
+EFFECT_PLASMA   EQU 0
+EFFECT_COLOUR   EQU 1
+EFFECT_TORUS    EQU 2
+EFFECT_ZOOMER   EQU 3
+EFFECT_END      EQU $FF
+
+; ============================================================
+; Code section — $8000 (above screen memory, below ring buffer)
+; ============================================================
+    ORG $8000
+
+start:
+    di
+    ld   sp, STACK_TOP
+
+    ; IM2 vector table + trampoline baked into SNA at assembly time.
+    ; $FE00: 257×$FF → any interrupt reads vector $FFFF
+    ; $FFFF: JR ($18) + ROM $0000 ($F3 = -13) → lands at $FFF4
+    ; $FFF4: JP isr_handler
+
+    ld   a, $FE              ; vector table page = $FE
+    ld   i, a
+    im   2
+
+    ; --- Init checkerboard pixel pattern ---
+    call init_checkerboard
+
+    ; --- Init attributes to black ---
+    xor  a
+    call set_attrs
+
+    ; --- Init engine state ---
+    call engine_init
+
+    ei
+
+    ; --- Enter engine main loop (never returns) ---
+    jp   engine_main
+
+; ============================================================
+; INIT_CHECKERBOARD — fill screen with 50% checkerboard
+; Makes attribute colours visible as solid-looking blocks
+; Pattern: $AA / $55 alternating scan lines
+; ============================================================
+init_checkerboard:
+    ld   hl, SCREEN
+    ld   bc, 192 * 32        ; 6144 bytes
+.row:
+    ; Determine pattern from scan line (H bit 0)
+    ld   a, h
+    and  1
+    jr   z, .even
+    ld   a, $55
+    jr   .fill
+.even:
+    ld   a, $AA
+.fill:
+    ld   (hl), a
+    inc  hl
+    dec  bc
+    ld   a, b
+    or   c
+    jr   nz, .row
+    ret
+
+; ============================================================
+; ISR HANDLER — interrupt service routine
+; Reached via: $FE00 vector table (257×$FF) → $FFFF JR → $FFF4 JP
+; ============================================================
+isr_handler:
+    push af
+    push bc
+    push de
+    push hl
+
+    ; --- Check torus mode ---
+    ld   a, (torus_mode)
+    or   a
+    jr   nz, .music_only
+
+    ; --- Check if buffer has frames ---
+    ld   a, (buf_count)
+    or   a
+    jr   z, .music_only      ; nothing to display
+
+    ; --- Copy 768 bytes from read slot → $5800 ---
+    call get_read_ptr        ; HL = source in ring buffer
+    ld   de, ATTR_START      ; DE = $5800
+    ld   bc, ATTR_SIZE       ; BC = 768
+    ldir
+
+    ; --- Advance read pointer ---
+    ld   a, (buf_read_idx)
+    inc  a
+    cp   BUF_SLOTS
+    jr   c, .no_wrap
+    xor  a
+.no_wrap:
+    ld   (buf_read_idx), a
+
+    ; --- Decrement buffer count ---
+    ld   a, (buf_count)
+    dec  a
+    ld   (buf_count), a
+
+.music_only:
+    ; Music player tick — stub for now
+    ; call music_play
+
+    pop  hl
+    pop  de
+    pop  bc
+    pop  af
+    ei
+    reti
+
+; ============================================================
+; Include code modules (all assembled in $8000+ region)
+; ============================================================
+    INCLUDE "engine.a80"
+    INCLUDE "plasma.a80"
+    INCLUDE "torus_effect.a80"
+    INCLUDE "math.a80"
+    INCLUDE "draw.a80"
+    INCLUDE "tables.a80"
+    INCLUDE "torus_data.a80"
+
+; ============================================================
+; Variables — at workspace address $E000
+; ============================================================
+    ORG WORKSPACE
+
+; Engine state
+torus_mode:    DB 0           ; 1 = torus active, ISR skips buf copy
+buf_write_idx: DB 0           ; write pointer (0..BUF_SLOTS-1)
+buf_read_idx:  DB 0           ; read pointer (0..BUF_SLOTS-1)
+buf_count:     DB 0           ; frames in buffer
+
+tl_ptr:        DW timeline    ; current timeline entry pointer
+tl_frames:     DW 0           ; frames remaining for current effect
+cur_effect:    DB $FF         ; current effect ID ($FF = none)
+
+; Torus variables
+vert_in:       DS 3
+vert_out:      DS 3
+angle_x:       DB 0
+angle_y:       DB 0
+angle_z:       DB 0
+cur_sin:       DB 0
+cur_cos:       DB 0
+coord_a:       DB 0
+coord_b:       DB 0
+result_a:      DB 0
+result_b:      DB 0
+temp_w0:       DW 0
+proj_scale:    DB 0
+screen_x:      DB 0
+screen_y:      DB 0
+
+; Line drawing variables
+line_x0:       DB 0
+line_y0:       DB 0
+line_x1:       DB 0
+line_y1:       DB 0
+line_dx:       DB 0
+line_dy:       DB 0
+y_dir:         DB 0
+
+; Plasma variables
+plasma_phase:  DB 0           ; animation phase counter
+
+; Buffers (still in workspace area)
+vertices:      DS NUM_VERTS * 3   ; 144 bytes — torus vertices
+proj_buf:      DS NUM_VERTS * 2   ; 96 bytes — projected 2D coords
+
+; ============================================================
+; IM2 vector table — 257 bytes of $FF at $FE00
+; Any bus value → reads $FFFF as interrupt vector
+; ============================================================
+    ORG IM2_VEC
+    BLOCK 257, $FF
+
+; ============================================================
+; IM2 trampoline — JP at $FFF4, JR opcode at $FFFF
+; Z80 jumps to $FFFF, reads JR ($18), then ROM $0000 ($F3=-13)
+; JR target = $0001 + (-13) = $FFF4 → JP isr_handler
+; ============================================================
+    ORG $FFF4
+    JP   isr_handler         ; 3 bytes at $FFF4-$FFF6
+
+    ORG $FFFF
+    DB   $18                 ; JR opcode — offset from ROM $0000
+
+    SAVESNA "not-eager.sna", start

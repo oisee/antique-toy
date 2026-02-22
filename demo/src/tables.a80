@@ -1,0 +1,76 @@
+; tables.a80 — Colour maps, timeline data, parameter blocks
+;
+; Colour map: 16 entries mapping plasma value → ZX attribute byte
+; Timeline: sequence of 5-byte entries driving effect transitions
+
+; ============================================================
+; COLOUR MAP — 16 attribute values for plasma
+; ZX attribute format: FBPPPiii (Flash, Bright, Paper 0-7, Ink 0-7)
+; Designed for smooth colour cycling through warm/cool transitions
+; ============================================================
+colour_map:
+    ; Index:  0     1     2     3     4     5     6     7
+    DB $00, $01, $02, $03, $04, $05, $06, $07
+    ; Index:  8     9    10    11    12    13    14    15
+    DB $47, $46, $45, $44, $43, $42, $41, $40
+    ;  0 = black on black
+    ;  1 = blue ink on black
+    ;  2 = red ink on black
+    ;  3 = magenta ink on black
+    ;  4 = green ink on black
+    ;  5 = cyan ink on black
+    ;  6 = yellow ink on black
+    ;  7 = white ink on black
+    ;  8 = white ink on white (bright)
+    ;  ... descending back through colours on white paper
+
+; Alternate colour map — brighter, more saturated
+colour_map_2:
+    DB $40, $41, $42, $43, $44, $45, $46, $47
+    DB $07, $06, $05, $04, $03, $02, $01, $00
+
+; ============================================================
+; TIMELINE — demo sequence
+; Format: effect_id(1), duration_lo(1), duration_hi(1), param_ptr(2)
+; $FF = loop to start
+; ============================================================
+timeline:
+    ; 4 seconds of plasma (200 frames at 50Hz)
+    DB EFFECT_PLASMA
+    DW 200
+    DW plasma_params_1
+
+    ; 5 seconds of torus (250 frames)
+    DB EFFECT_TORUS
+    DW 250
+    DW torus_params_1
+
+    ; 4 seconds of plasma with different params
+    DB EFFECT_PLASMA
+    DW 200
+    DW plasma_params_2
+
+    ; 5 seconds of torus
+    DB EFFECT_TORUS
+    DW 250
+    DW torus_params_1
+
+    ; End marker — loop back to start
+    DB EFFECT_END
+
+; ============================================================
+; PARAMETER BLOCKS
+; Each effect can read these for per-segment configuration.
+; Format is effect-specific; currently just placeholders.
+; ============================================================
+plasma_params_1:
+    DB 3                     ; animation speed
+    DB 0                     ; colour map index (0 = default)
+
+plasma_params_2:
+    DB 5                     ; faster animation
+    DB 1                     ; alternate colour map
+
+torus_params_1:
+    DB 3                     ; Y rotation speed
+    DB 1                     ; X rotation speed

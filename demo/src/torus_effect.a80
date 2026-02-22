@@ -1,81 +1,55 @@
-; torus.a80 — "Not Eager" hexagonal torus demo effect
-; Spinning wireframe torus using Dark's midpoint method (SE#02, 1998)
+; torus_effect.a80 — Torus wireframe adapter for demo engine
 ;
-; Target: ZX Spectrum 128K, Pentagon timing (71,680 T/frame)
-; Frame rate: 25 fps (2 frames per update = 143,360 T budget)
-;
-; 8 rings × 6 hex vertices = 48 vertices, 96 edges
-; Midpoint derivation: 4 cardinal rings rotated, 4 averaged
-;
-; Assembles with: sjasmplus --nologo torus.a80
-;            or:   mza --target zxspectrum torus.a80
-
-    DEVICE ZXSPECTRUM48
-    ORG $8000
+; Wraps existing torus rendering (math.a80, draw.a80, torus_data.a80) into
+; the standard effect interface. Torus writes pixels directly to screen,
+; so it sets torus_mode to skip ISR buffer copy.
 
 ; ============================================================
-; Constants
+; TORUS INIT
 ; ============================================================
-SCREEN      EQU $4000
-SCREEN_END  EQU $5800
-ATTR_START  EQU $5800
-VIEWER_DIST EQU 200
-TORUS_MAJ   EQU 45       ; major radius
-TORUS_MIN   EQU 18       ; minor radius
-NUM_RINGS   EQU 8
-NUM_HEX     EQU 6
-NUM_VERTS   EQU NUM_RINGS * NUM_HEX   ; 48
-NUM_EDGES   EQU 96
+effect_torus_init:
+    ; Set torus mode — ISR skips attribute buffer copy
+    ld   a, 1
+    ld   (torus_mode), a
 
-; ============================================================
-; Entry point
-; ============================================================
-start:
-    di
-    ld   sp, $7FFE
-
+    ; Clear screen for wireframe rendering
     call clear_screen
-    ld   a, %01000111    ; white ink, black paper, bright
-    call set_attrs
-    ei
 
+    ; Set bright white on black attributes
+    ld   a, %01000111        ; white ink, black paper, bright
+    call set_attrs
+
+    ; Init rotation angles
     xor  a
     ld   (angle_x), a
     ld   (angle_y), a
     ld   (angle_z), a
+    ret
 
 ; ============================================================
-; Main loop — runs once per 2 frames (25 fps)
+; TORUS FRAME — render one frame directly to screen
+; Entry: DE = buffer pointer (ignored — torus writes directly)
 ; ============================================================
-main_loop:
+effect_torus_frame:
+    ; Single halt for vsync timing (~50fps if budget allows)
     halt
-    halt
-
-    ; Border red = working
-    ld   a, 2
-    out  ($FE), a
 
     call derive_torus
     call project_all
     call clear_screen
     call draw_all_edges
 
-    ; Animate
+    ; Animate rotation
     ld   a, (angle_y)
     add  a, 3
     ld   (angle_y), a
     ld   a, (angle_x)
     add  a, 1
     ld   (angle_x), a
-
-    ; Border black = idle
-    xor  a
-    out  ($FE), a
-
-    jr   main_loop
+    ret
 
 ; ============================================================
-; PROJECT_ALL — Project all 48 vertices to 2D
+; PROJECT_ALL — project all 48 vertices to 2D
 ; ============================================================
 project_all:
     ld   ix, vertices
@@ -109,7 +83,7 @@ project_all:
     ret
 
 ; ============================================================
-; DRAW_ALL_EDGES — Draw all 96 wireframe edges
+; DRAW_ALL_EDGES — draw all 96 wireframe edges
 ; ============================================================
 draw_all_edges:
     ld   ix, edge_list
@@ -163,40 +137,13 @@ lookup_proj:
     ret
 
 ; ============================================================
-; Include modules
+; TORUS DEINIT — restore checkerboard for attribute effects
 ; ============================================================
-    INCLUDE "math.a80"
-    INCLUDE "draw.a80"
-    INCLUDE "torus_data.a80"
+effect_torus_deinit:
+    ; Clear torus mode
+    xor  a
+    ld   (torus_mode), a
 
-; ============================================================
-; Variables & Buffers
-; ============================================================
-vert_in:     DS 3
-vert_out:    DS 3
-angle_x:     DB 0
-angle_y:     DB 0
-angle_z:     DB 0
-cur_sin:     DB 0
-cur_cos:     DB 0
-coord_a:     DB 0
-coord_b:     DB 0
-result_a:    DB 0
-result_b:    DB 0
-temp_w0:     DW 0
-proj_scale:  DB 0
-screen_x:    DB 0
-screen_y:    DB 0
-
-line_x0:     DB 0
-line_y0:     DB 0
-line_x1:     DB 0
-line_y1:     DB 0
-line_dx:     DB 0
-line_dy:     DB 0
-y_dir:       DB 0
-
-vertices:    DS NUM_VERTS * 3    ; 144 bytes
-proj_buf:    DS NUM_VERTS * 2    ; 96 bytes
-
-    SAVESNA "torus.sna", start
+    ; Restore checkerboard pixel pattern
+    call init_checkerboard
+    ret

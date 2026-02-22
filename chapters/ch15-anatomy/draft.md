@@ -95,7 +95,7 @@ Introspec covered this exhaustively in his "GO WEST" articles on Hype (2015). He
 
 ### What Gets Contended
 
-On the original Sinclair machines, the ULA and the CPU share a memory bus. When the ULA is reading screen data to paint the display (during the 192 active scanlines), any CPU access to certain RAM pages gets delayed. The CPU is literally halted for extra clock cycles while the ULA finishes its read.
+On the original Sinclair machines, the ULA and the CPU share a memory bus. When the ULA is reading screen data to paint the display (during the 192 active scanlines), any CPU access to certain RAM pages gets delayed. The CPU is literally halted for extra T-states while the ULA finishes its read.
 
 The contended pages differ between models:
 
@@ -140,30 +140,111 @@ The ULA generates the video signal and the CPU interrupt. Understanding its timi
 
 ### Frame Structure
 
-A complete frame on the ZX Spectrum consists of scanlines, each taking 224 T-states (on the 128K/Pentagon). The scanlines break down as follows:
+A complete frame consists of scanlines. The scanline width and total scanline count differ between models:
 
-| Region | Scanlines | T-states | What Happens |
-|--------|-----------|----------|--------------|
-| Vertical blank + top border | 64 (48K) / 63 (128K) | varies | ULA not reading screen memory. No contention. |
-| Active display | 192 | 192 x 224 = 43,008 | ULA reads pixel + attribute data. Contention active. |
-| Bottom border | 56 (48K) / 56 (128K) | varies | ULA not reading screen memory. No contention. |
+| Machine | T-states/line | Scanlines | T-states/frame |
+|---------|--------------|-----------|----------------|
+| ZX Spectrum 48K | 224 | 312 | 69,888 |
+| ZX Spectrum 128K | 228 | 311 | 70,908 |
+| Pentagon 128 | 224 | 320 | 71,680 |
 
-The interrupt fires at the start of the vertical blank, before the top border. This means that after a `HALT`, you have the entire top border period (about 14,000 T-states on the 128K) to do work before the beam enters the active display area and contention begins.
+Note the 128K's wider scanline (228 vs 224 T-states). The extra 4 T-states per line are in the border/sync portion, not the active display.
 
-This is why well-structured Spectrum code does screen writes at the top of the frame: you get contention-free access to screen memory during the border period.
+### Tact-Maps: Frame Regions
 
-### Scanline Timing (128K / Pentagon)
+The frame divides into three regions. The interrupt fires at the start of vertical blank, before the top border. Here is the timing map for each model:
 
-Each scanline takes 224 T-states total:
+**Pentagon 128 (71,680 T-states)**
 
 ```
-128 T-states: active pixel area (screen data being read by ULA)
- 24 T-states: right border
- 48 T-states: horizontal sync + left border
- 24 T-states: left border continuation
+Interrupt ──┐
+            │
+Top border  │  80 lines × 224T = 17,920T   No screen reads. No contention.
+            │
+Active      │ 192 lines × 224T = 43,008T   ULA reads screen memory.
+display     │                                No contention on Pentagon.
+            │
+Bottom      │  48 lines × 224T = 10,752T   No screen reads. No contention.
+border      │
+────────────┘  Total: 71,680T
 ```
 
-During the 128 active T-states, every memory access to contended pages gets delayed. During the remaining 96 T-states, no contention. This is why even during active display, nearly half of each scanline is contention-free.
+**ZX Spectrum 128K (70,908 T-states)**
+
+```
+Interrupt ──┐
+            │
+Top border  │  63 lines × 228T = 14,364T   No screen reads. No contention.
+            │
+Active      │ 192 lines × 228T = 43,776T   ULA reads screen memory.
+display     │                                Contention on pages 1,3,5,7.
+            │
+Bottom      │  56 lines × 228T = 12,768T   No screen reads. No contention.
+border      │
+────────────┘  Total: 70,908T
+```
+
+**ZX Spectrum 48K (69,888 T-states)**
+
+```
+Interrupt ──┐
+            │
+Top border  │  64 lines × 224T = 14,336T   No screen reads. No contention.
+            │
+Active      │ 192 lines × 224T = 43,008T   ULA reads screen memory.
+display     │                                Contention on all RAM.
+            │
+Bottom      │  56 lines × 224T = 12,544T   No screen reads. No contention.
+border      │
+────────────┘  Total: 69,888T
+```
+
+After a `HALT`, you have the entire top border period -- 17,920 T-states on Pentagon, 14,364 on 128K -- to do work before the beam enters the active display area and contention begins. This is why well-structured Spectrum code does screen writes at the top of the frame: you get contention-free access to screen memory during the border period.
+
+### Scanline Timing
+
+Each scanline breaks down into an active portion (where the ULA reads screen data) and border/sync portions:
+
+**48K and Pentagon (224 T-states per line):**
+
+```
+128T  active pixel area (ULA reads screen data)
+ 24T  right border
+ 48T  horizontal sync + retrace
+ 24T  left border
+```
+
+**128K (228 T-states per line):**
+
+```
+128T  active pixel area (ULA reads screen data)
+ 24T  right border
+ 52T  horizontal sync + retrace
+ 24T  left border
+```
+
+During the 128 active T-states, memory access to contended pages gets delayed (on non-Pentagon machines). During the remaining 96 T-states (or 100 on 128K), no contention. Even during active display, roughly half of each scanline is contention-free.
+
+### Total vs Practical Budget
+
+The frame totals above are the time between interrupts. The *practical* budget -- T-states available for your code -- is less:
+
+| Overhead | Cost |
+|----------|------|
+| HALT + interrupt acknowledge (IM1) | ~30 T-states |
+| Minimal ISR (EI + RET) | ~14 T-states |
+| Typical PT3 music player (in ISR) | ~3,000--5,000 T-states |
+| Main loop housekeeping (frame counter, HALT jump) | ~20--50 T-states |
+
+Practical budgets with a music player running:
+
+| Machine | Total | After PT3 player | After player + contention margin |
+|---------|-------|-------------------|----------------------------------|
+| Pentagon | 71,680 | ~66,000--68,000 | ~66,000--68,000 (no contention) |
+| 128K | 70,908 | ~65,000--67,000 | ~55,000--60,000 (screen writes during active display) |
+| 48K | 69,888 | ~64,000--66,000 | ~50,000--55,000 (all RAM contended) |
+
+When this book says "frame budget of ~70,000 T-states," it means the total. When planning your inner loops, budget for the practical figure -- typically 65,000--68,000 on Pentagon with music.
 
 ---
 
@@ -271,7 +352,7 @@ This is much more flexible than the 128K's single switchable slot. You can map s
 
 **Hardware sprites** on the Next provide 128 sprite slots, each 16x16 pixels with 8-bit colour, up to 12 per scanline. Sprite attributes (position, pattern, rotation) are set through Next registers and port `$57`. No software rendering needed.
 
-**The Copper** is a co-processor that executes a simple program synchronised to the beam position. It can write to any Next register at any scanline, enabling per-line palette changes, scroll offsets, and raster effects without consuming Z80 cycles -- a deliberate homage to the Amiga Copper.
+**The Copper** is a co-processor that executes a simple program synchronised to the beam position. It can write to any Next register at any scanline, enabling per-line palette changes, scroll offsets, and raster effects without consuming Z80 T-states -- a deliberate homage to the Amiga Copper.
 
 **zxnDMA** provides hardware-accelerated block transfers at approximately 2 T-states per byte -- about 10 times faster than `LDIR`. For filling the Layer 2 framebuffer or transferring sprite data, DMA is transformative.
 

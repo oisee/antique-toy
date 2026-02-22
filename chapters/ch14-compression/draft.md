@@ -76,9 +76,9 @@ Introspec's genius was to map these tradeoffs on a Pareto frontier --- a curve w
 His practical recommendations are crisp:
 
 - **Maximum compression, speed irrelevant:** Exomizer. Use for one-time decompression at load time --- loading screens, level data, anything you unpack once into a buffer and use repeatedly.
-- **Good compression, moderate speed (~105 T/byte):** ApLib. A solid general-purpose choice when you need decent ratio and can afford ~105 cycles per byte.
+- **Good compression, moderate speed (~105 T/byte):** ApLib. A solid general-purpose choice when you need decent ratio and can afford ~105 T-states per byte.
 - **Fast decompression (~69 T/byte):** Pletter 5. When you need to decompress during gameplay or between scenes and cannot afford Exomizer's sluggish unpacking.
-- **Fastest decompression (~34 T/byte):** LZ4. The only choice for real-time streaming --- decompressing data as you play it back. At 34 cycles per output byte, LZ4 can decompress over 2,000 bytes per frame. That is a 2 KB/frame data pipe.
+- **Fastest decompression (~34 T/byte):** LZ4. The only choice for real-time streaming --- decompressing data as you play it back. At 34 T-states per output byte, LZ4 can decompress over 2,000 bytes per frame. That is a 2 KB/frame data pipe.
 - **Smallest decompressor (69--70 bytes):** ZX7 or ZX0. When the decompressor itself must be tiny --- in 256-byte, 512-byte, or 1K intros where every byte of code counts.
 
 Let these numbers guide your decisions. There is no universally "best" compressor. There is only the best compressor for your specific constraints.
@@ -190,7 +190,7 @@ Understanding compression algorithms is useful. Integrating them into your build
 
 ### From asset to binary
 
-The pipeline: source asset (PNG) --> converter (png2scr) --> compressor (zx0) --> assembler (SjASMPlus) --> .tap file. The compressor runs on your development machine, not the Spectrum. For ZX0: `zx0 screen.scr screen.zx0`. Include the result with SjASMPlus's INCBIN directive:
+The pipeline: source asset (PNG) --> converter (png2scr) --> compressor (zx0) --> assembler (sjasmplus) --> .tap file. The compressor runs on your development machine, not the Spectrum. For ZX0: `zx0 screen.scr screen.zx0`. Include the result with sjasmplus's INCBIN directive:
 
 ```z80
 compressed_screen:
@@ -247,7 +247,7 @@ compressed_screen:
         display "Total: ", /d, $ - start, " bytes"
 ```
 
-Use SjASMPlus's DISPLAY directive to print size information during assembly. Always know exactly how large your compressed data is --- the difference between ZX0 and Exomizer on a single loading screen can be 400 bytes, and over 8 scenes that adds up.
+Use sjasmplus's DISPLAY directive to print size information during assembly. Always know exactly how large your compressed data is --- the difference between ZX0 and Exomizer on a single loading screen can be 400 bytes, and over 8 scenes that adds up.
 
 ### Choosing the right compressor
 

@@ -1,0 +1,15 @@
+; isr.a80 — IM2 interrupt service routine
+;
+; Called at 50Hz. Copies next frame from ring buffer to attribute area.
+; Skips copy when torus_mode is active (torus writes pixels directly).
+;
+; The entry stub at $FDFD is only 3 bytes (JP isr_handler).
+; The actual handler lives in the main code area ($8000+).
+
+; ============================================================
+; ISR stub — exactly 3 bytes at $FDFD, jumps to real handler
+; (placed here by ORG $FDFD in main.a80)
+; ============================================================
+isr_stub:
+    jp   isr_handler         ; 3 bytes ($C3, lo, hi)
+    ; $FE00 starts here — IM2 vector table fills this area

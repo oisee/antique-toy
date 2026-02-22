@@ -15,7 +15,7 @@ The ULA reads attribute bytes as it draws the screen, one scanline at a time. It
 
 The trick is obvious once you see it: if you change the attribute byte between reads, the ULA will apply a different colour to different pixel rows within the same cell. Instead of two colours for all eight rows, you get two colours per *group of rows*. The 8x8 grid does not break because the hardware was redesigned. It breaks because you rewrote the data faster than the hardware could consume it.
 
-This is multicolor. It has been known since at least the early 2000s, when the Russian ZX magazine Black Crow published an algorithm and example code in its fifth issue. But for years, multicolor remained a curiosity --- impressive in demos, impractical in games, because the CPU spent so many cycles changing attributes that nothing was left for game logic.
+This is multicolor. It has been known since at least the early 2000s, when the Russian ZX magazine Black Crow published an algorithm and example code in its fifth issue. But for years, multicolor remained a curiosity --- impressive in demos, impractical in games, because the CPU spent so many T-states changing attributes that nothing was left for game logic.
 
 Then DenisGrachev figured out how to make games with it.
 
@@ -115,7 +115,7 @@ The split is necessary because the workload simply does not fit in one frame. Re
 
 The total rendering budget is approximately 70,000 T-states per frame --- nearly the entire Pentagon budget of 71,680. What remains is barely enough for game logic, input handling, and the periodic sound update.
 
-Sound runs at 25 Hz instead of 50 Hz. Every other frame, the engine skips the sound update entirely to reclaim those cycles for rendering. The player does not notice the halved update rate for simple sound effects. For music, the 25 Hz rate means each note lasts twice as many frames, which requires the music engine to be written specifically for this constraint.
+Sound runs at 25 Hz instead of 50 Hz. Every other frame, the engine skips the sound update entirely to reclaim those T-states for rendering. The player does not notice the halved update rate for simple sound effects. For music, the 25 Hz rate means each note lasts twice as many frames, which requires the music engine to be written specifically for this constraint.
 
 ### What the player sees
 
@@ -153,9 +153,9 @@ Over the full screen: 64 columns x 48 rows = **3,072 independently coloured pixe
 
 This is a fundamentally different approach from GLUF's 8x2 multicolor. GLUF changes attributes in sync with the beam, requiring precise timing and consuming massive cycle budgets. Ringo uses dual-screen hardware switching, which requires only a single `OUT` instruction every 4 scanlines. The CPU overhead for the screen switching itself is minimal.
 
-### Where the cycles go
+### Where the T-states go
 
-The cheap screen switching means more cycles are available for game logic. But rendering into two screens simultaneously is not free. Every tile and sprite update must be written to both Screen 0 and Screen 1, because the player sees a composite of both.
+The cheap screen switching means more T-states are available for game logic. But rendering into two screens simultaneously is not free. Every tile and sprite update must be written to both Screen 0 and Screen 1, because the player sees a composite of both.
 
 Ringo's sprites are 12x10 "pixels" in the 64x48 grid, which means 12 attribute bytes wide and 10 attribute rows tall (split across the two screens). Each sprite occupies 120 bytes of data. Sprite rendering uses fixed-cycle macros --- sequences of instructions with known, constant execution time, critical for maintaining synchronisation with the screen switching.
 
@@ -199,7 +199,7 @@ The technique works like this:
 
 The timing is brutal. Each scanline takes 224 T-states on Pentagon. The ULA reads 32 attribute bytes early in each scanline, and the CPU must change all 32 bytes in the gap before the next read. With `LD (HL),A : INC L` at 11 T-states per byte, writing 32 bytes takes 352 T-states --- more than one entire scanline. You cannot change every scanline. At best, you can change every other scanline (8x2 resolution) if you use the fastest possible output method (PUSH-based), and even then the timing margins are razor-thin.
 
-The practical result: traditional multicolor consumes 80--90% of the CPU on attribute management. In a demo, where the multicolor *is* the effect, this is acceptable. In a game, it is lethal. No cycles remain for game logic, collision detection, or sound.
+The practical result: traditional multicolor consumes 80--90% of the CPU on attribute management. In a demo, where the multicolor *is* the effect, this is acceptable. In a game, it is lethal. No T-states remain for game logic, collision detection, or sound.
 
 DenisGrachev's LDPUSH technique solves this by merging the attribute output with the pixel output. The same code that writes pixel data also writes attributes, and both are embedded in executable instructions. There is no separate "attribute management" phase eating the budget. The rendering pass handles everything.
 
@@ -358,7 +358,7 @@ This skeleton captures the essential rhythm: two frames per logical game frame, 
 
 The demoscene has always been about pushing hardware past its limits. But there is a distinction --- sometimes overlooked, sometimes intentional --- between pushing hardware for a ten-second demo and pushing it for a playable game.
 
-Demos are performance art. They run once, they impress, they end. There is no input handling. There is no collision detection. There is no state that persists from one frame to the next (beyond what the effect needs internally). A demo can spend 100% of its cycles on visual spectacle because spectacle is all it needs to produce.
+Demos are performance art. They run once, they impress, they end. There is no input handling. There is no collision detection. There is no state that persists from one frame to the next (beyond what the effect needs internally). A demo can spend 100% of its T-states on visual spectacle because spectacle is all it needs to produce.
 
 Games are engineering. They must read the keyboard, update entity positions, check collisions, play sound, manage game state, and render the screen --- every frame, forever, while remaining responsive to the player. Each of these systems competes for the same 70,000-cycle budget. A technique that works in a demo but consumes 90% of the CPU is useless for games.
 

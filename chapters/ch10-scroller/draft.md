@@ -17,7 +17,7 @@ This chapter brings together two techniques from two different demos, separated 
 
 ### What the Viewer Sees
 
-Picture a message -- "ILLUSION BY X-TRADE" -- rendered not in solid block characters but as a field of individual dots, each dot a single pixel. The text drifts horizontally across the screen in a smooth scroll. But the dots are not sitting on flat scan lines. They bounce. The entire dot field undulates in a sine wave, each column offset vertically from its neighbours, creating the impression of text rippling on the surface of water.
+Picture a message -- "ILLUSION BY X-TRADE" -- rendered not in solid block characters but as a field of individual dots, each dot a single pixel. The text drifts horizontally across the screen in a smooth scroll. But the dots are not sitting on flat scanlines. They bounce. The entire dot field undulates in a sine wave, each column offset vertically from its neighbours, creating the impression of text rippling on the surface of water.
 
 ### The Font as Texture
 

@@ -47,7 +47,7 @@ Before diving into code, let us lay out the two machines side by side.
 | OS | None (bare metal) / esxDOS for file I/O | MOS (Machine Operating System) |
 | Frame budget | ~71,680 T-states (Pentagon) | ~368,640 T-states (at 50 Hz) |
 
-The frame budget ratio is roughly 5:1. But this understates the real difference, because many operations that consume CPU cycles on the Spectrum --- sprite rendering, screen scrolling, framebuffer management --- are offloaded to the VDP on the Agon. The eZ80 CPU spends its cycles on game logic, not pixel pushing.
+The frame budget ratio is roughly 5:1. But this understates the real difference, because many operations that consume CPU T-states on the Spectrum --- sprite rendering, screen scrolling, framebuffer management --- are offloaded to the VDP on the Agon. The eZ80 CPU spends its cycles on game logic, not pixel pushing.
 
 ---
 
@@ -331,7 +331,7 @@ The trade-off: latency. The VDP processes commands asynchronously. Between sendi
 
 #### Tilemap Scrolling
 
-On the Spectrum, horizontal scrolling means shifting every byte of video memory left or right --- a chain of `RLC` or `RRC` instructions across hundreds of bytes, consuming a substantial fraction of the frame budget (we calculated the cost in Chapter 17). Vertical scrolling requires copying scan lines with awareness of the interleaved memory layout.
+On the Spectrum, horizontal scrolling means shifting every byte of video memory left or right --- a chain of `RLC` or `RRC` instructions across hundreds of bytes, consuming a substantial fraction of the frame budget (we calculated the cost in Chapter 17). Vertical scrolling requires copying scanlines with awareness of the interleaved memory layout.
 
 On the Agon, the VDP supports hardware tilemaps:
 
@@ -701,9 +701,9 @@ This is the real lesson of porting. Every platform has constraints that push you
 
 ### The Spectrum Forces You To Be Efficient
 
-When your frame budget is 71,680 T-states and your sprite engine alone consumes 12,000 of them, you learn to count cycles. You learn to use `INC L` instead of `INC HL`. You learn to unroll loops. You learn to pre-compute everything you can. You learn to think about data layout --- keeping related data in contiguous memory, aligning buffers to page boundaries, arranging structs so that the most-accessed fields have the smallest offsets.
+When your frame budget is 71,680 T-states and your sprite engine alone consumes 12,000 of them, you learn to count T-states. You learn to use `INC L` instead of `INC HL`. You learn to unroll loops. You learn to pre-compute everything you can. You learn to think about data layout --- keeping related data in contiguous memory, aligning buffers to page boundaries, arranging structs so that the most-accessed fields have the smallest offsets.
 
-This discipline transfers to every platform you will ever work on. The Spectrum teaches you what "efficient" really means at the instruction level, and that awareness never leaves you. Even on the Agon, where you have cycles to spare, writing tight inner loops is a habit worth keeping.
+This discipline transfers to every platform you will ever work on. The Spectrum teaches you what "efficient" really means at the instruction level, and that awareness never leaves you. Even on the Agon, where you have T-states to spare, writing tight inner loops is a habit worth keeping.
 
 ### The Spectrum Forces You To Be Creative
 
@@ -713,7 +713,7 @@ The multicolour hack, the 4-phase colour trick, attribute-only effects, screen-t
 
 ### The Agon Forces You To Think About Architecture
 
-When memory is no longer scarce, when cycles are no longer tight, the remaining challenges are architectural. How do you structure a game loop that communicates with an asynchronous coprocessor? How do you time your VDP commands so that sprites move smoothly? How do you manage the pipeline of data flowing from CPU to VDP over serial?
+When memory is no longer scarce, when T-states are no longer tight, the remaining challenges are architectural. How do you structure a game loop that communicates with an asynchronous coprocessor? How do you time your VDP commands so that sprites move smoothly? How do you manage the pipeline of data flowing from CPU to VDP over serial?
 
 The Agon teaches you about system design: separating concerns, managing latency, structuring command protocols, and building abstraction layers. These are software engineering skills that the Spectrum, with its "write directly to hardware" ethos, does not emphasize.
 

@@ -1,0 +1,207 @@
+; plasma.a80 — Attribute plasma tunnel with 4-fold symmetry
+;
+; Technique from Eager (Introspec, 2015): sum-of-sines on 16×12 quarter,
+; mirrored to full 32×24 attribute grid. Colour map applied from table.
+;
+; Interface:
+;   effect_plasma_init  — set up checkerboard, reset phase
+;   effect_plasma_frame — DE = pointer to 768-byte output buffer
+;   effect_plasma_deinit — nothing to clean up
+
+; ============================================================
+; PLASMA INIT
+; ============================================================
+effect_plasma_init:
+    ; Reset animation phase
+    xor  a
+    ld   (plasma_phase), a
+
+    ; Ensure checkerboard pixel pattern is present
+    call init_checkerboard
+
+    ; Clear torus mode (we use attribute buffer)
+    xor  a
+    ld   (torus_mode), a
+    ret
+
+; ============================================================
+; PLASMA FRAME — generate one 768-byte attribute frame
+; Entry: DE = pointer to 768-byte ring buffer slot
+; ============================================================
+effect_plasma_frame:
+    push de                  ; save buffer pointer
+
+    ; --- Compute 16×12 quarter into workspace ---
+    ; Quarter buffer at WORKSPACE (192 bytes = 16 × 12)
+    ld   a, (plasma_phase)
+    ld   (pl_phase_snap), a
+
+    ; For each cell (row, col) in 16×12:
+    ;   value = sin(col*8 + phase) + sin(row*10 + phase)
+    ;         + sin((col+row)*6 + phase*2)
+    ; Then map through colour table
+
+    ld   iy, WORKSPACE       ; quarter buffer dest
+    ld   c, 0                ; row = 0
+
+.row_loop:
+    ld   b, 0                ; col = 0
+
+.col_loop:
+    ; --- Sum of sines ---
+    ; Term 1: sin(col * 8 + phase)
+    ld   a, b
+    rlca
+    rlca
+    rlca                     ; a = col * 8
+    ld   d, a
+    ld   a, (pl_phase_snap)
+    add  a, d
+    ld   hl, sin_table
+    ld   l, a
+    ld   e, (hl)             ; e = sin(col*8 + phase)
+
+    ; Term 2: sin(row * 10 + phase)
+    ld   a, c
+    ld   h, a
+    add  a, a                ; ×2
+    add  a, a                ; ×4
+    add  a, a                ; ×8
+    add  a, h                ; ×9
+    add  a, c                ; ×10
+    ld   d, a
+    ld   a, (pl_phase_snap)
+    add  a, d
+    ld   hl, sin_table
+    ld   l, a
+    ld   d, (hl)             ; d = sin(row*10 + phase)
+
+    ; Sum first two terms
+    ld   a, e
+    add  a, d                ; a = term1 + term2 (wraps on overflow)
+
+    ; Term 3: sin((col+row)*6 + phase*2) — texture variation
+    push af
+    ld   a, b
+    add  a, c                ; col + row
+    ld   h, a
+    add  a, a                ; ×2
+    add  a, h                ; ×3
+    add  a, a                ; ×6
+    ld   d, a
+    ld   a, (pl_phase_snap)
+    add  a, a                ; phase × 2
+    add  a, d
+    ld   hl, sin_table
+    ld   l, a
+    ld   h, sin_table >> 8
+    ld   d, (hl)             ; d = sin((col+row)*6 + phase*2)
+    pop  af
+    add  a, d                ; a = combined plasma value
+
+    ; --- Map through colour table ---
+    ; Use top 4 bits as index into 16-entry colour map
+    rrca
+    rrca
+    rrca
+    rrca
+    and  $0F
+    ld   hl, colour_map
+    ld   d, 0
+    ld   e, a
+    add  hl, de
+    ld   a, (hl)             ; a = attribute byte
+
+    ; Store in quarter buffer
+    ld   (iy+0), a
+    inc  iy
+
+    ; Next col
+    inc  b
+    ld   a, b
+    cp   16
+    jr   c, .col_loop
+
+    ; Next row
+    inc  c
+    ld   a, c
+    cp   12
+    jr   c, .row_loop
+
+    ; --- 4-fold symmetry mirror to full 32×24 ---
+    pop  de                  ; DE = output buffer pointer (768 bytes)
+    call mirror_quarter
+
+    ; Advance animation phase
+    ld   a, (plasma_phase)
+    add  a, 3                ; speed of animation
+    ld   (plasma_phase), a
+    ret
+
+; Snapshot of phase for consistent frame
+pl_phase_snap: DB 0
+
+; ============================================================
+; MIRROR_QUARTER — expand 16×12 quarter to 32×24 with 4-fold symmetry
+; Source: WORKSPACE (16×12 bytes, row-major, left-to-right, top-to-bottom)
+; Dest: DE (768 bytes = 32×24, row-major)
+;
+; Top-left quadrant = direct copy
+; Top-right = horizontal mirror
+; Bottom-left = vertical mirror
+; Bottom-right = both mirrors
+; ============================================================
+mirror_quarter:
+    ld   c, 0                ; row counter (0..23), saved on stack in inner loop
+.mq_row:
+    push bc                  ; save row counter (only C used)
+
+    ; Determine source row in quarter
+    ld   a, c
+    cp   12
+    jr   c, .mq_top
+    ; Bottom half: mirror row = 23 - c
+    ld   a, 23
+    sub  c
+.mq_top:
+    ; a = quarter row (0..11)
+    ; Source base = WORKSPACE + a × 16
+    ld   l, a
+    ld   h, 0
+    add  hl, hl             ; ×2
+    add  hl, hl             ; ×4
+    add  hl, hl             ; ×8
+    add  hl, hl             ; ×16
+    ld   bc, WORKSPACE
+    add  hl, bc              ; HL = source row start
+
+    ; Left half: copy 16 bytes direct
+    push hl                  ; save source base
+    ld   bc, 16
+    ldir                     ; HL→DE, 16 bytes
+
+    ; Right half: mirror 16 bytes (col 15 down to 0)
+    pop  hl                  ; HL = source row start
+    ld   bc, 15
+    add  hl, bc              ; HL = &source[15]
+    ld   b, 16
+.mq_mir:
+    ld   a, (hl)
+    ld   (de), a
+    inc  de
+    dec  hl
+    djnz .mq_mir
+
+    ; Restore and advance row counter
+    pop  bc                  ; C = row counter
+    inc  c
+    ld   a, c
+    cp   24
+    jr   c, .mq_row
+    ret
+
+; ============================================================
+; PLASMA DEINIT
+; ============================================================
+effect_plasma_deinit:
+    ret

@@ -33,7 +33,7 @@ This is a technique that appears throughout the demoscene: self-generating code,
 
 ## Inside the Disassembly
 
-Introspec traced the rendering engine to a block of generated code and a set of lookup tables starting at address `#6944`. The tables encode the sphere's geometry as a series of *skip distances*: for each position along a scan line of the sphere, how many source pixels should be skipped before the next one is sampled.
+Introspec traced the rendering engine to a block of generated code and a set of lookup tables starting at address `$6944`. The tables encode the sphere's geometry as a series of *skip distances*: for each position along a scanline of the sphere, how many source pixels should be skipped before the next one is sampled.
 
 At the equator, the skip distances are roughly uniform --- the source image maps onto the sphere with minimal distortion. Near the poles, the horizontal compression of the projection means larger skips between sampled pixels. At the very top and bottom, only a few pixels are visible per line, and the skips can be substantial.
 
@@ -62,7 +62,7 @@ The generated inner loop has a repeating structure. For each screen byte (eight 
     ; ... six more times, for 8 pixels total ...
 ```
 
-The key detail: between each `add a,(hl)`, the number of `inc l` instructions varies. One pixel position might need a single `inc l` (sample adjacent pixels). Another might need three or four (skip over compressed regions of the projection). The lookup tables at `#6944` encode exactly how many `inc l` instructions to insert at each position.
+The key detail: between each `add a,(hl)`, the number of `inc l` instructions varies. One pixel position might need a single `inc l` (sample adjacent pixels). Another might need three or four (skip over compressed regions of the projection). The lookup tables at `$6944` encode exactly how many `inc l` instructions to insert at each position.
 
 Let us look more carefully at what happens with a single pixel:
 
@@ -76,7 +76,7 @@ That is the minimum cost: 15 T-states to shift the accumulator and sample one pi
 
 Notice that the source pointer is advanced using `inc l` rather than `inc hl`. This is deliberate. `INC HL` takes 6 T-states; `INC L` takes 4. By constraining the source data to sit within a single 256-byte page (so that only the low byte of the address changes), Dark saves 2 T-states per advance. When you are doing this thousands of times per frame, those 2 T-states add up.
 
-There is a subtlety here that is easy to miss. The source image is stored as one byte per pixel, and `INC L` wraps around within a 256-byte page. This means each scan line of source data must fit within 256 bytes, and the source buffer must be page-aligned. The constraint shapes the entire memory layout of the demo.
+There is a subtlety here that is easy to miss. The source image is stored as one byte per pixel, and `INC L` wraps around within a 256-byte page. This means each scanline of source data must fit within 256 bytes, and the source buffer must be page-aligned. The constraint shapes the entire memory layout of the demo.
 
 ## Counting T-States
 
@@ -110,13 +110,13 @@ Is this fast enough? The Spectrum's frame is approximately 70,000 T-states (more
 
 ## The Code Generation Pass
 
-Before the inner loop runs, a *code generation pass* constructs it. This pass reads the lookup tables at `#6944`, which encode the sphere geometry for the current rotation angle, and emits Z80 instructions into a buffer:
+Before the inner loop runs, a *code generation pass* constructs it. This pass reads the lookup tables at `$6944`, which encode the sphere geometry for the current rotation angle, and emits Z80 instructions into a buffer:
 
-1. For each scan line of the sphere, read the skip distances from the table.
+1. For each scanline of the sphere, read the skip distances from the table.
 2. Emit `add a,a` followed by `add a,(hl)` for each pixel.
 3. Emit the appropriate number of `inc l` instructions based on the skip distance.
 4. After every 8 pixels, emit the output instruction to write the accumulated byte to screen memory.
-5. At the end of each scan line, emit a return or jump to the next line's handler.
+5. At the end of each scanline, emit a return or jump to the next line's handler.
 
 The generated code block is then called directly. The CPU executes the instructions as if they were a normal subroutine, but they were written moments ago by the code generator. This is self-modifying code in the most literal sense --- the program generates the program that draws the screen.
 
@@ -148,17 +148,17 @@ Introspec's summary captures it: "coder effects are always about evolving a comp
 
 ## Practical: A Simplified 56x56 Spinning Sphere
 
-Let us sketch how you would build a simplified version of this effect. We will target a 56x56 pixel sphere --- 7 bytes wide at the equator, 56 scan lines tall. The goal is not to reproduce Illusion's full rendering engine, but to understand the core technique well enough to implement it.
+Let us sketch how you would build a simplified version of this effect. We will target a 56x56 pixel sphere --- 7 bytes wide at the equator, 56 scanlines tall. The goal is not to reproduce Illusion's full rendering engine, but to understand the core technique well enough to implement it.
 
 ### Step 1: Precompute the Sphere Geometry
 
-For each scan line *y* (from -28 to +27, centered on the sphere), compute the visible arc:
+For each scanline *y* (from -28 to +27, centered on the sphere), compute the visible arc:
 
 ```
 radius_at_y = sqrt(R^2 - y^2)    ; where R = 28 (sphere radius in pixels)
 ```
 
-This gives the half-width of the sphere at that scan line. For each pixel position *x* within that arc, compute the corresponding longitude and latitude on the sphere surface:
+This gives the half-width of the sphere at that scanline. For each pixel position *x* within that arc, compute the corresponding longitude and latitude on the sphere surface:
 
 ```
 latitude  = arcsin(y / R)
@@ -169,7 +169,7 @@ These give the (u, v) coordinates into the source texture for each screen pixel.
 
 ### Step 2: Build Skip Tables
 
-Rather than storing full (u, v) pairs for every pixel (prohibitively expensive in memory), compute the *difference in source position* between adjacent screen pixels. For each scan line, you need a list of skip values: how many source pixels to advance between consecutive screen samples.
+Rather than storing full (u, v) pairs for every pixel (prohibitively expensive in memory), compute the *difference in source position* between adjacent screen pixels. For each scanline, you need a list of skip values: how many source pixels to advance between consecutive screen samples.
 
 Near the equator, consecutive screen pixels map to nearly adjacent source pixels --- skips of 1. Near the poles, the projection compresses, and you skip over more source pixels --- skips of 2, 3, or more.
 
@@ -199,11 +199,11 @@ generate_sphere_code:
 
 .pixel_loop:
     ; Emit: ADD A,A
-    ld   (ix+0),#87           ; opcode for ADD A,A
+    ld   (ix+0),$87           ; opcode for ADD A,A
     inc  ix
 
     ; Emit: ADD A,(HL)
-    ld   (ix+0),#86           ; opcode for ADD A,(HL)
+    ld   (ix+0),$86           ; opcode for ADD A,(HL)
     inc  ix
 
     ; Emit INC L instructions based on skip distance
@@ -213,7 +213,7 @@ generate_sphere_code:
 .emit_inc_l:
     or   a
     jr   z,.pixel_done
-    ld   (ix+0),#2C           ; opcode for INC L
+    ld   (ix+0),$2C           ; opcode for INC L
     inc  ix
     dec  a
     jr   nz,.emit_inc_l
@@ -223,10 +223,10 @@ generate_sphere_code:
     jr   nz,.pixel_loop
 
     ; Emit: LD (DE),A  (write byte to screen)
-    ld   (ix+0),#12           ; opcode for LD (DE),A
+    ld   (ix+0),$12           ; opcode for LD (DE),A
     inc  ix
     ; Emit: INC E
-    ld   (ix+0),#1C           ; opcode for INC E
+    ld   (ix+0),$1C           ; opcode for INC E
     inc  ix
 
     dec  b
@@ -256,9 +256,9 @@ For animation, increment the rotation angle, load the corresponding skip table (
 
 ### Step 5: Source Image Layout
 
-The source texture must be organized for fast sequential access. Since the rendering code uses `INC L` to advance through it, the texture must be page-aligned (start at an address where the low byte is `#00`), and each row must fit within 256 bytes. A 256-pixel-wide texture stored as one byte per pixel fits this constraint perfectly: each row occupies one page.
+The source texture must be organized for fast sequential access. Since the rendering code uses `INC L` to advance through it, the texture must be page-aligned (start at an address where the low byte is `$00`), and each row must fit within 256 bytes. A 256-pixel-wide texture stored as one byte per pixel fits this constraint perfectly: each row occupies one page.
 
-For the monochrome case, each pixel is `#00` or `#01`. This means `ADD A,(HL)` either adds 0 (pixel off) or 1 (pixel on) to the accumulator's lowest bit, right after `ADD A,A` has shifted everything up. The result is a bit-packed screen byte where each bit corresponds to a sampled source pixel.
+For the monochrome case, each pixel is `$00` or `$01`. This means `ADD A,(HL)` either adds 0 (pixel off) or 1 (pixel on) to the accumulator's lowest bit, right after `ADD A,A` has shifted everything up. The result is a bit-packed screen byte where each bit corresponds to a sampled source pixel.
 
 ---
 
@@ -274,7 +274,7 @@ The sphere in Illusion is a specific instance of a general demoscene pattern tha
 
 The rotozoomer in the next chapter uses the same pattern. So does the dotfield scroller in Chapter 10. So do the attribute tunnels in Chapter 9. The specifics differ --- different tables, different generated code, different data formats --- but the architecture is the same. Introspec recognized this when he wrote that coder effects are about "evolving a computation scheme." The sphere, the rotozoomer, the tunnel: they are all evolved from the same fundamental approach. The evolution is in the details --- which computation, which table layout, which inner loop --- but the skeleton is shared.
 
-Dark understood this in 1996. He encoded it in his Spectrum Expert articles in 1997. Introspec confirmed it by disassembly in 2017. The pattern is as valid now as it was then, on any platform where cycles are scarce and every instruction must earn its keep.
+Dark understood this in 1996. He encoded it in his Spectrum Expert articles in 1997. Introspec confirmed it by disassembly in 2017. The pattern is as valid now as it was then, on any platform where T-states are scarce and every instruction must earn its keep.
 
 ---
 

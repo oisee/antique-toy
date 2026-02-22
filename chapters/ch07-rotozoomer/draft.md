@@ -5,7 +5,7 @@
 
 ---
 
-There is a moment in Illusion where the screen fills with a pattern -- a texture, monochrome, repeating -- and then it begins to turn. The rotation is smooth and continuous, the zoom breathes in and out, and the whole thing runs at a pace that makes you forget you are watching a Z80 push pixels at 3.5 MHz. It is not the most technically demanding effect in the demo. The sphere (Chapter 6) is harder mathematically. The dotfield scroller (Chapter 8) is tighter in its cycle budget. But the rotozoomer is the one that looks effortless, and on the Spectrum, making something look effortless is the hardest trick of all.
+There is a moment in Illusion where the screen fills with a pattern -- a texture, monochrome, repeating -- and then it begins to turn. The rotation is smooth and continuous, the zoom breathes in and out, and the whole thing runs at a pace that makes you forget you are watching a Z80 push pixels at 3.5 MHz. It is not the most technically demanding effect in the demo. The sphere (Chapter 6) is harder mathematically. The dotfield scroller (Chapter 10) is tighter in its cycle budget. But the rotozoomer is the one that looks effortless, and on the Spectrum, making something look effortless is the hardest trick of all.
 
 This chapter traces two threads. The first is Introspec's 2017 analysis of the rotozoomer from Illusion by X-Trade. The second is sq's 2022 article on Hype about chunky pixel optimisation, which pushes the approach to 4x4 pixels and catalogues a family of rendering strategies with precise cycle counts. Together, they map the design space: how chunky pixels work, how rotozoomers use them, and the performance trade-offs that determine whether your effect runs at 4 frames per screen or 12.
 
@@ -20,7 +20,7 @@ A rotozoomer displays a 2D texture rotated by some angle and scaled by some fact
     ty = -sx * sin(theta) * scale  +  sy * cos(theta) * scale  +  offset_y
 ```
 
-At 256x192, that is 49,152 pixels each needing two multiplications. Even with a 54-T-state square-table multiply (Chapter 3 1/2), you exceed five million T-states -- roughly 70 frames' worth of CPU time. The effect is mathematically trivial and computationally impossible.
+At 256x192, that is 49,152 pixels each needing two multiplications. Even with a 54-T-state square-table multiply (Chapter 4), you exceed five million T-states -- roughly 70 frames' worth of CPU time. The effect is mathematically trivial and computationally impossible.
 
 The key insight is that the transformation is *linear*. Moving one pixel right on screen always adds the same (dx, dy) to the texture coordinates. Moving one pixel down always adds the same (dx', dy'). The per-pixel cost collapses from two multiplications to two additions:
 
@@ -41,7 +41,7 @@ Even at two additions per pixel, writing 6,144 bytes to the Spectrum's interleav
 
 Illusion uses 2x2 chunky pixels: effective resolution 128x96, a 4x reduction in work. The effect looks blocky up close, but at the speed the texture sweeps across the screen, motion hides the coarseness. The eye forgives low resolution when everything is moving.
 
-The encoding is designed for the inner loop. Each chunky pixel is stored as `#03` (on) or `#00` (off). Why `#03`? Because `ADD A,A` twice shifts it left by 2 positions, and then `ADD A,(HL)` merges the next pixel's `#03` into the lower bits. Four chunky pixels combine into one output byte using nothing but shifts and additions -- no masking, no branching, no bit manipulation.
+The encoding is designed for the inner loop. Each chunky pixel is stored as `$03` (on) or `$00` (off). Why `$03`? Because `ADD A,A` twice shifts it left by 2 positions, and then `ADD A,(HL)` merges the next pixel's `$03` into the lower bits. Four chunky pixels combine into one output byte using nothing but shifts and additions -- no masking, no branching, no bit manipulation.
 
 ---
 
@@ -51,7 +51,7 @@ Introspec's disassembly reveals the core rendering sequence. HL walks through th
 
 ```z80
 ; Inner loop: combine 4 chunky pixels into one output byte
-    ld   a,(hl)        ;  7T  -- read first chunky pixel (#03 or #00)
+    ld   a,(hl)        ;  7T  -- read first chunky pixel ($03 or $00)
     inc  l             ;  4T  -- step right in texture
     dec  h             ;  4T  -- step up in texture
     add  a,a           ;  4T  -- shift left
@@ -127,25 +127,25 @@ Screen addresses are embedded as literal operands, pre-calculated for the Spectr
 
 sq's article pushes chunky pixels to 4x4 -- effective resolution 64x48. The visual result is coarser, but the performance gain opens up effects like bumpmapping and interlaced rendering. The article is a study in optimisation methodology: start straightforward, iteratively improve, measure at each step.
 
-**Approach 1: Basic LD/INC (101 cycles per pair).** Load chunky value, write to buffer, advance pointers. The bottleneck is pointer management: `INC HL` at 6 T-states adds up over thousands of iterations.
+**Approach 1: Basic LD/INC (101 T-states per pair).** Load chunky value, write to buffer, advance pointers. The bottleneck is pointer management: `INC HL` at 6 T-states adds up over thousands of iterations.
 
-**Approach 2: LDI variant (104 cycles -- slower!).** `LDI` copies a byte and auto-increments both pointers in one instruction. But it also decrements BC, consuming a register pair. The save/restore overhead makes it *slower* than the naive approach. A cautionary tale: on the Z80, the "clever" instruction is not always the fast one.
+**Approach 2: LDI variant (104 T-states -- slower!).** `LDI` copies a byte and auto-increments both pointers in one instruction. But it also decrements BC, consuming a register pair. The save/restore overhead makes it *slower* than the naive approach. A cautionary tale: on the Z80, the "clever" instruction is not always the fast one.
 
-**Approach 3: LDD dual-byte (80 cycles per pair).** By arranging source and destination in reverse order, `LDD`'s auto-decrement works in your favour. A combined two-byte sequence exploits this for a 21% improvement over baseline.
+**Approach 3: LDD dual-byte (80 T-states per pair).** By arranging source and destination in reverse order, `LDD`'s auto-decrement works in your favour. A combined two-byte sequence exploits this for a 21% improvement over baseline.
 
-**Approach 4: Self-modifying code (76-78 cycles per pair).** Pre-generate 256 rendering procedures, one per possible byte value, each with the pixel value baked in as an immediate operand:
+**Approach 4: Self-modifying code (76-78 T-states per pair).** Pre-generate 256 rendering procedures, one per possible byte value, each with the pixel value baked in as an immediate operand:
 
 ```z80
 ; One of 256 pre-generated procedures
 proc_A5:
-    ld   (hl),#A5        ; 10T  -- value baked into instruction
+    ld   (hl),$A5        ; 10T  -- value baked into instruction
     inc  l               ;  4T
-    ld   (hl),#A5        ; 10T  -- 4x4 block spans 2 bytes horizontally
+    ld   (hl),$A5        ; 10T  -- 4x4 block spans 2 bytes horizontally
     ; ... handle vertical repetition ...
     ret                  ; 10T
 ```
 
-The 256 procedures occupy approximately 3KB. Per-pixel rendering drops to 76-78 cycles -- 23% faster than baseline, 27% faster than LDI.
+The 256 procedures occupy approximately 3KB. Per-pixel rendering drops to 76-78 T-states -- 23% faster than baseline, 27% faster than LDI.
 
 ### Performance Comparison
 
@@ -168,7 +168,7 @@ sq notes these techniques build on work published in Born Dead #05, a Russian de
 
 Here is the structure for a working rotozoomer with 2x2 chunky pixels and a checkerboard texture.
 
-**Texture.** A 256-byte page-aligned table where each byte is `#03` or `#00`, generating 8-pixel-wide stripes. The H register provides the second dimension; XORing H into the lookup creates a full checkerboard:
+**Texture.** A 256-byte page-aligned table where each byte is `$03` or `$00`, generating 8-pixel-wide stripes. The H register provides the second dimension; XORing H into the lookup creates a full checkerboard:
 
 ```z80
     ALIGN 256
@@ -247,9 +247,9 @@ Dark built all of them. Introspec traced all of them. The pattern that connects 
 - Chunky pixels (2x2, 4x4) reduce effective resolution and rendering cost proportionally. Illusion uses 2x2 at 128x96; sq's system uses 4x4 at 64x48.
 - Illusion's inner loop: `ld a,(hl) : add a,a : add a,a : add a,(hl)` with walk instructions between reads. Cost: ~95 T-states per byte for 4 chunky pixels.
 - Walk direction changes per frame, requiring code generation -- the rendering loop is patched before each frame.
-- sq's 4x4 optimisation journey: basic LD/INC (101 cycles) to LDI (104, slower) to LDD (80) to self-modifying code with 256 pre-generated procedures (76-78 cycles, ~3KB). Based on earlier work in Born Dead #05 (~2001).
+- sq's 4x4 optimisation journey: basic LD/INC (101 T-states) to LDI (104 T-states, slower) to LDD (80 T-states) to self-modifying code with 256 pre-generated procedures (76-78 T-states, ~3KB). Based on earlier work in Born Dead #05 (~2001).
 - Buffer-to-screen transfer via `pop hl : ld (nn),hl` at ~26 T-states per two bytes.
-- The rotozoomer shares its architecture with the sphere (Chapter 6) and dotfield (Chapter 8): precomputed parameters, generated inner loops, sequential memory access.
+- The rotozoomer shares its architecture with the sphere (Chapter 6) and dotfield (Chapter 10): precomputed parameters, generated inner loops, sequential memory access.
 
 ---
 

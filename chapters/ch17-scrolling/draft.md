@@ -48,20 +48,20 @@ High byte:  0 1 0 T T S S S
 Low byte:   L L L C C C C C
 ```
 
-Where TT = third (0--2), SSS = scan line within character cell (0--7), LLL = character row within third (0--7), CCCCC = column byte (0--31).
+Where TT = third (0--2), SSS = scanline within character cell (0--7), LLL = character row within third (0--7), CCCCC = column byte (0--31).
 
-To scroll up by one pixel, you need to copy the contents of row N to row N-1, for every row from 1 to 191. The source and destination addresses for adjacent pixel rows are *not* separated by a constant offset. Within a character cell, consecutive rows differ by $0100 in the high byte (just `INC H` / `DEC H`). But at character cell boundaries -- every 8th row -- the relationship changes: you must adjust L by 32 and reset the scan-line bits in H. At third boundaries (every 64th row), the adjustment is different again.
+To scroll up by one pixel, you need to copy the contents of row N to row N-1, for every row from 1 to 191. The source and destination addresses for adjacent pixel rows are *not* separated by a constant offset. Within a character cell, consecutive rows differ by $0100 in the high byte (just `INC H` / `DEC H`). But at character cell boundaries -- every 8th row -- the relationship changes: you must adjust L by 32 and reset the scanline bits in H. At third boundaries (every 64th row), the adjustment is different again.
 
 ### The Algorithm: Scroll Up by One Pixel
 
-The approach that works with the interleave, rather than against it, uses the split-counter structure from Chapter 2. Maintain two pointers (source and destination) and advance both using the screen's natural hierarchy: 3 thirds, 8 character rows per third, 8 scan lines per character row. Within each character cell, moving between scan lines is just `INC H` / `INC D` on the source and destination. At character row boundaries, reset the scan-line bits and add 32 to L. At third boundaries, add 8 to H and reset L. The inner loop copies 32 bytes per row with LDIR or an LDI chain, and the pointer advancement is folded into the outer loop structure.
+The approach that works with the interleave, rather than against it, uses the split-counter structure from Chapter 2. Maintain two pointers (source and destination) and advance both using the screen's natural hierarchy: 3 thirds, 8 character rows per third, 8 scanlines per character row. Within each character cell, moving between scanlines is just `INC H` / `INC D` on the source and destination. At character row boundaries, reset the scanline bits and add 32 to L. At third boundaries, add 8 to H and reset L. The inner loop copies 32 bytes per row with LDIR or an LDI chain, and the pointer advancement is folded into the outer loop structure.
 
 ### Cost Analysis
 
 For each of the 191 row copies, we must copy 32 bytes from source to destination. Using LDIR:
 
 - Per row: 32 bytes x 21 T-states - 5 = 667 T-states for the LDIR, plus pointer management overhead.
-- Pointer management (save/restore source and dest, advance scan line): approximately 60 T-states per row within a character cell, more at boundaries.
+- Pointer management (save/restore source and dest, advance scanline): approximately 60 T-states per row within a character cell, more at boundaries.
 
 **Total with LDIR: approximately 143,000 T-states.** That is roughly **two full frames**. A vertical pixel scroll by one row using LDIR does not fit in a single frame.
 
@@ -84,7 +84,7 @@ The reality is that most games do not scroll the entire 192-line display. A typi
 
 This is why pure vertical pixel scrolling at 1px/frame is rare in Spectrum games. The common approaches are:
 
-1. **Scroll by 8 pixels (one character row):** Move the attributes and the character-aligned pixel data. This is much cheaper because you only copy 21 character rows x 8 scan lines = 168 rows, but you can use a block copy trick: within each third, the character rows are contiguous in blocks. Cost: around 40,000--50,000 T-states with LDIR. Feasible.
+1. **Scroll by 8 pixels (one character row):** Move the attributes and the character-aligned pixel data. This is much cheaper because you only copy 21 character rows x 8 scanlines = 168 rows, but you can use a block copy trick: within each third, the character rows are contiguous in blocks. Cost: around 40,000--50,000 T-states with LDIR. Feasible.
 
 2. **Scroll by 1 pixel using a counter:** Scroll 1px per frame visually by combining a character-level scroll (cheap, every 8 frames) with a pixel offset counter (draw new content at an offset within the 8px character cell). We will cover this combined approach in the horizontal scrolling section below, because it is far more commonly needed there.
 
@@ -92,13 +92,13 @@ This is why pure vertical pixel scrolling at 1px/frame is rare in Spectrum games
 
 ### Scrolling by 8 Pixels (One Character Row)
 
-Scrolling by a full character row is dramatically cheaper because the source and destination are related by a simple offset within each third. The character rows within a third are spaced 32 bytes apart in L. So scrolling one character row up means copying from L+32 to L, for each scan line and each third.
+Scrolling by a full character row is dramatically cheaper because the source and destination are related by a simple offset within each third. The character rows within a third are spaced 32 bytes apart in L. So scrolling one character row up means copying from L+32 to L, for each scanline and each third.
 
-For scrolling the play area by one character row, the key insight is that within a single scan line, character rows are stored contiguously (32 bytes apart). Scan line 0 of char rows 0--7 in a third lives at `$xx00`, `$xx20`, `$xx40`, ..., `$xxE0`. Scrolling N character rows up by one position within a single scan line is therefore a single block copy of (N-1) x 32 bytes.
+For scrolling the play area by one character row, the key insight is that within a single scanline, character rows are stored contiguously (32 bytes apart). Scanline 0 of char rows 0--7 in a third lives at `$xx00`, `$xx20`, `$xx40`, ..., `$xxE0`. Scrolling N character rows up by one position within a single scanline is therefore a single block copy of (N-1) x 32 bytes.
 
-For a 20-character-row play area, one scan line's worth of data is 20 x 32 = 640 bytes. Scrolling that scan line means copying 19 x 32 = 608 bytes forward by 32. We do this for each of the 8 scan lines, handling third boundaries separately.
+For a 20-character-row play area, one scanline's worth of data is 20 x 32 = 640 bytes. Scrolling that scanline means copying 19 x 32 = 608 bytes forward by 32. We do this for each of the 8 scanlines, handling third boundaries separately.
 
-**Estimated cost:** 8 scan lines x ~12,700 T-states per scan line (608 bytes via LDIR) + third-boundary handling = approximately **105,000 T-states**. That is 146% of a frame.
+**Estimated cost:** 8 scanlines x ~12,700 T-states per scanline (608 bytes via LDIR) + third-boundary handling = approximately **105,000 T-states**. That is 146% of a frame.
 
 Even character-row scrolling the full play area in one frame is tight. Games handle this by either:
 
@@ -267,7 +267,7 @@ Here is the per-frame cost breakdown:
 | Operation | T-states | Frequency |
 |-----------|----------|-----------|
 | Character scroll (full play area) | ~57,000 | Every 8th frame |
-| Pixel-shift 1--2 edge columns (20 rows x 2 cols x 21 T/byte x 8 scan lines) | ~6,720 | Every frame |
+| Pixel-shift 1--2 edge columns (20 rows x 2 cols x 21 T/byte x 8 scanlines) | ~6,720 | Every frame |
 | Draw new tile column at right edge | ~5,000 | Every 8th frame |
 | Attribute column update | ~1,200 | Every 8th frame |
 
@@ -290,7 +290,7 @@ The key inner routine shifts 1 or 2 columns of pixel data by 1 pixel. For a 2-co
                           ; total: 40 T per row (for 2-byte window)
 ```
 
-For 160 rows (20 char rows x 8 scan lines): 160 x 40 = **6,400 T-states**. With pointer advancement overhead (~20 T per row), the total is about **9,600 T-states** per frame. Very affordable.
+For 160 rows (20 char rows x 8 scanlines): 160 x 40 = **6,400 T-states**. With pointer advancement overhead (~20 T per row), the total is about **9,600 T-states** per frame. Very affordable.
 
 ### The Rendering Pipeline
 
@@ -362,7 +362,7 @@ For a single row, this is a 31-byte LDIR:
 
 For the full play area (168 rows): 168 x 646 = 108,528 T-states + row navigation overhead.
 
-A better approach leverages the fact that within each scan line of a character row, the bytes are contiguous. For 20 character columns, one scan line's data is 20 contiguous bytes. Scrolling that scan line left by 1 byte means LDIR of 19 bytes:
+A better approach leverages the fact that within each scanline of a character row, the bytes are contiguous. For 20 character columns, one scanline's data is 20 contiguous bytes. Scrolling that scanline left by 1 byte means LDIR of 19 bytes:
 
 ```z80
 ; Scroll one scan line of the play area left by 1 character column
@@ -450,7 +450,7 @@ This is more work per frame (you redraw the whole play area, not just shift it),
 3. **Flexible scroll speed.** You can scroll 1, 2, or 3 pixels per frame without changing the rendering logic.
 4. **Simpler code.** A tile renderer is simpler than a combined shift-and-copy scroller.
 
-The cost of a full play-area redraw from tiles depends on your tile renderer. With 20 x 20 tiles, each tile being 8 bytes (8 scan lines x 1 byte), and using LDI chains:
+The cost of a full play-area redraw from tiles depends on your tile renderer. With 20 x 20 tiles, each tile being 8 bytes (8 scanlines x 1 byte), and using LDI chains:
 
 - 400 tiles x 8 bytes x 16 T per LDI = 51,200 T-states for data output.
 - Plus tile address lookups and screen address calculations: ~20 T per tile x 400 = 8,000 T.
@@ -532,7 +532,7 @@ The VDP supports a viewport offset for bitmap modes. By setting the scroll offse
     call vdu_write      ; x offset high byte
 ```
 
-The hardware applies this offset when reading the framebuffer for display. No pixel data is moved, no CPU cycles are spent on shifting bytes, and the scroll is perfectly smooth at any speed. The CPU cost is just the serial communication overhead (a few hundred T-states for the VDU command sequence).
+The hardware applies this offset when reading the framebuffer for display. No pixel data is moved, no CPU T-states are spent on shifting bytes, and the scroll is perfectly smooth at any speed. The CPU cost is just the serial communication overhead (a few hundred T-states for the VDU command sequence).
 
 ### Tilemap Scrolling
 
@@ -729,7 +729,7 @@ If sprites cover part of the play area, you can skip scrolling the rows behind o
 
 ### 3. Use PUSH for the Character Scroll
 
-For the character-level pixel data scroll (copying 19 bytes left per scan line), the PUSH trick works well. Set SP to the end of each scan line's play area, POP 10 bytes, shift the register contents, and PUSH them back one byte offset. This is complex to set up but reduces the per-scan-line cost by 30--40%.
+For the character-level pixel data scroll (copying 19 bytes left per scanline), the PUSH trick works well. Set SP to the end of each scanline's play area, POP 10 bytes, shift the register contents, and PUSH them back one byte offset. This is complex to set up but reduces the per-scanline cost by 30--40%.
 
 ### 4. Split the Character Scroll Across Frames
 

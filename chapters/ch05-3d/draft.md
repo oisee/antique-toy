@@ -446,10 +446,10 @@ sort_faces:
 Once you know which faces to draw and in what order, you need to fill them. A convex polygon (all interior angles less than 180 degrees) can be filled with a simple scanline approach:
 
 1. Find the topmost and bottommost vertices.
-2. Walk down the left edge and the right edge simultaneously, one scan line at a time.
-3. For each scan line, draw a horizontal line from the left edge to the right edge.
+2. Walk down the left edge and the right edge simultaneously, one scanline at a time.
+3. For each scanline, draw a horizontal line from the left edge to the right edge.
 
-The edge-walking uses Bresenham-style incremental stepping --- no division needed per scan line, just additions and conditional increments. The horizontal fill itself is a tight loop of byte writes:
+The edge-walking uses Bresenham-style incremental stepping --- no division needed per scanline, just additions and conditional increments. The horizontal fill itself is a tight loop of byte writes:
 
 ```z80
 ; Fill one scan line from x_left to x_right at screen row Y
@@ -471,7 +471,7 @@ fill_scanline:
     ret
 ```
 
-This is simplified --- real polygon fillers must handle partial bytes at the left and right edges, where the polygon boundary falls within a byte rather than on a byte boundary. Those edge cases add complexity but not much cost, since they occur only twice per scan line.
+This is simplified --- real polygon fillers must handle partial bytes at the left and right edges, where the polygon boundary falls within a byte rather than on a byte boundary. Those edge cases add complexity but not much cost, since they occur only twice per scanline.
 
 ---
 

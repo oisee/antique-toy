@@ -1433,7 +1433,7 @@ Every step is automated by the Makefile. The artist changes a tile, types `make`
 
 ## 21.13 Release Format: Building the .tap
 
-The final deliverable is a `.tap` file. SjASMPlus can generate `.tap` output directly using its `SAVETAP` directive:
+The final deliverable is a `.tap` file. sjasmplus can generate `.tap` output directly using its `SAVETAP` directive:
 
 ```z80
 ; main.a80 -- top-level assembly file
@@ -1509,7 +1509,7 @@ entry:
     SAVESNA "build/ironclaw.sna", entry
 ```
 
-The exact SAVETAP syntax varies by SjASMPlus version. For 128K games with banked data, the cleanest approach is to generate a `.sna` snapshot (which captures all bank states) for emulator testing, and a `.tap` with a BASIC loader plus machine code blocks for distribution.
+The exact SAVETAP syntax varies by sjasmplus version. For 128K games with banked data, the cleanest approach is to generate a `.sna` snapshot (which captures all bank states) for emulator testing, and a `.tap` with a BASIC loader plus machine code blocks for distribution.
 
 ### Testing the Release
 
@@ -1588,4 +1588,4 @@ check_fire:
 
 ---
 
-> **Sources:** World of Spectrum (ZX Spectrum 128K memory map and port $7FFD documentation); Introspec "Data Compression for Modern Z80 Coding" (Hype 2017); esxDOS API documentation (DivIDE/DivMMC wiki); DeZog VS Code Extension documentation (GitHub: maziac/DeZog); SjASMPlus documentation (SAVETAP, DEVICE, SLOT, PAGE directives); Vortex Tracker II PT3 format specification; Chapters 11, 14, 15, 16, 17, 18, 19 of this book.
+> **Sources:** World of Spectrum (ZX Spectrum 128K memory map and port $7FFD documentation); Introspec "Data Compression for Modern Z80 Coding" (Hype 2017); esxDOS API documentation (DivIDE/DivMMC wiki); DeZog VS Code Extension documentation (GitHub: maziac/DeZog); sjasmplus documentation (SAVETAP, DEVICE, SLOT, PAGE directives); Vortex Tracker II PT3 format specification; Chapters 11, 14, 15, 16, 17, 18, 19 of this book.

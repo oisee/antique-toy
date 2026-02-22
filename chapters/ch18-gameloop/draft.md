@@ -996,10 +996,13 @@ state_gameover:
     jp   return_to_loop
 
 ; ============================================================
-; State: Menu (placeholder)
+; State: Menu (minimal — expand for your game)
 ; ============================================================
 state_menu:
-    jp   state_title         ; placeholder -- fall through to title logic
+    ; A full menu would display options and handle UP/DOWN/FIRE.
+    ; For this skeleton, the menu simply transitions to the title.
+    ; See Exercise 2 below for adding a real menu with item selection.
+    jp   state_title
 
 ; ============================================================
 ; Init game: set up player and enemies
@@ -1334,8 +1337,9 @@ render_entities:
     bit  FLAG_VISIBLE, a
     jr   z, .skip
 
-    ; Draw a 1-character coloured block at entity position
-    ; (placeholder for real sprite rendering)
+    ; Draw a 1-character coloured block at entity position.
+    ; For real sprite rendering, see Chapter 16 (OR+AND masks,
+    ; pre-shifted sprites, compiled sprites, dirty rectangles).
     ld   a, (ix + 1)        ; X pixel
     rrca                     ; /2
     rrca                     ; /4
@@ -1464,7 +1468,7 @@ Four IX accesses at 19T = 76T up front, then the entire render routine uses 4T r
 
 - The Agon Light 2 uses the same architecture with more headroom. MOS `waitvblank` replaces `HALT`, PS/2 keyboard replaces half-row scanning, hardware sprites replace CPU blitting. The entity update loop is no longer the bottleneck.
 
-- The practical skeleton in this chapter runs a state machine, 16 entities (1 player + 8 enemies + 7 bullet/effect slots), input with edge detection, per-type update handlers, and a placeholder renderer. It is the chassis that Chapters 16, 17, 19, and 11 plug into.
+- The practical skeleton in this chapter runs a state machine, 16 entities (1 player + 8 enemies + 7 bullet/effect slots), input with edge detection, per-type update handlers, and a minimal attribute-block renderer. It is the chassis that Chapters 16 (sprites), 17 (scrolling), 19 (collisions), and 11 (sound) plug into.
 
 ---
 

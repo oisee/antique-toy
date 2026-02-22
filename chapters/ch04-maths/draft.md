@@ -143,7 +143,7 @@ divu111:
 
 The `INC B` to set the quotient bit is a neat trick: B was just shifted left by `SLA B`, so bit 0 is guaranteed zero. `INC B` sets it without affecting other bits -- cheaper than `OR` or `SET`.
 
-The 16-bit version (DIVU222) costs 938 to 1034 T-states. A thousand cycles for a single divide. With a frame budget of ~70,000 T-states, you can afford perhaps 70 divides per frame -- doing nothing else. This is why demoscene 3D engines go to extreme lengths to avoid division.
+The 16-bit version (DIVU222) costs 938 to 1034 T-states. A thousand T-states for a single divide. With a frame budget of ~70,000 T-states, you can afford perhaps 70 divides per frame -- doing nothing else. This is why demoscene 3D engines go to extreme lengths to avoid division.
 
 ### Method 2: Logarithmic Division
 
@@ -229,7 +229,7 @@ Every edge of a wireframe object is a line from (x1,y1) to (x2,y2), and you need
 
 ### The Classic Algorithm and Xopha Modification
 
-Bresenham's algorithm steps along the major axis one pixel at a time, maintaining an error accumulator for minor-axis steps. On the Spectrum, "set a pixel" is expensive -- the interleaved screen memory means computing a byte address and bit position costs real cycles. The ROM routine takes over 1000 T-states per pixel. Even a hand-optimised Bresenham loop costs ~80 T-states per pixel.
+Bresenham's algorithm steps along the major axis one pixel at a time, maintaining an error accumulator for minor-axis steps. On the Spectrum, "set a pixel" is expensive -- the interleaved screen memory means computing a byte address and bit position costs real T-states. The ROM routine takes over 1000 T-states per pixel. Even a hand-optimised Bresenham loop costs ~80 T-states per pixel.
 
 Dark mentions Xopha's improvement: maintain a screen pointer (HL) and advance it incrementally rather than recomputing from scratch. Moving right means rotating a bit mask; moving down means the multi-instruction DOWN_HL adjustment. Better, but the core problem remains.
 
@@ -237,7 +237,7 @@ Dark mentions Xopha's improvement: maintain a screen pointer (HL) and advance it
 
 Then Dark makes his key observation: **"87.5% of checks are wasted."**
 
-In a Bresenham loop, at every pixel you ask: should I step sideways? For a nearly horizontal line, the answer is almost always no. On average, seven out of eight checks produce no side-step. You are burning cycles on a conditional branch that almost never fires.
+In a Bresenham loop, at every pixel you ask: should I step sideways? For a nearly horizontal line, the answer is almost always no. On average, seven out of eight checks produce no side-step. You are burning T-states on a conditional branch that almost never fires.
 
 Dark's solution: pre-compute the pixel pattern for each line slope within an 8x8 pixel grid, and unroll the drawing loop to output entire grid cells at once. A line segment within an 8x8 area is fully determined by its slope. For each of the eight octants, enumerate all possible 8-pixel patterns as straight sequences of `SET bit,(HL)` instructions with address increments between them.
 
