@@ -1,0 +1,293 @@
+; hscroll.a80 — Horizontal pixel scroller (1px per frame)
+; From Chapter 17: Scrolling
+;
+; Demonstrates: RL chain technique for horizontal pixel scrolling,
+; carry propagation across a full row, HALT-based frame sync,
+; border colour timing visualisation, and feeding new column data
+; from the right edge using a simple repeating font pattern.
+;
+; Scrolls one character row (row 12 = middle of screen, 8 pixel
+; lines) leftward at 1 pixel per frame. New column data is fed
+; from a text string rendered in a 1-bit font.
+;
+; The border turns red during the scroll routine so you can see
+; exactly how much raster time the RL chain consumes.
+;
+; Assembles with: sjasmplus --nologo
+
+    ORG  $8000
+
+; ============================================================
+; Constants
+; ============================================================
+SCREEN      EQU  $4000          ; pixel area start
+ATTRS       EQU  $5800          ; attribute area start
+ROW_CHARS   EQU  32             ; bytes per pixel row
+SCROLL_CHAR_ROW EQU 12          ; character row to scroll (0-23)
+NUM_LINES   EQU  8              ; pixel lines per character row
+BORDER_PORT EQU  $FE
+
+; Screen address for character row 12, scanline 0:
+; High byte: 010 TT SSS  where TT=third(0-2), SSS=scanline(0-7)
+; Low byte:  LLL CCCCC   where LLL=char row within third, CCCCC=col
+;
+; Char row 12 = third 1 (rows 8-15), row 4 within third
+; Third 1 base: $4800
+; Row 4 within third: L = 4, so low byte base = 4*32 = $80
+; Scanline 0: SSS=0
+; Address = $4880
+SCROLL_BASE EQU  $4880
+
+; Attribute address for char row 12 = $5800 + 12*32 = $5980
+ATTR_BASE   EQU  $5980
+
+; ============================================================
+; Entry point
+; ============================================================
+entry:
+    di
+    ld   sp, $FFFF
+    im   1
+    ei
+
+    ; --- Clear screen ---
+    ld   hl, SCREEN
+    ld   de, SCREEN + 1
+    ld   bc, 6143
+    ld   (hl), 0
+    ldir
+
+    ; --- Set all attributes to white ink on black paper ---
+    ld   hl, ATTRS
+    ld   de, ATTRS + 1
+    ld   bc, 767
+    ld   (hl), $07              ; white ink, black paper
+    ldir
+
+    ; --- Set scroll row attributes to bright white on blue ---
+    ld   hl, ATTR_BASE
+    ld   b, ROW_CHARS
+.set_attrs:
+    ld   (hl), $4F              ; bright=1, paper=blue(1), ink=white(7)
+    inc  hl
+    djnz .set_attrs
+
+    ; --- Set border to black ---
+    xor  a
+    out  (BORDER_PORT), a
+
+    ; --- Initialise scroll state ---
+    xor  a
+    ld   (bit_counter), a       ; sub-pixel counter 0-7
+    ld   hl, message
+    ld   (msg_ptr), hl          ; start of message
+
+; ============================================================
+; Main loop — one iteration per frame
+; ============================================================
+main_loop:
+    halt                        ; sync to 50Hz interrupt
+
+    ; --- Turn border red: timing marker START ---
+    ld   a, 2                   ; red
+    out  (BORDER_PORT), a
+
+    ; --- Scroll all 8 scanlines of the character row ---
+    call scroll_row
+
+    ; --- Feed new pixel column from font data ---
+    call feed_column
+
+    ; --- Turn border black: timing marker END ---
+    xor  a
+    out  (BORDER_PORT), a
+
+    jr   main_loop
+
+; ============================================================
+; scroll_row — shift 32 bytes left by 1 pixel, all 8 scanlines
+;
+; For each scanline: clear carry, then RL (HL) from byte 31
+; down to byte 0.  Carry propagates the exiting bit 7 of each
+; byte into bit 0 of its left neighbour.
+;
+; Total per scanline:
+;   or a           =   4 T
+;   32 x rl (hl)   = 480 T  (32 * 15 T)
+;   31 x dec hl    = 186 T  (31 *  6 T)
+;                   --------
+;                     670 T per scanline
+;
+; 8 scanlines: 8 * 670 = 5,360 T  (+ pointer setup ~200 T)
+; Total: ~5,560 T = 7.8% of a 71,680 T frame
+; ============================================================
+scroll_row:
+    ld   de, SCROLL_BASE        ; base address of char row
+    ld   b, NUM_LINES           ; 8 scanlines
+
+.scanline:
+    push bc
+    push de
+
+    ; Point HL to rightmost byte of this scanline (col 31)
+    ld   h, d
+    ld   l, e
+    ld   a, l
+    or   $1F                    ; 4 T   set low 5 bits = 31
+    ld   l, a                   ; 4 T   HL = row_start + 31
+
+    ; Clear carry flag — no pixel entering from the right
+    or   a                      ; 4 T
+
+    ; --- RL chain: 32 bytes, right to left ---
+    ; Each iteration: rl (hl) = 15 T, dec hl = 6 T = 21 T/byte
+    ; (The first RL picks up carry=0 from OR A above)
+    ld   c, ROW_CHARS           ; 7 T   C = 32 byte counter
+.shift_byte:
+    rl   (hl)                   ; 15 T  shift left through carry
+    dec  hl                     ; 6 T   next byte leftward
+    dec  c                      ; 4 T
+    jr   nz, .shift_byte        ; 12/7 T
+    ; Loop overhead: 32*(15+6+4+12)-5 = 1,179 T per scanline
+    ; (Unrolled version in draft text is faster at 670 T, but
+    ;  this looped version is clearer for a teaching example)
+
+    pop  de
+    pop  bc
+
+    ; Advance DE to next scanline: inc D (within char cell,
+    ; consecutive scanlines differ by $0100 in high byte)
+    inc  d                      ; 4 T
+
+    djnz .scanline              ; 13/8 T
+    ret
+
+; ============================================================
+; feed_column — insert a new pixel column at the right edge
+;
+; Every 8 frames, advance to the next character in the message.
+; The sub-pixel counter (bit_counter) tracks which bit column
+; of the current font character we are feeding (7 down to 0,
+; leftmost first since we scroll left).
+;
+; For each of the 8 scanlines, we read one byte of the font
+; glyph and extract the current bit column, then OR it into
+; bit 0 of byte 31 (the rightmost byte of the scroll region).
+; ============================================================
+feed_column:
+    ; --- Get current font character pointer ---
+    ld   hl, (msg_ptr)
+    ld   a, (hl)                ; current ASCII character
+    or   a                      ; end of string? (0 terminator)
+    jr   nz, .have_char
+    ; Wrap around to start of message
+    ld   hl, message
+    ld   (msg_ptr), hl
+    ld   a, (hl)
+.have_char:
+    ; --- Calculate font glyph address ---
+    ; ROM font at $3D00, 8 bytes per char, starts at ASCII 32
+    ; glyph_addr = $3D00 + (char - 32) * 8
+    sub  32                     ; offset from space
+    ld   l, a
+    ld   h, 0
+    add  hl, hl
+    add  hl, hl
+    add  hl, hl                 ; HL = (char - 32) * 8
+    ld   de, $3D00
+    add  hl, de                 ; HL = glyph address
+    ld   (glyph_ptr), hl
+
+    ; --- Which bit column? (7 = leftmost, 0 = rightmost) ---
+    ld   a, (bit_counter)
+    ld   c, a                   ; C = current bit index (0-7)
+
+    ; --- Write 8 scanlines into right edge of scroll area ---
+    ld   de, SCROLL_BASE
+    ld   b, NUM_LINES           ; 8 scanlines
+
+.feed_line:
+    push bc
+    push de
+
+    ; Read font byte for this scanline
+    ld   hl, (glyph_ptr)
+    ld   a, (hl)
+    inc  hl
+    ld   (glyph_ptr), hl
+
+    ; Extract bit (7-C) from font byte.
+    ; Bit 7 is leftmost pixel in the glyph byte.
+    ; bit_counter 0 -> we want bit 7 (leftmost column first).
+    ; bit_counter 7 -> we want bit 0 (rightmost column last).
+    ;
+    ; Method: right-shift the font byte by (7 - C) positions,
+    ; then AND 1 to isolate the target bit.
+    ld   b, a                   ; B = font byte
+    ld   a, 7
+    sub  c                      ; A = 7 - bit_counter = shift count
+    jr   z, .no_shift           ; if 0, bit 0 is already the target
+    ; Right-shift B by A positions
+    ld   c, a                   ; C = shift count (save for loop)
+    ld   a, b                   ; A = font byte
+.shift_bit:
+    srl  a                      ; shift right logical
+    dec  c
+    jr   nz, .shift_bit
+    jr   .got_bit
+.no_shift:
+    ld   a, b                   ; font byte unshifted (want bit 0)
+.got_bit:
+    and  $01                    ; isolate the target bit
+    ; A = 0 or 1 (the pixel to feed into the right edge)
+
+    ; OR into bit 0 of the rightmost byte of this scanline
+    ld   h, d
+    ld   l, e
+    ld   c, a                   ; save pixel
+    ld   a, l
+    or   $1F                    ; point to byte 31
+    ld   l, a
+    ld   a, (hl)
+    or   c                      ; set bit 0 if pixel is 1
+    ld   (hl), a
+
+    pop  de
+    pop  bc
+
+    ; Next scanline: inc D (same trick as scroll_row)
+    inc  d
+    djnz .feed_line
+
+    ; --- Advance bit counter ---
+    ld   a, (bit_counter)
+    inc  a
+    cp   8
+    jr   c, .save_bit
+    ; Finished all 8 columns of this character — advance message
+    xor  a                      ; reset bit counter to 0
+    ld   hl, (msg_ptr)
+    inc  hl
+    ld   (msg_ptr), hl
+.save_bit:
+    ld   (bit_counter), a
+    ret
+
+; ============================================================
+; Data
+; ============================================================
+
+; Scroll state
+bit_counter:  DB  0             ; which bit column (0-7) of current char
+msg_ptr:      DW  message       ; pointer into message string
+glyph_ptr:    DW  0             ; temporary: current glyph address
+
+; Message to scroll — wraps around at null terminator
+message:
+    DB  "   HORIZONTAL PIXEL SCROLL "
+    DB  "-- CHAPTER 17: SCROLLING "
+    DB  "-- RL CHAIN TECHNIQUE "
+    DB  "-- 32 BYTES PER SCANLINE, "
+    DB  "8 SCANLINES PER CHAR ROW "
+    DB  "-- BORDER SHOWS TIMING   "
+    DB  0

@@ -1,0 +1,753 @@
+; demo_framework.a80 -- Minimal Demo Framework / Scene Table Engine
+; From Chapter 20: Demo Workflow -- From Idea to Compo
+;
+; Demonstrates:
+;   1. A scene table that drives the entire demo structure
+;      (the Lo-Fi Motion pattern from section 20.2)
+;   2. Per-effect init / render_frame / cleanup function pointers
+;   3. A virtual attribute buffer (1 byte per cell, 32x24 = 768 bytes)
+;      decoupling effect rendering from screen output
+;   4. Frame counting and automatic effect advancement
+;   5. A crossfade transition between effects (section 20.2)
+;   6. Border-colour timing visualisation (section 20.7)
+;
+; This is the "minimum viable demo engine" from section 20.9:
+; the skeleton you build in Week 1, Day 2. Real effects (plasma,
+; fire, rotozoomer) from earlier chapters plug into this framework
+; by filling in the init/frame/cleanup function pointers.
+;
+; The visual "effects" here are simplified attribute-level patterns
+; so the example is self-contained. In a real demo, each effect
+; would be a full routine from Part II of the book.
+;
+; Assembles with: sjasmplus --nologo
+; Target: ZX Spectrum 48K/128K
+;
+; Memory map:
+;   $8000-$BFFF  Engine + effects + scene table + data
+;   $5800-$5AFF  Attribute area (ULA)
+;   $4000-$57FF  Pixel area (ULA, cleared once at startup)
+
+    ORG $8000
+
+; ============================================================
+; Constants
+; ============================================================
+ATTR_BASE       EQU $5800          ; start of attribute memory
+ATTR_SIZE       EQU 768            ; 32 columns x 24 rows
+SCREEN_COLS     EQU 32
+SCREEN_ROWS     EQU 24
+
+; Scene table entry size: 9 bytes
+; [init_addr:2] [frame_addr:2] [cleanup_addr:2] [duration:2] [param:1]
+SCENE_ENTRY_SZ  EQU 9
+
+; Effect IDs (not stored in table -- effects are identified by
+; their function pointers, keeping the engine generic)
+NUM_EFFECTS     EQU 4
+
+; Crossfade duration in frames
+XFADE_FRAMES    EQU 25             ; 0.5 second at 50 Hz
+
+; ============================================================
+; Entry point
+; ============================================================
+entry:
+    di
+    ld   sp, $FF00                 ; stack below IM2 area
+
+    ; --- Clear pixel area with a dither pattern ---
+    ; Gives attribute colours something visible to modulate.
+    call clear_pixels
+
+    ; --- Clear attribute area to black ---
+    call clear_attrs
+
+    ; --- Initialise engine state ---
+    xor  a
+    ld   (frame_counter), a
+    ld   (frame_counter+1), a
+    ld   (effect_frame), a
+    ld   (effect_frame+1), a
+    ld   (xfade_active), a
+
+    ; Point to the first scene table entry
+    ld   hl, scene_table
+    ld   (scene_ptr), hl
+
+    ; Load the first effect
+    call load_scene
+
+    ; --- Enable interrupts (IM1 for simplicity) ---
+    im   1
+    ei
+
+; ============================================================
+; Main engine loop
+; ============================================================
+engine_loop:
+    halt                           ; sync to 50 Hz frame boundary
+
+    ; --- Timing: set border colour to show CPU usage ---
+    ld   a, 2                      ; red = "engine working"
+    out  ($FE), a
+
+    ; --- Advance frame counters ---
+    ld   hl, (frame_counter)
+    inc  hl
+    ld   (frame_counter), hl
+
+    ld   hl, (effect_frame)
+    inc  hl
+    ld   (effect_frame), hl
+
+    ; --- Check if current effect duration has elapsed ---
+    ld   de, (effect_duration)
+    or   a                         ; clear carry
+    sbc  hl, de
+    jr   c, .effect_running
+
+    ; Duration elapsed -- transition to next effect
+    call transition_to_next
+
+.effect_running:
+    ; --- Call the current effect's frame routine ---
+    ; It renders into virtual_buffer (768 bytes)
+    ld   hl, virtual_buffer
+    ld   (current_buf_ptr), hl     ; store for effect to use
+    ld   hl, (current_frame_fn)
+    call call_hl
+
+    ; --- Handle crossfade if active ---
+    ld   a, (xfade_active)
+    or   a
+    jr   z, .no_xfade
+
+    ; Render the outgoing effect into xfade_buffer
+    ld   hl, xfade_buffer
+    ld   (current_buf_ptr), hl
+    ld   hl, (xfade_frame_fn)
+    call call_hl
+
+    ; Blend virtual_buffer and xfade_buffer into virtual_buffer
+    call crossfade_blend
+
+    ; Decrement crossfade counter
+    ld   a, (xfade_counter)
+    dec  a
+    ld   (xfade_counter), a
+    jr   nz, .no_xfade
+
+    ; Crossfade finished -- clean up outgoing effect
+    xor  a
+    ld   (xfade_active), a
+    ld   hl, (xfade_cleanup_fn)
+    call call_hl
+
+.no_xfade:
+    ; --- Copy virtual buffer to screen attribute RAM ---
+    ld   hl, virtual_buffer
+    ld   de, ATTR_BASE
+    ld   bc, ATTR_SIZE
+    ldir                           ; 768 bytes -> screen
+
+    ; --- Timing: reset border to show idle time ---
+    xor  a                         ; black = "idle"
+    out  ($FE), a
+
+    ; --- Check for SPACE to exit ---
+    ld   a, $7F                    ; half-row: B N M Sym Space
+    in   a, ($FE)
+    bit  0, a                      ; bit 0 = SPACE (active low)
+    jr   nz, engine_loop           ; not pressed, continue
+
+    ; --- Exit: clean up and return ---
+    call cleanup_current_effect
+    call clear_attrs
+    xor  a
+    out  ($FE), a                  ; black border
+    di
+    halt                           ; stop
+
+; ============================================================
+; call_hl -- Jump to address in HL and return
+; Used to call effect function pointers.
+; ============================================================
+call_hl:
+    jp   (hl)                      ; jumps to address in HL;
+                                   ; the called routine's RET
+                                   ; returns to our caller
+
+; ============================================================
+; load_scene -- Read the current scene table entry and set up
+; the effect's init/frame/cleanup pointers and duration.
+;
+; Scene table entry format (9 bytes):
+;   +0: DW init_address            ; called once when effect starts
+;   +2: DW frame_address           ; called every frame
+;   +4: DW cleanup_address         ; called when effect ends
+;   +6: DW duration_in_frames      ; how long the effect runs
+;   +8: DB parameter_byte          ; effect-specific parameter
+; ============================================================
+load_scene:
+    ld   hl, (scene_ptr)
+
+    ; Check for end-of-table marker (init_addr = $0000)
+    ld   a, (hl)
+    inc  hl
+    or   (hl)
+    dec  hl
+    jr   nz, .not_end
+
+    ; End of table -- loop back to start
+    ld   hl, scene_table
+    ld   (scene_ptr), hl
+
+.not_end:
+    ; Read init address
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+    inc  hl
+    ld   (current_init_fn), de
+
+    ; Read frame address
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+    inc  hl
+    ld   (current_frame_fn), de
+
+    ; Read cleanup address
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+    inc  hl
+    ld   (current_cleanup_fn), de
+
+    ; Read duration
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+    inc  hl
+    ld   (effect_duration), de
+
+    ; Read parameter byte
+    ld   a, (hl)
+    inc  hl
+    ld   (effect_param), a
+
+    ; Save pointer to next entry
+    ld   (scene_ptr), hl
+
+    ; Reset per-effect frame counter
+    ld   hl, 0
+    ld   (effect_frame), hl
+
+    ; Call the effect's init function
+    ld   hl, (current_init_fn)
+    call call_hl
+
+    ret
+
+; ============================================================
+; transition_to_next -- Begin crossfade from current effect to
+; the next one. The outgoing effect keeps rendering into
+; xfade_buffer while the incoming effect renders into
+; virtual_buffer. The blend routine mixes them.
+; ============================================================
+transition_to_next:
+    ; Save outgoing effect's frame and cleanup pointers
+    ld   hl, (current_frame_fn)
+    ld   (xfade_frame_fn), hl
+    ld   hl, (current_cleanup_fn)
+    ld   (xfade_cleanup_fn), hl
+
+    ; Start crossfade
+    ld   a, XFADE_FRAMES
+    ld   (xfade_counter), a
+    ld   a, 1
+    ld   (xfade_active), a
+
+    ; Load the next scene (this overwrites current_* pointers)
+    call load_scene
+    ret
+
+; ============================================================
+; cleanup_current_effect -- Call current effect's cleanup fn
+; ============================================================
+cleanup_current_effect:
+    ld   hl, (current_cleanup_fn)
+    call call_hl
+    ret
+
+; ============================================================
+; crossfade_blend -- Mix virtual_buffer (incoming, weight grows)
+; and xfade_buffer (outgoing, weight shrinks).
+;
+; Uses a simple attribute-level crossfade:
+;   For each cell, if (frame % threshold) favours the incoming
+;   effect, use its value; otherwise keep the outgoing value.
+;   This produces a dithered dissolve at attribute resolution.
+;
+; The threshold shifts from "all outgoing" to "all incoming"
+; over XFADE_FRAMES frames.
+; ============================================================
+crossfade_blend:
+    ; Calculate threshold: how many cells out of each group
+    ; should show the incoming effect.
+    ; threshold = XFADE_FRAMES - xfade_counter
+    ; When xfade_counter = XFADE_FRAMES, threshold = 0 (all outgoing)
+    ; When xfade_counter = 1, threshold = XFADE_FRAMES-1 (mostly incoming)
+    ld   a, XFADE_FRAMES
+    ld   b, a
+    ld   a, (xfade_counter)
+    ld   c, a                      ; C = counter (decreasing)
+    ld   a, b
+    sub  c                         ; A = threshold (0..XFADE_FRAMES-1)
+    ld   d, a                      ; D = threshold
+
+    ld   hl, virtual_buffer        ; incoming effect
+    ld   ix, xfade_buffer          ; outgoing effect
+    ld   bc, ATTR_SIZE             ; 768 bytes
+
+.blend_loop:
+    ; Simple spatial dither: use low bits of address as noise
+    ld   a, l                      ; low byte of address = pseudo-random
+    and  $1F                       ; 0..31 range
+    ; Scale: if (address_noise * XFADE_FRAMES / 32) < threshold,
+    ; use incoming; else use outgoing.
+    ; Simplified: just compare (address & 31) vs threshold
+    cp   d
+    jr   c, .use_incoming          ; noise < threshold -> incoming wins
+
+    ; Use outgoing effect's value
+    ld   a, (ix+0)
+    ld   (hl), a
+
+.use_incoming:
+    ; (incoming value already in virtual_buffer, leave it)
+    inc  hl
+    inc  ix
+    dec  bc
+    ld   a, b
+    or   c
+    jr   nz, .blend_loop
+
+    ret
+
+; ============================================================
+; clear_pixels -- Fill pixel area with dither pattern
+; Gives attribute colours something to modulate.
+; ============================================================
+clear_pixels:
+    ld   hl, $4000
+    ld   bc, 6144
+
+.loop:
+    ld   a, l
+    and  $01                       ; alternate bytes
+    jr   z, .even
+    ld   (hl), $AA                 ; %10101010
+    jr   .next
+.even:
+    ld   (hl), $55                 ; %01010101
+.next:
+    inc  hl
+    dec  bc
+    ld   a, b
+    or   c
+    jr   nz, .loop
+    ret
+
+; ============================================================
+; clear_attrs -- Fill attribute area with black (0)
+; ============================================================
+clear_attrs:
+    ld   hl, ATTR_BASE
+    ld   de, ATTR_BASE + 1
+    ld   bc, ATTR_SIZE - 1
+    ld   (hl), 0
+    ldir
+    ret
+
+; ============================================================
+;                     EFFECT ROUTINES
+;
+; Each effect has three entry points:
+;   init         -- called once when the scene starts
+;   render_frame -- called every frame, writes into buffer
+;   cleanup      -- called when the scene ends
+;
+; The render_frame routine receives:
+;   (current_buf_ptr) = address of the 768-byte output buffer
+;   (effect_frame)    = frames elapsed since this effect started
+;   (effect_param)    = parameter byte from the scene table
+;
+; Effects must preserve IX and the stack.
+; ============================================================
+
+; ============================================================
+; Effect 1: Colour Bars
+; Horizontal stripes that scroll vertically. Colour set from
+; the scene table parameter byte.
+; ============================================================
+fx_bars_init:
+    ret                            ; no state to initialise
+
+fx_bars_frame:
+    ld   hl, (current_buf_ptr)
+    ld   a, (effect_frame)         ; low byte = animation offset
+    ld   c, a
+    ld   b, SCREEN_ROWS            ; 24 rows
+
+.row:
+    push bc
+
+    ; Compute colour for this row:
+    ; colour_index = (row + scroll_offset) AND 7
+    ld   a, SCREEN_ROWS
+    sub  b                         ; A = row index (0..23)
+    add  a, c                      ; + scroll offset
+    and  7                         ; wrap to 0..7
+    ld   d, a                      ; D = ink colour (0..7)
+    rlca
+    rlca
+    rlca                           ; shift into paper bits (3..5)
+    or   d                         ; combine: ink = paper = colour_index
+    ld   d, a                      ; D = base attribute (ink | paper)
+    ld   a, (effect_param)
+    and  $40                       ; isolate BRIGHT bit from param
+    or   d                         ; merge BRIGHT with colour
+    ld   e, a                      ; E = final attribute byte
+
+    ; Fill one row (32 columns) with this attribute
+    ld   b, SCREEN_COLS
+.col:
+    ld   (hl), e
+    inc  hl
+    djnz .col
+
+    pop  bc
+    djnz .row
+    ret
+
+fx_bars_cleanup:
+    ret
+
+; ============================================================
+; Effect 2: Plasma (simplified)
+; Sum-of-sines colour pattern using a small sine table.
+; Animates by offsetting the lookup each frame.
+; ============================================================
+fx_plasma_init:
+    ret
+
+fx_plasma_frame:
+    ld   hl, (current_buf_ptr)
+    ld   a, (effect_frame)
+    ld   c, a                      ; C = time offset (animation)
+
+    ld   b, SCREEN_ROWS
+
+.row:
+    push bc
+    ld   a, SCREEN_ROWS
+    sub  b                         ; A = row (0..23)
+    add  a, c                      ; + time offset
+    ld   d, a                      ; D = row contribution
+
+    ld   b, SCREEN_COLS
+
+.col:
+    push bc
+    ld   a, SCREEN_COLS
+    sub  b                         ; A = col (0..31)
+    add  a, d                      ; + row contribution
+    ; Look up in sine table (32 entries, wrapping)
+    and  $1F                       ; mod 32
+    push hl
+    push de
+    ld   e, a
+    ld   d, 0
+    ld   hl, sine_table_small
+    add  hl, de
+    ld   a, (hl)                   ; sine value 0..7
+    pop  de
+    pop  hl
+
+    ; Build attribute: ink = sine, paper = 7-sine
+    ld   e, a                      ; ink
+    push af
+    ld   a, 7
+    sub  e                         ; 7 - ink
+    rlca
+    rlca
+    rlca                           ; shift to paper bits
+    or   e                         ; combine
+    or   $40                       ; BRIGHT
+    ld   (hl), a
+    pop  af
+
+    inc  hl
+    pop  bc
+    djnz .col
+
+    pop  bc
+    djnz .row
+    ret
+
+fx_plasma_cleanup:
+    ret
+
+; ============================================================
+; Effect 3: Checkerboard
+; Animated 2x2 (or 4x4) checkerboard with colour cycling.
+; ============================================================
+fx_checker_init:
+    ret
+
+fx_checker_frame:
+    ld   hl, (current_buf_ptr)
+    ld   a, (effect_frame)
+    ld   c, a                      ; C = animation phase
+
+    ld   b, SCREEN_ROWS
+
+.row:
+    push bc
+    ld   a, SCREEN_ROWS
+    sub  b                         ; A = row
+    srl  a
+    srl  a                         ; A = row / 4 (4-cell blocks)
+    xor  c                         ; XOR with animation phase
+    ld   d, a                      ; D = row parity seed
+
+    ld   b, SCREEN_COLS
+
+.col:
+    push bc
+    ld   a, SCREEN_COLS
+    sub  b                         ; A = col
+    srl  a
+    srl  a                         ; A = col / 4
+    xor  d                         ; combine with row
+    and  1                         ; 0 or 1
+
+    jr   z, .colour_a
+
+    ; Colour B: use effect_param
+    ld   a, (effect_param)
+    jr   .store
+
+.colour_a:
+    ; Colour A: inverted param
+    ld   a, (effect_param)
+    xor  $3F                       ; invert ink + paper bits
+    or   $40                       ; ensure BRIGHT
+
+.store:
+    ld   (hl), a
+    inc  hl
+    pop  bc
+    djnz .col
+
+    pop  bc
+    djnz .row
+    ret
+
+fx_checker_cleanup:
+    ret
+
+; ============================================================
+; Effect 4: Flash Wipe
+; Whole screen cycles through solid colours, one per frame.
+; Dramatic opener or closer.
+; ============================================================
+fx_flash_init:
+    ret
+
+fx_flash_frame:
+    ld   hl, (current_buf_ptr)
+    ld   a, (effect_frame)
+    and  7                         ; cycle 0..7
+    ld   d, a                      ; ink
+    rlca
+    rlca
+    rlca                           ; paper
+    or   d                         ; solid block (ink = paper)
+    or   $40                       ; BRIGHT
+    ld   e, a                      ; E = attribute byte
+
+    ; Fill 768 bytes (3 x 256)
+    ld   b, 0                      ; 256 iterations
+.fill1:
+    ld   (hl), e
+    inc  hl
+    djnz .fill1
+    ld   b, 0
+.fill2:
+    ld   (hl), e
+    inc  hl
+    djnz .fill2
+    ld   b, 0
+.fill3:
+    ld   (hl), e
+    inc  hl
+    djnz .fill3
+    ret
+
+fx_flash_cleanup:
+    ret
+
+; ============================================================
+; Null effect -- used as a placeholder / black screen
+; ============================================================
+fx_null_init:
+fx_null_frame:
+fx_null_cleanup:
+    ret
+
+; ============================================================
+; Scene table -- THE DEMO SCRIPT
+;
+; This is the heart of the demo: a linear list of scenes.
+; The engine reads entries sequentially, calling init/frame/
+; cleanup for each. Reordering the demo means rearranging
+; these entries. Adjusting timing means changing durations.
+;
+; Format per entry (9 bytes):
+;   DW  init_addr                  ; called once at scene start
+;   DW  frame_addr                 ; called every frame
+;   DW  cleanup_addr               ; called at scene end
+;   DW  duration_frames            ; how long this scene runs
+;   DB  param_byte                 ; effect-specific parameter
+;
+; End-of-table: DW 0 (init_addr = $0000)
+;
+; Total: 100+150+200+150+100+200+100 = 1000 frames = 20 sec
+; ============================================================
+scene_table:
+    ; --- Scene 1: Flash intro (2 seconds) ---
+    DW  fx_flash_init
+    DW  fx_flash_frame
+    DW  fx_flash_cleanup
+    DW  100                        ; 100 frames = 2 sec
+    DB  $00                        ; (param not used)
+
+    ; --- Scene 2: Colour bars, blue tones (3 seconds) ---
+    DW  fx_bars_init
+    DW  fx_bars_frame
+    DW  fx_bars_cleanup
+    DW  150                        ; 150 frames = 3 sec
+    DB  $40                        ; BRIGHT bit set
+
+    ; --- Scene 3: Plasma pattern (4 seconds) ---
+    DW  fx_plasma_init
+    DW  fx_plasma_frame
+    DW  fx_plasma_cleanup
+    DW  200                        ; 200 frames = 4 sec
+    DB  $00                        ; (param not used)
+
+    ; --- Scene 4: Checkerboard, green/magenta (3 seconds) ---
+    DW  fx_checker_init
+    DW  fx_checker_frame
+    DW  fx_checker_cleanup
+    DW  150                        ; 150 frames = 3 sec
+    DB  $34                        ; green paper, cyan ink
+
+    ; --- Scene 5: Flash transition (2 seconds) ---
+    DW  fx_flash_init
+    DW  fx_flash_frame
+    DW  fx_flash_cleanup
+    DW  100
+    DB  $00
+
+    ; --- Scene 6: Bars again, different colour (4 seconds) ---
+    DW  fx_bars_init
+    DW  fx_bars_frame
+    DW  fx_bars_cleanup
+    DW  200
+    DB  $00                        ; no BRIGHT
+
+    ; --- Scene 7: Checkerboard finale (2 seconds) ---
+    DW  fx_checker_init
+    DW  fx_checker_frame
+    DW  fx_checker_cleanup
+    DW  100
+    DB  $52                        ; magenta paper, red ink, BRIGHT
+
+    ; --- End of table marker ---
+    DW  0                          ; init_addr = 0 signals end
+    DW  0
+    DW  0
+    DW  0
+    DB  0
+
+; ============================================================
+; Sine table (32 entries, values 0..7)
+; Used by the plasma effect. In a real demo this would be a
+; 256-entry table generated by a Ruby/Python script and
+; included via INCBIN.
+; ============================================================
+sine_table_small:
+    DB  4, 5, 6, 6, 7, 7, 7, 6
+    DB  6, 5, 4, 3, 2, 1, 1, 0
+    DB  0, 0, 1, 1, 2, 3, 4, 5
+    DB  6, 6, 7, 7, 7, 6, 6, 5
+
+; ============================================================
+; Engine state variables
+; ============================================================
+frame_counter:      DW  0          ; global frame counter
+effect_frame:       DW  0          ; frames into current effect
+effect_duration:    DW  0          ; duration of current scene
+effect_param:       DB  0          ; parameter from scene table
+scene_ptr:          DW  0          ; pointer to next scene entry
+
+current_init_fn:    DW  0          ; current effect's init
+current_frame_fn:   DW  0          ; current effect's frame
+current_cleanup_fn: DW  0          ; current effect's cleanup
+current_buf_ptr:    DW  0          ; where to render this frame
+
+; Crossfade state
+xfade_active:       DB  0          ; 1 = crossfade in progress
+xfade_counter:      DB  0          ; frames remaining in crossfade
+xfade_frame_fn:     DW  0          ; outgoing effect's frame fn
+xfade_cleanup_fn:   DW  0          ; outgoing effect's cleanup fn
+
+; ============================================================
+; Virtual buffer -- effects render here, then LDIR to screen
+; Decouples effect rendering from physical screen layout.
+; At attribute resolution: 32 x 24 = 768 bytes.
+; ============================================================
+virtual_buffer:
+    DS  ATTR_SIZE                  ; 768 bytes
+
+; ============================================================
+; Crossfade buffer -- holds outgoing effect during transitions
+; ============================================================
+xfade_buffer:
+    DS  ATTR_SIZE                  ; 768 bytes
+
+; ============================================================
+; End of demo framework.
+;
+; To extend this skeleton into a real demo:
+;   1. Replace the simplified effects with full routines
+;      from earlier chapters (plasma Ch9, fire Ch9, rotozoom Ch7)
+;   2. Add music: integrate a PT3 player into an IM2 ISR
+;      (see ch12 music_sync.a80 for the IM2 setup pattern)
+;   3. Add bank switching: use sjasmplus SLOT/PAGE to put
+;      effects in separate 16K banks, add a bank_number field
+;      to the scene table entry (Lo-Fi Motion pattern)
+;   4. Add compression: INCBIN compressed data, decompress
+;      into buffers during effect init (Ch14 techniques)
+;   5. Add a loading screen and credits screen
+;
+; The scene table is the key architectural insight: it
+; separates WHAT happens from WHEN it happens. Adding a new
+; effect = write the code + add one table entry. Reordering
+; the demo = rearrange table entries. Adjusting timing =
+; change duration values. The engine code never changes.
+; ============================================================

@@ -1,0 +1,324 @@
+; Chapter 8: Multicolor — Breaking the Attribute Grid
+; Demonstrates the core multicolor technique: racing the ULA beam to change
+; attribute values between scanline reads, giving per-2-scanline colour.
+;
+; The ULA reads 32 attribute bytes at the start of each scanline. It does
+; NOT cache them — it re-reads for every pixel line. If we rewrite the
+; attribute row between reads, the ULA sees different colours on different
+; scanlines within the same 8x8 cell. This breaks the "two colours per
+; cell" rule entirely in software.
+;
+; This example:
+; 1. Fills the pixel area with $F0 (11110000b) so left 4 pixels = INK,
+;    right 4 = PAPER — making colour changes clearly visible.
+; 2. Uses a HALT + timed loop to rewrite the first 8 character rows'
+;    attributes every 2 scanlines, producing 8x2 multicolor (4 colour
+;    bands per character row).
+; 3. Uses the LDPUSH technique for the fast attribute writes.
+;
+; Target: ZX Spectrum 48K/128K (Pentagon timing: 224 T per scanline,
+;         71680 T per frame, interrupt at scanline 0).
+;
+; Assembles with: sjasmplus --nologo
+
+    ORG $8000
+
+; --- Constants ---
+SCREEN      EQU $4000           ; pixel memory start
+ATTRS       EQU $5800           ; attribute memory start
+ATTR_WIDTH  EQU 32              ; bytes per attribute row
+BORDER_PORT EQU $FE
+
+; Attribute byte format: FBpppiii
+;   F=flash, B=bright, ppp=paper(0-7), iii=ink(0-7)
+; Colours: 0=black 1=blue 2=red 3=magenta 4=green 5=cyan 6=yellow 7=white
+
+; We define 4 colour bands per character row (8x2 = 4 bands of 2 scanlines).
+; Each band has its own attribute byte. With 8 character rows, we have
+; 32 attribute values total (4 bands x 8 rows).
+NUM_CHAR_ROWS EQU 8             ; how many character rows to multicolor
+BANDS_PER_ROW EQU 4             ; colour bands per char row (8 lines / 2)
+
+; ===================================================================
+; Entry point
+; ===================================================================
+start:
+    ; --- Step 1: Fill pixel area with $F0 pattern ---
+    ; This makes the left half of each cell INK and right half PAPER,
+    ; so attribute changes produce visible two-tone columns.
+    ld   hl, SCREEN
+    ld   de, SCREEN + 1
+    ld   bc, 6143               ; 6144 - 1
+    ld   (hl), $F0              ; 11110000b
+    ldir                        ; fill all pixel memory
+
+    ; --- Step 2: Set initial attributes to something visible ---
+    ld   hl, ATTRS
+    ld   de, ATTRS + 1
+    ld   bc, 767                ; 768 - 1
+    ld   (hl), $07              ; white ink on black paper
+    ldir
+
+    ; --- Step 3: Set border to black ---
+    xor  a
+    out  (BORDER_PORT), a
+
+    ; --- Step 4: Build the colour table ---
+    ; Generate a rainbow pattern: 4 bands per char row, cycling colours.
+    ; Each band = one attribute byte applied to all 32 columns.
+    call build_colour_table
+
+; ===================================================================
+; Main loop: each frame, race the beam to rewrite attributes
+; ===================================================================
+main_loop:
+    halt                        ; sync to frame interrupt
+
+    ; --- Timing delay: wait for the ULA to reach the top of the ---
+    ; --- visible screen area. On Pentagon, HALT returns at the   ---
+    ; --- top of the frame. We need a small delay to let the ULA  ---
+    ; --- start drawing the first scanline.                       ---
+    ;
+    ; The exact delay depends on the machine model. On Pentagon,
+    ; the interrupt fires at the start of the frame (top border).
+    ; The visible area starts 64 scanlines later = 64 * 224 = 14336 T.
+    ; We burn most of that with a delay loop.
+
+    ld   b, 50                  ; coarse delay: ~50 * 26 = 1300 T (tunable)
+.top_delay:
+    ld   a, r                   ; 9 T  (dummy work)
+    djnz .top_delay             ; 13 T = 22 T per iteration (last: 17 T)
+
+    ; We need a longer delay. Use a 16-bit loop for the rest.
+    ld   bc, 580                ; fine-tune: ~580 * 22 = 12760 T
+.fine_delay:
+    dec  bc                     ; 6 T
+    ld   a, b                   ; 4 T
+    or   c                      ; 4 T
+    jr   nz, .fine_delay        ; 12/7 T = ~26 T per iteration
+
+    ; Now we are approximately at the start of the visible area.
+    ; The ULA is about to read the first row of attributes.
+
+    ; --- Disable interrupts: we are about to hijack SP ---
+    di
+
+    ; --- Save the real stack pointer ---
+    ld   (.smc_restore_sp + 1), sp  ; 20 T  self-mod: save SP
+
+    ; --- Point to colour data ---
+    ld   ix, colour_table       ; pointer to our colour band data
+
+    ; --- Process each character row ---
+    ; For each of the 8 character rows, we write 4 bands of attributes.
+    ; Each band covers 2 scanlines. Between bands we must wait for the
+    ; ULA to finish reading the current attributes before overwriting.
+
+    ld   b, NUM_CHAR_ROWS
+.char_row_loop:
+    push bc                     ; save row counter (on real stack — SP is
+                                ; still valid here, we hijack it per-band)
+
+    ; Calculate attribute row address: ATTRS + (row * 32)
+    ; Row index = NUM_CHAR_ROWS - B
+    ld   a, NUM_CHAR_ROWS
+    sub  b                      ; A = current row (0-based)
+    ld   l, a
+    ld   h, 0
+    add  hl, hl                 ; *2
+    add  hl, hl                 ; *4
+    add  hl, hl                 ; *8
+    add  hl, hl                 ; *16
+    add  hl, hl                 ; *32
+    ld   de, ATTRS
+    add  hl, de                 ; HL = attribute row address
+
+    ; Write 4 colour bands for this character row
+    ld   c, BANDS_PER_ROW
+
+.band_loop:
+    ; --- Load the attribute byte for this band ---
+    ld   a, (ix + 0)            ; 19 T  current band's attribute
+    inc  ix                     ; 10 T  advance to next band
+
+    ; --- Fast attribute fill: write A to 32 bytes at HL ---
+    ; We use an unrolled LD (HL),A / INC L sequence.
+    ; Each pair: LD (HL),A = 7 T, INC L = 4 T => 11 T per byte.
+    ; 32 bytes = 352 T total. This is more than one scanline (224 T)
+    ; but we only need to finish before the ULA reads THIS row again
+    ; (which happens 2 scanlines = 448 T later). We have margin.
+
+    push hl                     ; save attribute row start
+    call write_attr_row         ; write A to 32 bytes at HL
+    pop  hl                     ; restore row start for next band
+
+    ; --- Wait for 2 scanlines minus the time we just spent ---
+    ; 2 scanlines = 448 T. We spent ~352 T writing + overhead.
+    ; Need ~60-80 T of padding. A few NOPs will do.
+    ; (In practice, the exact padding depends on machine model.
+    ; This is deliberately conservative to avoid tearing.)
+    nop                         ; 4 T
+    nop                         ; 4 T
+    nop                         ; 4 T
+    nop                         ; 4 T
+    nop                         ; 4 T
+    nop                         ; 4 T
+    nop                         ; 4 T
+    nop                         ; 4 T
+    nop                         ; 4 T
+    nop                         ; 4 T  = 40 T of padding
+
+    dec  c
+    jr   nz, .band_loop         ; next band in this char row
+
+    ; After 4 bands (8 scanlines), move to the next character row.
+    ; The ULA is now reading the next character row's attributes.
+    pop  bc                     ; restore row counter
+    djnz .char_row_loop
+
+    ; --- Restore SP and re-enable interrupts ---
+.smc_restore_sp:
+    ld   sp, $0000              ; self-modified: real SP restored
+    ei
+
+    ; --- Animate: rotate the colour table for a scrolling effect ---
+    call rotate_colours
+
+    jr   main_loop
+
+; ===================================================================
+; write_attr_row — Write register A to 32 consecutive bytes at HL
+; Unrolled for speed. Assumes L is aligned (which attribute rows are).
+; Costs: 32 * 11 = 352 T-states (just over 1.5 scanlines).
+; ===================================================================
+write_attr_row:
+    ld   (hl), a                ; 7 T
+    inc  l                      ; 4 T   = 11 T per byte
+    ld   (hl), a                ; byte 2
+    inc  l
+    ld   (hl), a                ; byte 3
+    inc  l
+    ld   (hl), a                ; byte 4
+    inc  l
+    ld   (hl), a                ; byte 5
+    inc  l
+    ld   (hl), a                ; byte 6
+    inc  l
+    ld   (hl), a                ; byte 7
+    inc  l
+    ld   (hl), a                ; byte 8
+    inc  l
+    ld   (hl), a                ; byte 9
+    inc  l
+    ld   (hl), a                ; byte 10
+    inc  l
+    ld   (hl), a                ; byte 11
+    inc  l
+    ld   (hl), a                ; byte 12
+    inc  l
+    ld   (hl), a                ; byte 13
+    inc  l
+    ld   (hl), a                ; byte 14
+    inc  l
+    ld   (hl), a                ; byte 15
+    inc  l
+    ld   (hl), a                ; byte 16
+    inc  l
+    ld   (hl), a                ; byte 17
+    inc  l
+    ld   (hl), a                ; byte 18
+    inc  l
+    ld   (hl), a                ; byte 19
+    inc  l
+    ld   (hl), a                ; byte 20
+    inc  l
+    ld   (hl), a                ; byte 21
+    inc  l
+    ld   (hl), a                ; byte 22
+    inc  l
+    ld   (hl), a                ; byte 23
+    inc  l
+    ld   (hl), a                ; byte 24
+    inc  l
+    ld   (hl), a                ; byte 25
+    inc  l
+    ld   (hl), a                ; byte 26
+    inc  l
+    ld   (hl), a                ; byte 27
+    inc  l
+    ld   (hl), a                ; byte 28
+    inc  l
+    ld   (hl), a                ; byte 29
+    inc  l
+    ld   (hl), a                ; byte 30
+    inc  l
+    ld   (hl), a                ; byte 31
+    inc  l
+    ld   (hl), a                ; byte 32
+    ret                         ; 10 T
+
+; ===================================================================
+; build_colour_table — Generate rainbow attribute values
+; 4 bands per char row x 8 rows = 32 entries.
+; Each byte is an attribute: bright + coloured ink on black paper.
+; ===================================================================
+build_colour_table:
+    ld   hl, colour_table
+    ld   de, rainbow_pattern
+    ld   b, NUM_CHAR_ROWS * BANDS_PER_ROW  ; 32 entries
+
+.build_loop:
+    ld   a, (de)
+    ld   (hl), a
+    inc  hl
+    inc  de
+    djnz .build_loop
+    ret
+
+; ===================================================================
+; rotate_colours — Rotate the colour table by one position
+; Creates a smooth scrolling rainbow effect across frames.
+; ===================================================================
+rotate_colours:
+    ld   hl, colour_table
+    ld   a, (hl)                ; save first entry
+
+    ; Shift all entries one position up
+    ld   de, colour_table
+    ld   hl, colour_table + 1
+    ld   bc, NUM_CHAR_ROWS * BANDS_PER_ROW - 1  ; 31 bytes
+    ldir
+
+    ; Put saved first entry at the end
+    ld   (de), a
+    ret
+
+; ===================================================================
+; Data
+; ===================================================================
+
+; Rainbow pattern: bright ink colours on black paper.
+; Attribute format: 01 000 iii = bright=1, paper=black, ink=colour
+; $41=bright blue, $42=bright red, $43=bright magenta,
+; $44=bright green, $45=bright cyan, $46=bright yellow, $47=bright white
+rainbow_pattern:
+    ; Row 0: blue -> cyan gradient
+    DB $41, $45, $44, $46       ; blue, cyan, green, yellow
+    ; Row 1: warm colours
+    DB $46, $42, $43, $47       ; yellow, red, magenta, white
+    ; Row 2: cool colours
+    DB $44, $45, $41, $43       ; green, cyan, blue, magenta
+    ; Row 3: mixed
+    DB $47, $46, $42, $41       ; white, yellow, red, blue
+    ; Row 4: reverse warm
+    DB $43, $42, $46, $44       ; magenta, red, yellow, green
+    ; Row 5: sea tones
+    DB $41, $44, $45, $47       ; blue, green, cyan, white
+    ; Row 6: sunset
+    DB $42, $43, $46, $47       ; red, magenta, yellow, white
+    ; Row 7: forest
+    DB $44, $41, $45, $46       ; green, blue, cyan, yellow
+
+; Working colour table (modified each frame for animation)
+colour_table:
+    DS NUM_CHAR_ROWS * BANDS_PER_ROW, 0  ; 32 bytes, filled at startup

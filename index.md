@@ -122,7 +122,7 @@ Multicolor (attribute rewriting) --- **Ch08**
 n1k-o (musician) --- Ch09, **Ch12**
 NFO / file_id.diz --- **Ch20**
 Noise generator (AY) --- **Ch11**
-Not Eager (companion demo) --- **Ch23**
+Antique Toy (companion demo) --- **Ch23**
 
 ## O
 

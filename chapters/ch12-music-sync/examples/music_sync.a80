@@ -1,0 +1,720 @@
+; music_sync.a80 -- Scripted Demo Engine with Music Synchronisation
+; From Chapter 12: Digital Drums and Music Sync
+;
+; Demonstrates:
+;   1. A timeline-driven sync table that triggers effect changes on
+;      specific frames (the "outer script" from section 12.3)
+;   2. A simple AY beat pattern that signals drum hits via a flag
+;   3. A digital kick drum sample played through the AY volume
+;      register as a crude 4-bit DAC (section 12.1)
+;   4. A frame ring buffer that absorbs CPU time lost to drum
+;      playback, keeping the display smooth (section 12.2)
+;   5. IM2 interrupt-driven display from the buffer at 50 Hz
+;
+; The visual "effects" are simplified to attribute-bar patterns
+; so the example is self-contained. In a real demo these would be
+; plasma, tunnels, zoomers etc. from earlier chapters.
+;
+; Assembles with: sjasmplus --nologo
+; Target: ZX Spectrum 48K/128K
+;
+; Memory map:
+;   $8000-$BFFF  Engine + effects + data
+;   $5800-$5AFF  Attribute area (32x24 = 768 bytes, ULA display)
+;   $FE00-$FEFF  IM2 vector table (257 bytes, filled with $FD)
+;   $FDFD        IM2 service routine address (low = high = $FD)
+;
+    ORG $8000
+
+; ============================================================
+; AY-3-8910 ports and registers
+; ============================================================
+AY_REG          EQU $FFFD      ; register select
+AY_DATA         EQU $BFFD      ; data write
+
+R_TONE_A_LO     EQU 0
+R_TONE_A_HI     EQU 1
+R_TONE_B_LO     EQU 2
+R_TONE_B_HI     EQU 3
+R_TONE_C_LO     EQU 4
+R_TONE_C_HI     EQU 5
+R_NOISE          EQU 6
+R_MIXER          EQU 7
+R_VOL_A         EQU 8
+R_VOL_B         EQU 9
+R_VOL_C         EQU 10
+R_ENV_LO        EQU 11
+R_ENV_HI        EQU 12
+R_ENV_SHAPE     EQU 13
+
+; ============================================================
+; Effect IDs
+; ============================================================
+EFFECT_BARS      EQU 0         ; horizontal colour bars
+EFFECT_CHECKER   EQU 1         ; checkerboard flash
+EFFECT_FLASH     EQU 2         ; full-screen colour flash
+EFFECT_END       EQU $FF       ; end-of-script marker
+
+; ============================================================
+; Ring buffer constants
+; ============================================================
+BUF_FRAMES       EQU 6         ; 6 frames of attribute data
+ATTR_SIZE        EQU 768       ; 32 cols x 24 rows
+; Total buffer = 6 x 768 = 4608 bytes
+
+; ============================================================
+; Note periods for AY (1.7734 MHz clock, octave 3-4)
+; ============================================================
+NOTE_C3          EQU 851
+NOTE_E3          EQU 675
+NOTE_G3          EQU 568
+NOTE_C4          EQU 426
+
+; ============================================================
+; Entry point
+; ============================================================
+entry:
+    di
+    ld   sp, stack_top
+
+    ; --- Set up IM2 interrupt ---
+    ; Fill vector table at $FE00 with $FD
+    ; IM2 jumps to address at (I*256 + bus_byte)
+    ; We fill 257 bytes with $FD so any bus value -> address $FDFD
+    ld   hl, $FE00
+    ld   de, $FE01
+    ld   bc, 256               ; 257 bytes total (first set, 256 copied)
+    ld   (hl), $FD
+    ldir
+
+    ; Write JP to our ISR at $FDFD
+    ld   a, $C3                ; JP opcode
+    ld   ($FDFD), a
+    ld   hl, frame_isr
+    ld   ($FDFE), hl
+
+    ld   a, $FE                ; I = $FE (vector table at $FE00)
+    ld   i, a
+    im   2
+
+    ; --- Initialise AY: silence ---
+    call ay_silence
+
+    ; --- Set mixer: tone A on, noise C on, rest off ---
+    ; Mixer bits: --NcNbNa TcTbTa (0=enabled, 1=disabled)
+    ; We want: tone A on (bit0=0), noise C on (bit5=0), rest off
+    ;   = %11011110 = $DE
+    ld   a, R_MIXER
+    ld   e, $DE
+    call ay_write
+
+    ; --- Initialise engine state ---
+    xor  a
+    ld   (buf_write_idx), a
+    ld   (buf_read_idx), a
+    ld   (buf_count), a
+    ld   (drum_pending), a
+    ld   (global_frame), a
+    ld   (global_frame+1), a
+    ld   (effect_frame), a
+    ld   (effect_frame+1), a
+
+    ; --- Load first effect from timeline ---
+    ld   hl, timeline
+    ld   (script_ptr), hl
+    call load_effect
+
+    ; --- Clear the pixel area to a nice pattern ---
+    call clear_pixels
+
+    ; --- Pre-fill the ring buffer before enabling display ---
+    ; Generate BUF_FRAMES-2 frames to get ahead of display
+    ld   b, BUF_FRAMES - 2
+.prefill:
+    push bc
+    call generate_one_frame
+    pop  bc
+    djnz .prefill
+
+    ; --- Go! ---
+    ei
+
+; ============================================================
+; Main engine loop (runs with interrupts enabled)
+; ============================================================
+engine_loop:
+    ; --- Step 1: Check drum trigger ---
+    ld   a, (drum_pending)
+    or   a
+    jr   z, .no_drum
+
+    ; Play the digital kick drum (steals ~2 frames of CPU)
+    di
+    call play_kick_drum
+    ei
+    xor  a
+    ld   (drum_pending), a
+    jr   .after_generate       ; skip generation this iteration
+
+.no_drum:
+    ; --- Step 2: Generate a frame if buffer not full ---
+    ld   a, (buf_count)
+    cp   BUF_FRAMES
+    jr   nc, .buffer_full
+
+    call generate_one_frame
+
+.buffer_full:
+.after_generate:
+    ; --- Step 3: Advance effect frame counter ---
+    ld   hl, (effect_frame)
+    inc  hl
+    ld   (effect_frame), hl
+
+    ; Check if current effect duration has elapsed
+    ld   de, (effect_duration)
+    or   a                     ; clear carry
+    sbc  hl, de
+    jr   c, .effect_continues
+
+    ; Duration elapsed -- advance script
+    call advance_script
+
+.effect_continues:
+    ; --- Step 4: Sync to display ---
+    ; Wait for the ISR to fire (one frame boundary)
+    halt
+
+    jr   engine_loop
+
+; ============================================================
+; Load current effect from the timeline script
+; Input: (script_ptr) points to current entry
+; Script format: [effect_id (1)] [duration_lo (1)] [duration_hi (1)]
+;                [param_byte (1)]
+; Total 4 bytes per entry. $FF as effect_id = end/loop.
+; ============================================================
+load_effect:
+    ld   hl, (script_ptr)
+    ld   a, (hl)
+    cp   EFFECT_END
+    jr   nz, .not_end
+    ; Loop: restart from beginning
+    ld   hl, timeline
+    ld   (script_ptr), hl
+    ld   a, (hl)
+.not_end:
+    ld   (current_effect), a
+    inc  hl
+    ld   e, (hl)               ; duration low
+    inc  hl
+    ld   d, (hl)               ; duration high
+    ld   (effect_duration), de
+    inc  hl
+    ld   a, (hl)               ; param byte (attribute colour)
+    ld   (effect_param), a
+    inc  hl
+    ld   (script_ptr), hl      ; point to next entry
+
+    ; Reset per-effect frame counter
+    ld   hl, 0
+    ld   (effect_frame), hl
+    ret
+
+; ============================================================
+; Advance to next script entry
+; ============================================================
+advance_script:
+    call load_effect
+    ret
+
+; ============================================================
+; Generate one frame of the current effect into the ring buffer
+; Writes ATTR_SIZE (768) bytes to the next buffer slot
+; ============================================================
+generate_one_frame:
+    ; Calculate destination address in ring buffer
+    ld   a, (buf_write_idx)
+    call get_buf_addr          ; HL = address of buffer slot
+    push hl                    ; save dest
+
+    ; Dispatch to effect generator
+    ld   a, (current_effect)
+    or   a
+    jr   z, .gen_bars
+    cp   EFFECT_CHECKER
+    jr   z, .gen_checker
+    cp   EFFECT_FLASH
+    jr   z, .gen_flash
+    ; Default: bars
+    jr   .gen_bars
+
+.gen_bars:
+    pop  hl
+    call effect_colour_bars
+    jr   .gen_done
+.gen_checker:
+    pop  hl
+    call effect_checkerboard
+    jr   .gen_done
+.gen_flash:
+    pop  hl
+    call effect_flash
+.gen_done:
+    ; Advance write index
+    ld   a, (buf_write_idx)
+    inc  a
+    cp   BUF_FRAMES
+    jr   c, .no_wrap
+    xor  a
+.no_wrap:
+    ld   (buf_write_idx), a
+    ; Increment buffer count
+    ld   a, (buf_count)
+    inc  a
+    ld   (buf_count), a
+    ret
+
+; ============================================================
+; Get buffer slot address from index
+; Input:  A = slot index (0..BUF_FRAMES-1)
+; Output: HL = address of the 768-byte slot
+; ============================================================
+get_buf_addr:
+    ; Address = ring_buffer + A * 768
+    ; 768 = 3 * 256, so A*768 = A*3 * 256
+    ld   l, a
+    ld   h, 0
+    add  hl, hl               ; *2
+    add  a, l                  ; A = original*2 + original... no.
+    ; Simpler: HL = A; HL = HL*3; shift left 8
+    ; Restart: A is the index
+    ld   h, 0
+    ld   l, a
+    ld   d, h
+    ld   e, l                  ; DE = index
+    add  hl, hl               ; HL = index*2
+    add  hl, de               ; HL = index*3
+    ; Now HL * 256: put L into H, clear L
+    ld   h, l
+    ld   l, 0                  ; HL = index*3*256 = index*768
+    ld   de, ring_buffer
+    add  hl, de
+    ret
+
+; ============================================================
+; Effect: Colour Bars
+; Fills attribute buffer with horizontal stripes that shift
+; vertically over time, using the effect_param as base colour.
+; Input: HL = destination buffer (768 bytes)
+; ============================================================
+effect_colour_bars:
+    ld   a, (effect_frame)     ; use low byte as animation offset
+    ld   c, a                  ; C = vertical offset
+    ld   b, 24                 ; 24 character rows
+
+.row_loop:
+    push bc
+    ; Compute attribute for this row:
+    ; colour = (row + offset) AND 7, shifted into INK + PAPER bits
+    ld   a, 24
+    sub  b                     ; A = row number (0..23)
+    add  a, c                  ; A = row + offset
+    and  7                     ; A = 0..7
+    ld   d, a                  ; save ink
+    rlca
+    rlca
+    rlca                       ; shift into paper bits (bits 3-5)
+    or   d                     ; combine ink and paper
+    ld   e, (hl)               ; (dummy read -- HL is dest, not source)
+    ; Actually we just need to fill 32 bytes with A
+    ld   b, 32                 ; 32 columns per row
+    ld   e, a                  ; attribute byte
+.col_loop:
+    ld   (hl), e
+    inc  hl
+    djnz .col_loop
+    pop  bc
+    djnz .row_loop
+    ret
+
+; ============================================================
+; Effect: Checkerboard
+; Alternates two colours in a 2x2 checkerboard, flipping
+; each frame. Uses effect_param as one of the colours.
+; Input: HL = destination buffer (768 bytes)
+; ============================================================
+effect_checkerboard:
+    ld   a, (effect_frame)
+    and  1                     ; alternates 0/1 each frame
+    ld   c, a                  ; C = phase (0 or 1)
+    ld   b, 24                 ; 24 rows
+
+.row_loop:
+    push bc
+    ; Determine starting colour for this row
+    ld   a, 24
+    sub  b                     ; A = row (0..23)
+    xor  c                     ; XOR with phase for animation
+    and  1
+    jr   z, .start_bright
+    ld   d, $38                ; PAPER 7 = white paper, black ink
+    ld   e, $07                ; INK 7 = white ink, black paper
+    jr   .fill_row
+.start_bright:
+    ld   a, (effect_param)
+    ld   d, a
+    ld   a, (effect_param)
+    xor  $3F                   ; invert ink+paper for contrast
+    ld   e, a
+.fill_row:
+    ld   b, 16                 ; 16 pairs = 32 columns
+.pair_loop:
+    ld   (hl), d
+    inc  hl
+    ld   (hl), e
+    inc  hl
+    djnz .pair_loop
+    pop  bc
+    djnz .row_loop
+    ret
+
+; ============================================================
+; Effect: Colour Flash
+; Fills entire screen with a single colour that cycles through
+; BRIGHT+INK combinations each frame. Simple but dramatic.
+; Input: HL = destination buffer (768 bytes)
+; ============================================================
+effect_flash:
+    ld   a, (effect_frame)
+    and  7                     ; cycle through 8 colours
+    ld   d, a                  ; ink
+    rlca
+    rlca
+    rlca                       ; shift to paper position
+    or   d                     ; ink = paper = same colour (solid block)
+    or   $40                   ; add BRIGHT
+    ; Fill 768 bytes
+    ld   b, 0                  ; 256 iterations
+    ld   e, a
+.fill1:
+    ld   (hl), e
+    inc  hl
+    djnz .fill1
+    ld   b, 0                  ; 256 more
+.fill2:
+    ld   (hl), e
+    inc  hl
+    djnz .fill2
+    ld   b, 0                  ; 256 more = 768 total
+.fill3:
+    ld   (hl), e
+    inc  hl
+    djnz .fill3
+    ret
+
+; ============================================================
+; IM2 Interrupt Service Routine
+; Runs once per frame (50 Hz). Responsibilities:
+;   1. Update global frame counter
+;   2. Play one step of the simple AY beat pattern
+;   3. Signal drum hits to the main loop
+;   4. Copy the next ring buffer frame to screen attributes
+; ============================================================
+frame_isr:
+    push af
+    push bc
+    push de
+    push hl
+
+    ; --- Update global frame counter ---
+    ld   hl, (global_frame)
+    inc  hl
+    ld   (global_frame), hl
+
+    ; --- Simple AY beat pattern ---
+    ; Every BEAT_PERIOD frames, play a bass note on channel A
+    ; and signal a drum hit. Every BEAT_PERIOD/2, play a hi-hat
+    ; noise burst on channel C.
+    ld   a, l                  ; low byte of frame counter
+    and  BEAT_MASK             ; BEAT_PERIOD - 1 (must be power of 2)
+    jr   nz, .not_beat
+
+    ; === On the beat: bass note + drum trigger ===
+    ld   a, R_TONE_A_LO
+    ld   e, LOW NOTE_C3
+    call ay_write
+    ld   a, R_TONE_A_HI
+    ld   e, HIGH NOTE_C3
+    call ay_write
+    ld   a, R_VOL_A
+    ld   e, 13
+    call ay_write
+    ; Signal drum to main loop
+    ld   a, 1
+    ld   (drum_pending), a
+    jr   .beat_done
+
+.not_beat:
+    ; Off-beat: reduce bass volume gradually (simple decay)
+    ld   a, R_VOL_A
+    ld   e, 5
+    call ay_write
+
+    ; Check for hi-hat on the "and" beat (halfway)
+    ld   a, (global_frame)
+    and  BEAT_MASK
+    cp   BEAT_PERIOD / 2
+    jr   nz, .beat_done
+
+    ; Hi-hat: short noise burst on channel C
+    ld   a, R_NOISE
+    ld   e, 16                 ; noise period (higher = lower pitch)
+    call ay_write
+    ld   a, R_VOL_C
+    ld   e, 10
+    call ay_write
+
+.beat_done:
+    ; Decay hi-hat volume each frame
+    ld   a, (global_frame)
+    and  3
+    jr   nz, .skip_hihat_decay
+    ld   a, R_VOL_C
+    ld   e, 0
+    call ay_write
+.skip_hihat_decay:
+
+    ; --- Copy next buffer frame to screen attributes ---
+    ld   a, (buf_count)
+    or   a
+    jr   z, .no_display        ; buffer empty, keep current display
+
+    ; Source: ring buffer at read index
+    ld   a, (buf_read_idx)
+    call get_buf_addr          ; HL = source
+    ld   de, $5800             ; DE = attribute area
+    ld   bc, ATTR_SIZE
+    ldir                       ; copy 768 bytes
+
+    ; Advance read index
+    ld   a, (buf_read_idx)
+    inc  a
+    cp   BUF_FRAMES
+    jr   c, .no_wrap_r
+    xor  a
+.no_wrap_r:
+    ld   (buf_read_idx), a
+    ; Decrement buffer count
+    ld   a, (buf_count)
+    dec  a
+    ld   (buf_count), a
+
+.no_display:
+    pop  hl
+    pop  de
+    pop  bc
+    pop  af
+    ei
+    reti
+
+; ============================================================
+; Beat timing
+; BEAT_PERIOD must be a power of 2 for the AND mask to work.
+; 32 frames at 50 Hz = 0.64 seconds per beat ~ 94 BPM
+; ============================================================
+BEAT_PERIOD      EQU 32
+BEAT_MASK        EQU BEAT_PERIOD - 1     ; = $1F
+
+; ============================================================
+; Digital Kick Drum (Hybrid: digital attack + AY envelope decay)
+; Section 12.1 technique. Plays a short 4-bit PCM sample through
+; the AY volume register, then hands off to the AY envelope
+; for the decay tail.
+;
+; MUST be called with interrupts disabled (DI).
+; Consumes approximately 2 frame periods (~140,000 T-states).
+; ============================================================
+play_kick_drum:
+    ; --- Select AY register R8 (volume channel A) ---
+    ld   a, R_VOL_A
+    ld   bc, AY_REG
+    out  (c), a                ; 12 T - select volume register
+
+    ; --- Digital attack phase ---
+    ; Play KICK_LEN samples through volume register as 4-bit DAC
+    ld   hl, kick_sample
+    ld   d, KICK_LEN
+
+.smp_loop:
+    ld   a, (hl)               ; 7 T  - load sample value (0-15)
+    ld   b, $BF                ; 7 T  - high byte of AY_DATA ($BFFD)
+    ld   c, $FD                ; 7 T  - low byte
+    out  (c), a                ; 12 T - write to volume register
+
+    ; Timing padding: we need ~120 T-states per sample for ~29 kHz
+    ; (3.5 MHz / 120 ~ 29 kHz effective rate)
+    ; Actual loop overhead is ~70 T, so pad with ~50 T
+    ; Each NOP = 4 T-states
+    nop                        ; 4 T
+    nop                        ; 4 T
+    nop                        ; 4 T
+    nop                        ; 4 T
+    nop                        ; 4 T
+    nop                        ; 4 T
+    nop                        ; 4 T
+    nop                        ; 4 T
+    nop                        ; 4 T
+    nop                        ; 4 T    ; +40 T padding
+
+    inc  hl                    ; 6 T
+    dec  d                     ; 4 T
+    jr   nz, .smp_loop         ; 12 T (taken)
+    ; Total per sample: 7+7+7+12+40+6+4+12 = 95 T per iteration
+    ; At 3.5 MHz: 95 T = ~27 us = ~37 kHz effective sample rate
+
+    ; --- AY envelope decay phase ---
+    ; Configure the AY envelope for a smooth single decay.
+    ; This costs zero ongoing CPU -- the hardware handles it.
+    ld   a, R_ENV_LO
+    ld   e, 200                ; envelope period low byte (decay speed)
+    call ay_write
+    ld   a, R_ENV_HI
+    ld   e, 0                  ; envelope period high byte
+    call ay_write
+    ld   a, R_ENV_SHAPE
+    ld   e, $00                ; shape 0000 = \__ single decay to silence
+    call ay_write
+    ld   a, R_VOL_A
+    ld   e, $10                ; bit 4 = envelope mode (hardware volume)
+    call ay_write
+
+    ret
+
+; ============================================================
+; AY helper: write value E to AY register A
+; ============================================================
+ay_write:
+    ld   bc, AY_REG
+    out  (c), a                ; 12 T - select register
+    ld   b, $BF                ; 7 T  - high byte of AY_DATA
+    out  (c), e                ; 12 T - write data
+    ret
+
+; ============================================================
+; AY helper: silence all channels
+; ============================================================
+ay_silence:
+    ld   a, R_VOL_A
+    ld   e, 0
+    call ay_write
+    ld   a, R_VOL_B
+    call ay_write
+    ld   a, R_VOL_C
+    call ay_write
+    ; Mixer: all off (all bits = 1 = disabled)
+    ld   a, R_MIXER
+    ld   e, $FF
+    call ay_write
+    ret
+
+; ============================================================
+; Clear pixel area with vertical stripe pattern
+; Gives the attribute effects something visible to modulate.
+; ============================================================
+clear_pixels:
+    ld   hl, $4000
+    ld   bc, 6144              ; pixel area size
+.clr_loop:
+    ld   a, l                  ; use address low byte for pattern
+    and  $01                   ; alternating columns
+    jr   z, .white
+    ld   (hl), $AA             ; %10101010
+    jr   .next
+.white:
+    ld   (hl), $55             ; %01010101
+.next:
+    inc  hl
+    dec  bc
+    ld   a, b
+    or   c
+    jr   nz, .clr_loop
+    ret
+
+; ============================================================
+; Timeline sync table (the "outer script")
+; Format per entry: [effect_id] [duration_lo] [duration_hi] [param]
+;
+; This table defines WHAT happens WHEN. Each entry runs for
+; the specified number of frames, then the engine advances to
+; the next entry. The drum hits happen independently (driven
+; by the beat pattern in the ISR), and the ring buffer absorbs
+; the CPU cost, keeping the effect transitions frame-accurate.
+;
+; Total: 150+100+200+100+150+100 = 800 frames = 16 seconds
+; ============================================================
+timeline:
+    ;          effect_id       dur_lo  dur_hi  param
+    DB  EFFECT_BARS,           150,    0,      $47  ; bars, blue/white, 3 sec
+    DB  EFFECT_CHECKER,        100,    0,      $16  ; checker, green/red, 2 sec
+    DB  EFFECT_FLASH,          200,    0,      $00  ; flash, 4 sec
+    DB  EFFECT_BARS,           100,    0,      $23  ; bars, magenta/cyan, 2 sec
+    DB  EFFECT_CHECKER,        150,    0,      $70  ; checker, bright, 3 sec
+    DB  EFFECT_BARS,           100,    0,      $05  ; bars, cyan/magenta, 2 sec
+    DB  EFFECT_END,            0,      0,      0    ; loop back to start
+
+; ============================================================
+; Kick drum sample data (4-bit PCM, values 0-15)
+; This is a synthesised kick drum attack waveform:
+; sharp transient peak, rapid oscillation, quick fade.
+; 64 samples at ~37 kHz effective rate = ~1.7 ms of attack.
+; In a real demo you would use 400-800 samples from a
+; digitised recording for a more convincing sound.
+; ============================================================
+kick_sample:
+    ; Sharp attack transient
+    DB  0, 3, 8, 14, 15, 15, 13, 10
+    DB  14, 15, 12, 8, 13, 15, 11, 6
+    ; Resonant oscillation
+    DB  12, 15, 10, 5, 11, 14, 9, 4
+    DB  10, 13, 8, 3, 9, 12, 7, 2
+    ; Decay towards silence
+    DB  8, 11, 6, 2, 7, 10, 5, 1
+    DB  6, 9, 4, 1, 5, 7, 3, 1
+    ; Final fade
+    DB  4, 6, 2, 1, 3, 5, 2, 0
+    DB  2, 3, 1, 0, 1, 2, 1, 0
+KICK_LEN EQU $ - kick_sample  ; = 64 samples
+
+; ============================================================
+; Engine state variables
+; ============================================================
+global_frame:    DW  0          ; master frame counter (ISR increments)
+effect_frame:    DW  0          ; frames into current effect
+effect_duration: DW  0          ; how long current effect runs
+current_effect:  DB  0          ; which effect is active (EFFECT_xxx)
+effect_param:    DB  0          ; per-effect parameter byte
+script_ptr:      DW  0          ; pointer into timeline table
+drum_pending:    DB  0          ; 1 = ISR wants main loop to play drum
+buf_write_idx:   DB  0          ; ring buffer write position (0..BUF_FRAMES-1)
+buf_read_idx:    DB  0          ; ring buffer read position
+buf_count:       DB  0          ; frames currently in buffer
+
+; ============================================================
+; Ring buffer (BUF_FRAMES x ATTR_SIZE bytes)
+; Each slot holds one complete frame of attribute data (768 B).
+; The main loop writes into it; the ISR reads from it.
+; ============================================================
+ring_buffer:
+    DS  BUF_FRAMES * ATTR_SIZE ; 6 * 768 = 4608 bytes
+
+; ============================================================
+; Stack (256 bytes, grows downward)
+; ============================================================
+    DS  256
+stack_top:
+
+; ============================================================
+; End of file. The IM2 vector table and ISR trampoline are set
+; up at runtime in the $FD00-$FEFF region (above this code).
+; ============================================================

@@ -1,4 +1,4 @@
-# Project "Not Eager" — AI-Assisted ZX Spectrum Demo
+# Project "Antique Toy" — AI-Assisted ZX Spectrum Demo
 
 > An "inspired by Eager" demo, built with Claude Code to prove that AI *can* assist with Z80 demoscene coding.
 
@@ -44,5 +44,5 @@ that combines them with Dark's midpoint 3D engine from Spectrum Expert #02.
 ## Build
 
 ```sh
-make demo       # builds demo/src/*.a80 → demo/build/not-eager.tap
+make demo       # builds demo/src/*.a80 → demo/build/antique-toy.tap
 ```

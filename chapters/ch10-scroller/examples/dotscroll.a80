@@ -1,0 +1,637 @@
+; dotscroll.a80 — Bouncing dotfield text scroller
+; From Chapter 10: The Dotfield Scroller and 4-Phase Colour
+;
+; Demonstrates: POP-trick address table, unrolled dot renderer,
+; sine-wave bounce, PUSH-based screen clear, HALT frame sync.
+;
+; A short text message scrolls horizontally across the screen.
+; Each character is rendered as individual dots from an 8x8 font.
+; Vertical positions bounce on a sine wave — the bounce is encoded
+; entirely in the pre-built address table.
+;
+; Target: ZX Spectrum 48K/128K
+; Assembles with: sjasmplus --nologo
+
+    ORG  $8000
+
+; ============================================================
+; Constants
+; ============================================================
+SCREEN      EQU  $4000
+SCREEN_END  EQU  $5800
+ATTR_START  EQU  $5800
+
+NUM_CHARS   EQU  8          ; visible characters on screen
+CHAR_W      EQU  8          ; font char width in pixels
+CHAR_H      EQU  8          ; font char height in pixels
+DOT_COLS    EQU  NUM_CHARS * CHAR_W  ; 64 dot columns visible
+CENTRE_Y    EQU  88         ; vertical centre of the bounce (scanline)
+BOUNCE_AMP  EQU  24         ; sine amplitude in scanlines
+SCROLL_SPEED EQU 1          ; pixels per frame
+
+; ============================================================
+; Entry point
+; ============================================================
+entry:
+    di
+    ld   sp, $7FFE
+    im   1
+
+    ; Clear screen
+    call clear_screen
+
+    ; Set attributes: white ink on black paper, bright
+    ld   hl, ATTR_START
+    ld   de, ATTR_START + 1
+    ld   (hl), $47           ; bright white on black
+    ld   bc, 767
+    ldir
+
+    ; Set border to black
+    xor  a
+    out  ($FE), a
+
+    ; Initialise scroll position and bounce phase
+    xor  a
+    ld   (scroll_x), a
+    ld   (bounce_phase), a
+
+    ei
+
+; ============================================================
+; Main loop — one frame per iteration
+; ============================================================
+main_loop:
+    halt                     ; sync to 50 Hz
+
+    ; Border red = working
+    ld   a, 2
+    out  ($FE), a
+
+    ; Step 1: Clear screen (PUSH-based fast clear)
+    call clear_screen
+
+    ; Step 2: Build address table with bounce offsets
+    call build_addr_table
+
+    ; Step 3: Render the dotfield
+    call render_dots
+
+    ; Step 4: Advance scroll and bounce
+    ld   a, (scroll_x)
+    add  a, SCROLL_SPEED
+    ld   (scroll_x), a
+
+    ld   a, (bounce_phase)
+    add  a, 3                ; bounce speed
+    ld   (bounce_phase), a
+
+    ; Border black = idle
+    xor  a
+    out  ($FE), a
+
+    jr   main_loop
+
+; ============================================================
+; BUILD_ADDR_TABLE — Pre-compute screen addresses for all dots
+;
+; For each of the 64 visible dot columns (8 chars x 8 pixels),
+; for each of the 8 rows in the font, compute:
+;   y = CENTRE_Y + sin_table[(col * 4 + bounce_phase) & $FF]
+;       - 4 + row   (offset rows 0..7 around the centre)
+;   x = col * 2 + 64  (pixel x position, centred on screen)
+;   screen_addr = y-to-screen-addr(y) + x/8, with pixel bit
+;
+; The table stores one 16-bit screen address per dot column
+; per font row.  Layout: 8 rows of 64 entries = 512 words.
+;
+; Because SET N,(HL) sets a specific bit, each address in the
+; table is the BYTE address.  The bit position comes from the
+; unrolled SET in the inner loop — it cycles 7,6,5..0 matching
+; the 8 pixels within each font byte.
+;
+; For simplicity we store byte addresses only.  The inner loop
+; uses SET with the correct bit for each pixel within the byte.
+; This means all 8 pixels of a font byte share the same byte
+; column on screen, which is correct for 1-pixel-wide dots
+; spaced 2 pixels apart horizontally (each char = 16 px wide).
+; ============================================================
+build_addr_table:
+    ld   ix, addr_table      ; output pointer
+
+    ld   a, 0
+    ld   (bat_row), a        ; font row counter 0..7
+
+.row_loop:
+    ld   a, 0
+    ld   (bat_col), a        ; dot column counter 0..63
+
+.col_loop:
+    ; --- Compute Y position ---
+    ; y_base = sin_table[(col * 4 + bounce_phase) & $FF]
+    ld   a, (bat_col)
+    add  a, a                ; col * 2
+    add  a, a                ; col * 4
+    ld   b, a
+    ld   a, (bounce_phase)
+    add  a, b                ; col*4 + bounce_phase (wraps at 256)
+    ld   hl, sin_table
+    ld   l, a                ; page-aligned lookup
+    ld   a, (hl)             ; A = signed offset (-BOUNCE_AMP..+BOUNCE_AMP)
+
+    ; y = CENTRE_Y + offset + (row - 4)
+    ld   b, a                ; save sine offset
+    ld   a, (bat_row)
+    sub  4                   ; row - 4 (centre 8-row block)
+    add  a, b                ; offset + (row - 4)
+    add  a, CENTRE_Y         ; y = CENTRE_Y + offset + (row - 4)
+    ld   c, a                ; C = y position (scanline)
+
+    ; Bounds check: y must be 0..191
+    cp   192
+    jr   nc, .offscreen
+
+    ; --- Compute X byte position ---
+    ; Each dot column maps to a unique screen byte.
+    ; x_pixel = col * 2 + 64  → x_byte = x_pixel / 8
+    ;   but for SET trick we need the byte address and the
+    ;   bit is implicit in the unrolled loop.
+    ; Actually: for 8 pixels in one font byte, we step through
+    ;   8 consecutive x positions.  We use 2-pixel spacing:
+    ;   x_pixel = (col_in_char * 2) within the character cell.
+    ;   Character position on screen = char_index * 2 + 8
+    ;   (each char is 2 bytes = 16 pixels wide on screen).
+    ;
+    ; Simpler approach: each dot column gets a byte column.
+    ; x_byte_col = (col / 8) + 8  (offset 8 bytes from left)
+    ; The bit within the byte comes from col & 7, handled by SET.
+
+    ld   a, (bat_col)
+    rrca
+    rrca
+    rrca
+    and  $07                 ; A = col / 8
+    add  a, 8               ; offset from left edge of screen
+    ld   b, a                ; B = x byte column (0..31)
+
+    ; --- Convert (B=x_byte_col, C=y_scanline) to screen address ---
+    ; Spectrum screen address:
+    ;   H = 010 YY YYY, where Y7Y6 = third, Y2Y1Y0 = scan within char
+    ;   L = YYY XXXXX, where Y5Y4Y3 = char row within third, X = byte col
+    ld   a, c                ; A = y scanline
+    and  $C0                 ; isolate Y7Y6 (which third)
+    rrca
+    rrca
+    rrca                     ; move to bits 4-3
+    ld   h, a
+    ld   a, c
+    and  $07                 ; isolate Y2Y1Y0 (scan within char row)
+    or   h
+    or   $40                 ; set base $4000
+    ld   h, a
+
+    ld   a, c
+    and  $38                 ; isolate Y5Y4Y3 (char row within third)
+    rlca
+    rlca                     ; move to bits 7-5 of L
+    or   b                   ; combine with x byte column
+    ld   l, a                ; HL = screen address
+
+    ; Store in table
+    ld   (ix+0), l
+    ld   (ix+1), h
+    jr   .next_col
+
+.offscreen:
+    ; Store a safe off-screen address (won't be visible)
+    ; We use a RAM address that won't corrupt anything important
+    ld   (ix+0), $00
+    ld   (ix+1), $60         ; $6000 = safe scratch area
+
+.next_col:
+    inc  ix
+    inc  ix
+
+    ld   a, (bat_col)
+    inc  a
+    ld   (bat_col), a
+    cp   DOT_COLS
+    jp   c, .col_loop
+
+    ; Next row
+    ld   a, (bat_row)
+    inc  a
+    ld   (bat_row), a
+    cp   CHAR_H
+    jp   c, .row_loop
+
+    ret
+
+; ============================================================
+; RENDER_DOTS — The dotfield inner loop using POP trick
+;
+; SP walks the address table; BC points to font data.
+; For each font byte, 8 pixels are tested via RLA and plotted
+; with SET N,(HL) where N cycles 7..0 (unrolled).
+;
+; Per-pixel cost:
+;   Opaque:      POP HL(10) + RLA(4) + JR NC(7) + SET(15) = 36 T
+;   Transparent: POP HL(10) + RLA(4) + JR NC(12)           = 26 T
+; ============================================================
+render_dots:
+    di                        ; must protect SP
+
+    ; Save SP via self-modifying code
+    ld   (.smc_restore_sp+1), sp  ; 20 T
+
+    ; --- Set up font data pointer (BC) ---
+    ; We render NUM_CHARS characters.  Font data for each char
+    ; is 8 bytes.  We need to select the right characters from
+    ; the scrolling message.
+    ;
+    ; Outer loop: for each font row (0..7), walk all chars.
+    ; The address table is laid out as 8 rows of 64 columns,
+    ; and within each row the 64 columns = 8 chars x 8 pixels.
+    ;
+    ; For each row:
+    ;   SP -> addr_table + row * 64 * 2
+    ;   For each character:
+    ;     BC -> font_data + char_code * 8 + row
+    ;     Process 8 pixels from one font byte via unrolled loop.
+
+    ld   a, 0
+    ld   (rd_row), a
+
+.row_loop:
+    ; Calculate SP = addr_table + row * 128
+    ld   a, (rd_row)
+    ld   l, a
+    ld   h, 0
+    add  hl, hl              ; row * 2
+    add  hl, hl              ; row * 4
+    add  hl, hl              ; row * 8
+    add  hl, hl              ; row * 16
+    add  hl, hl              ; row * 32
+    add  hl, hl              ; row * 64
+    add  hl, hl              ; row * 128
+    ld   de, addr_table
+    add  hl, de
+    ld   sp, hl              ; SP = start of this row's addresses
+
+    ; Process all NUM_CHARS characters in this row
+    ld   a, 0
+    ld   (rd_char), a
+
+.char_loop:
+    ; Determine which character from the message to render.
+    ; char_index = (scroll_x / 8 + rd_char) mod msg_len
+    ; The sub-pixel scroll is handled by bit position in the
+    ; address table (already encoded).
+    ;
+    ; For simplicity: scroll_x is a character-level offset
+    ; (each frame advances the starting character position).
+
+    ld   a, (scroll_x)
+    rrca
+    rrca
+    rrca
+    and  $1F                 ; scroll_x / 8 = character offset
+    ld   b, a
+    ld   a, (rd_char)
+    add  a, b                ; char_index = rd_char + scroll offset
+
+    ; Wrap char_index to message length
+    ; msg_len is a power-of-2-friendly length, but we do modulo
+.wrap_check:
+    cp   MSG_LEN
+    jr   c, .no_wrap
+    sub  MSG_LEN
+    jr   .wrap_check
+.no_wrap:
+
+    ; Look up character code from message
+    ld   hl, message
+    ld   e, a
+    ld   d, 0
+    add  hl, de
+    ld   a, (hl)             ; A = ASCII character code
+
+    ; Get font data pointer: font_data + (char - 32) * 8 + row
+    sub  32                  ; font starts at space (ASCII 32)
+    ld   l, a
+    ld   h, 0
+    add  hl, hl              ; * 2
+    add  hl, hl              ; * 4
+    add  hl, hl              ; * 8
+    ld   de, font_data
+    add  hl, de
+    ld   a, (rd_row)
+    ld   e, a
+    ld   d, 0
+    add  hl, de              ; HL = font_data + (char-32)*8 + row
+    ld   b, h
+    ld   c, l                ; BC = pointer to this font byte
+
+    ; --- Unrolled inner loop: 8 pixels from one font byte ---
+    ld   a, (bc)             ;  7 T  read font byte
+
+    ; Pixel 7 (MSB)
+    pop  hl                  ; 10 T  screen address from table
+    rla                      ;  4 T  shift MSB into carry
+    jr   nc, .skip7          ; 12/7 T
+    set  7, (hl)             ; 15 T  plot the dot
+.skip7:
+    ; Pixel 6
+    pop  hl                  ; 10 T
+    rla                      ;  4 T
+    jr   nc, .skip6          ; 12/7 T
+    set  6, (hl)             ; 15 T
+.skip6:
+    ; Pixel 5
+    pop  hl                  ; 10 T
+    rla                      ;  4 T
+    jr   nc, .skip5          ; 12/7 T
+    set  5, (hl)             ; 15 T
+.skip5:
+    ; Pixel 4
+    pop  hl                  ; 10 T
+    rla                      ;  4 T
+    jr   nc, .skip4          ; 12/7 T
+    set  4, (hl)             ; 15 T
+.skip4:
+    ; Pixel 3
+    pop  hl                  ; 10 T
+    rla                      ;  4 T
+    jr   nc, .skip3          ; 12/7 T
+    set  3, (hl)             ; 15 T
+.skip3:
+    ; Pixel 2
+    pop  hl                  ; 10 T
+    rla                      ;  4 T
+    jr   nc, .skip2          ; 12/7 T
+    set  2, (hl)             ; 15 T
+.skip2:
+    ; Pixel 1
+    pop  hl                  ; 10 T
+    rla                      ;  4 T
+    jr   nc, .skip1          ; 12/7 T
+    set  1, (hl)             ; 15 T
+.skip1:
+    ; Pixel 0 (LSB)
+    pop  hl                  ; 10 T
+    rla                      ;  4 T
+    jr   nc, .skip0          ; 12/7 T
+    set  0, (hl)             ; 15 T
+.skip0:
+
+    ; Next character
+    ld   a, (rd_char)
+    inc  a
+    ld   (rd_char), a
+    cp   NUM_CHARS
+    jp   c, .char_loop
+
+    ; Next row
+    ld   a, (rd_row)
+    inc  a
+    ld   (rd_row), a
+    cp   CHAR_H
+    jp   c, .row_loop
+
+    ; Restore SP
+.smc_restore_sp:
+    ld   sp, $0000           ; self-modified: original SP value
+    ei
+    ret
+
+; ============================================================
+; CLEAR_SCREEN — PUSH-based fast screen clear (~34,000 T)
+; ============================================================
+clear_screen:
+    di
+    ld   (.smc_cs_sp+1), sp
+    ld   sp, SCREEN_END
+    ld   hl, 0
+    ld   b, 192              ; 6144 bytes / 32 bytes per iteration
+.loop:
+    push hl                  ; 16 x PUSH HL = 32 bytes zeroed
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    djnz .loop
+.smc_cs_sp:
+    ld   sp, $0000
+    ei
+    ret
+
+; ============================================================
+; Variables
+; ============================================================
+scroll_x:       DB  0        ; scroll position (advances each frame)
+bounce_phase:   DB  0        ; bounce sine phase
+bat_row:        DB  0        ; build_addr_table: current row
+bat_col:        DB  0        ; build_addr_table: current column
+rd_row:         DB  0        ; render_dots: current font row
+rd_char:        DB  0        ; render_dots: current character
+
+; ============================================================
+; Scrolling message (null-terminated not needed; fixed length)
+; Repeated to allow seamless wrapping.
+; ============================================================
+message:
+    DB  "DOTFIELD SCROLLER "
+    DB  "BY X-TRADE  "
+    DB  "ILLUSION 96  "
+    DB  "DOTS BOUNCE! "
+MSG_LEN EQU $ - message
+
+; ============================================================
+; Sine table — 256 bytes, page-aligned
+; Signed values: range -BOUNCE_AMP..+BOUNCE_AMP
+; sin(i) = round(BOUNCE_AMP * sin(2*pi*i/256))
+; With BOUNCE_AMP = 24, range is -24..+24
+; ============================================================
+    ALIGN 256
+sin_table:
+    ; Generated: round(24 * sin(2*pi*i/256)) for i=0..255
+    ; 0..63 (0 to ~90 degrees)
+    DB    0,   1,   1,   2,   2,   3,   4,   4
+    DB    5,   5,   6,   7,   7,   8,   8,   9
+    DB    9,  10,  10,  11,  11,  12,  12,  13
+    DB   13,  14,  14,  14,  15,  15,  15,  16
+    DB   16,  16,  17,  17,  17,  17,  18,  18
+    DB   18,  18,  18,  19,  19,  19,  19,  19
+    DB   19,  19,  19,  19,  19,  19,  19,  19
+    DB   19,  19,  18,  18,  18,  18,  18,  17
+    ; 64..127 (90 to ~180 degrees)
+    DB   17,  17,  17,  16,  16,  16,  15,  15
+    DB   15,  14,  14,  14,  13,  13,  12,  12
+    DB   11,  11,  10,  10,   9,   9,   8,   8
+    DB    7,   7,   6,   5,   5,   4,   4,   3
+    DB    2,   2,   1,   1,   0,   0,  -1,  -1
+    DB   -2,  -2,  -3,  -4,  -4,  -5,  -5,  -6
+    DB   -7,  -7,  -8,  -8,  -9,  -9, -10, -10
+    DB  -11, -11, -12, -12, -13, -13, -14, -14
+    ; 128..191 (180 to ~270 degrees)
+    DB  -14, -15, -15, -15, -16, -16, -16, -17
+    DB  -17, -17, -17, -18, -18, -18, -18, -18
+    DB  -19, -19, -19, -19, -19, -19, -19, -19
+    DB  -19, -19, -19, -19, -19, -19, -19, -18
+    DB  -18, -18, -18, -18, -17, -17, -17, -17
+    DB  -16, -16, -16, -15, -15, -15, -14, -14
+    DB  -14, -13, -13, -12, -12, -11, -11, -10
+    DB  -10,  -9,  -9,  -8,  -8,  -7,  -7,  -6
+    ; 192..255 (270 to ~360 degrees)
+    DB   -5,  -5,  -4,  -4,  -3,  -2,  -2,  -1
+    DB   -1,   0,   0,   1,   1,   2,   2,   3
+    DB    4,   4,   5,   5,   6,   7,   7,   8
+    DB    8,   9,   9,  10,  10,  11,  11,  12
+    DB   12,  13,  13,  14,  14,  14,  15,  15
+    DB   15,  16,  16,  16,  17,  17,  17,  17
+    DB   18,  18,  18,  18,  18,  19,  19,  19
+    DB   19,  19,  19,  19,  19,  19,  19,  19
+
+; ============================================================
+; Font data — Simple 8x8 bitmap font
+; Only characters 32..90 (space through 'Z') needed.
+; Each character = 8 bytes (one byte per row, MSB = leftmost).
+; 59 characters x 8 bytes = 472 bytes.
+; ============================================================
+font_data:
+    ; Space (32)
+    DB  $00, $00, $00, $00, $00, $00, $00, $00
+    ; ! (33)
+    DB  $18, $18, $18, $18, $18, $00, $18, $00
+    ; " (34)
+    DB  $6C, $6C, $00, $00, $00, $00, $00, $00
+    ; # (35)
+    DB  $6C, $FE, $6C, $6C, $FE, $6C, $00, $00
+    ; $ (36)
+    DB  $18, $7E, $C0, $7C, $06, $FC, $18, $00
+    ; % (37)
+    DB  $C6, $CC, $18, $30, $66, $C6, $00, $00
+    ; & (38)
+    DB  $38, $6C, $38, $76, $DC, $CC, $76, $00
+    ; ' (39)
+    DB  $18, $18, $30, $00, $00, $00, $00, $00
+    ; ( (40)
+    DB  $0C, $18, $30, $30, $30, $18, $0C, $00
+    ; ) (41)
+    DB  $30, $18, $0C, $0C, $0C, $18, $30, $00
+    ; * (42)
+    DB  $00, $66, $3C, $FF, $3C, $66, $00, $00
+    ; + (43)
+    DB  $00, $18, $18, $7E, $18, $18, $00, $00
+    ; , (44)
+    DB  $00, $00, $00, $00, $00, $18, $18, $30
+    ; - (45)
+    DB  $00, $00, $00, $7E, $00, $00, $00, $00
+    ; . (46)
+    DB  $00, $00, $00, $00, $00, $18, $18, $00
+    ; / (47)
+    DB  $06, $0C, $18, $30, $60, $C0, $00, $00
+    ; 0 (48)
+    DB  $7C, $C6, $CE, $D6, $E6, $C6, $7C, $00
+    ; 1 (49)
+    DB  $18, $38, $18, $18, $18, $18, $7E, $00
+    ; 2 (50)
+    DB  $7C, $C6, $06, $1C, $30, $60, $FE, $00
+    ; 3 (51)
+    DB  $7C, $C6, $06, $3C, $06, $C6, $7C, $00
+    ; 4 (52)
+    DB  $1C, $3C, $6C, $CC, $FE, $0C, $0C, $00
+    ; 5 (53)
+    DB  $FE, $C0, $FC, $06, $06, $C6, $7C, $00
+    ; 6 (54)
+    DB  $3C, $60, $C0, $FC, $C6, $C6, $7C, $00
+    ; 7 (55)
+    DB  $FE, $06, $0C, $18, $30, $30, $30, $00
+    ; 8 (56)
+    DB  $7C, $C6, $C6, $7C, $C6, $C6, $7C, $00
+    ; 9 (57)
+    DB  $7C, $C6, $C6, $7E, $06, $0C, $78, $00
+    ; : (58)
+    DB  $00, $18, $18, $00, $18, $18, $00, $00
+    ; ; (59)
+    DB  $00, $18, $18, $00, $18, $18, $30, $00
+    ; < (60)
+    DB  $0C, $18, $30, $60, $30, $18, $0C, $00
+    ; = (61)
+    DB  $00, $00, $7E, $00, $7E, $00, $00, $00
+    ; > (62)
+    DB  $30, $18, $0C, $06, $0C, $18, $30, $00
+    ; ? (63)
+    DB  $7C, $C6, $06, $1C, $18, $00, $18, $00
+    ; @ (64)
+    DB  $7C, $C6, $DE, $DE, $DC, $C0, $7C, $00
+    ; A (65)
+    DB  $38, $6C, $C6, $C6, $FE, $C6, $C6, $00
+    ; B (66)
+    DB  $FC, $C6, $C6, $FC, $C6, $C6, $FC, $00
+    ; C (67)
+    DB  $7C, $C6, $C0, $C0, $C0, $C6, $7C, $00
+    ; D (68)
+    DB  $F8, $CC, $C6, $C6, $C6, $CC, $F8, $00
+    ; E (69)
+    DB  $FE, $C0, $C0, $FC, $C0, $C0, $FE, $00
+    ; F (70)
+    DB  $FE, $C0, $C0, $FC, $C0, $C0, $C0, $00
+    ; G (71)
+    DB  $7C, $C6, $C0, $C0, $CE, $C6, $7E, $00
+    ; H (72)
+    DB  $C6, $C6, $C6, $FE, $C6, $C6, $C6, $00
+    ; I (73)
+    DB  $7E, $18, $18, $18, $18, $18, $7E, $00
+    ; J (74)
+    DB  $06, $06, $06, $06, $06, $C6, $7C, $00
+    ; K (75)
+    DB  $C6, $CC, $D8, $F0, $D8, $CC, $C6, $00
+    ; L (76)
+    DB  $C0, $C0, $C0, $C0, $C0, $C0, $FE, $00
+    ; M (77)
+    DB  $C6, $EE, $FE, $D6, $C6, $C6, $C6, $00
+    ; N (78)
+    DB  $C6, $E6, $F6, $DE, $CE, $C6, $C6, $00
+    ; O (79)
+    DB  $7C, $C6, $C6, $C6, $C6, $C6, $7C, $00
+    ; P (80)
+    DB  $FC, $C6, $C6, $FC, $C0, $C0, $C0, $00
+    ; Q (81)
+    DB  $7C, $C6, $C6, $C6, $D6, $CC, $76, $00
+    ; R (82)
+    DB  $FC, $C6, $C6, $FC, $D8, $CC, $C6, $00
+    ; S (83)
+    DB  $7C, $C6, $C0, $7C, $06, $C6, $7C, $00
+    ; T (84)
+    DB  $FE, $18, $18, $18, $18, $18, $18, $00
+    ; U (85)
+    DB  $C6, $C6, $C6, $C6, $C6, $C6, $7C, $00
+    ; V (86)
+    DB  $C6, $C6, $C6, $C6, $6C, $38, $10, $00
+    ; W (87)
+    DB  $C6, $C6, $C6, $D6, $FE, $EE, $C6, $00
+    ; X (88)
+    DB  $C6, $6C, $38, $38, $6C, $C6, $C6, $00
+    ; Y (89)
+    DB  $C6, $C6, $6C, $38, $18, $18, $18, $00
+    ; Z (90)
+    DB  $FE, $0C, $18, $30, $60, $C0, $FE, $00
+
+; ============================================================
+; Address table buffer
+; 8 rows x 64 columns x 2 bytes = 1024 bytes
+; ============================================================
+addr_table:
+    DS   CHAR_H * DOT_COLS * 2

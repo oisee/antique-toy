@@ -1,0 +1,234 @@
+; intro256.a80 — 256-Byte Intro Skeleton for ZX Spectrum
+; From Chapter 13: The Craft of Size-Coding
+;
+; A complete 256-byte intro demonstrating classic size-coding techniques:
+;
+;   #1  Self-modifying code — frame counter embedded in LD A,n operand
+;   #2  XOR A instead of LD A,0 — saves 1 byte
+;   #3  ADD A,A instead of SLA A — saves 1 byte (1 vs 2 bytes)
+;   #4  SBC A,A to convert carry to $00/$FF — branchless, 1 byte
+;   #5  LD B,0 + DJNZ for 256 iterations — 0 wraps to 256
+;   #6  JR everywhere, never JP — saves 1 byte each
+;   #7  HALT for frame sync — 1 byte, perfect timing
+;   #8  Registers serve double duty — loop counter IS effect parameter
+;   #9  Fall-through between init and main loop — no wasted JR
+;   #10 AY port reuse — keep C=$FD across writes, change only B
+;   #11 Derive visuals from arithmetic, not tables — zero data bytes
+;   #12 Derive sound from frame counter — no note table needed
+;   #13 ASSERT enforces size limit at assembly time
+;
+; Visual: animated Moire interference pattern in attribute memory.
+;   Two wave functions (XOR + diagonal) combine with a frame counter.
+;   Pixel memory has dither pattern so both ink and paper are visible.
+;
+; Sound: cycling tone on AY channel A derived from the frame counter.
+;   The pitch sweeps continuously. Minimal — but at 256 bytes, any
+;   sound at all is a luxury.
+;
+; ORG $8000 for consistency with other book examples.
+; (Real competition intros may choose ORG strategically — see
+; "The ORG Trick" in Section 13.4.)
+;
+; Assembles with: sjasmplus --nologo --raw=build/intro256.bin intro256.a80
+; Target: fits within 256 bytes
+
+    ORG  $8000
+
+; ============================================================
+; One-time initialisation
+; ============================================================
+; SIZE-CODING TRICK #9: Init falls straight through into the
+; main loop — no JR needed to reach it. Every fall-through
+; saves 2 bytes.
+; ============================================================
+init:
+    ; --- Fill pixel memory with dither pattern ---
+    ; Without pixels set, only paper colour is visible. We fill
+    ; the screen ONCE with a checkerboard so both ink and paper
+    ; show in each 8x8 cell.
+    ;
+    ; SIZE-CODING TRICK: Known initial state. After tape load,
+    ; screen memory ($4000) is cleared and interrupts are enabled.
+    ; We only set up what the main loop cannot.
+    ld   hl, $4000              ; 3 bytes — start of pixel memory
+
+    ; SIZE-CODING TRICK #5: LD B,0 + DJNZ loops 256 times.
+    ; Screen is 6144 bytes = 24 * 256. Outer loop D=24, inner B=0(256).
+    ld   d, 24                  ; 2 bytes — 24 character rows
+
+.fill_row:
+    ; SIZE-CODING TRICK #4: SBC A,A converts carry flag to $00 or $FF
+    ; in just 1 byte. Combined with XOR, we select between two dither
+    ; patterns without any branch — replacing 6 bytes of JR/LD with 3.
+    ld   a, d                   ; 1 byte — A = row counter
+    rrca                        ; 1 byte — bit 0 -> carry
+    sbc  a, a                   ; 1 byte — $FF if carry, $00 if not
+    xor  $55                    ; 2 bytes — $AA or $55 (alternating rows)
+    ld   e, a                   ; 1 byte — E = dither byte for this row
+
+    ld   b, 0                   ; 2 bytes — 256 bytes per character row
+
+.fill_byte:
+    ld   (hl), e                ; 1 byte — write dither pattern
+    inc  hl                     ; 1 byte — next screen byte
+    djnz .fill_byte             ; 2 bytes — repeat 256 times
+
+    dec  d                      ; 1 byte — next character row
+    jr   nz, .fill_row          ; 2 bytes — 24 rows total
+    ; After this loop: HL = $5800, D = 0
+
+    ; --- AY-3-8910 mixer setup ---
+    ; SIZE-CODING TRICK #10: The AY ports share C=$FD. We set
+    ; BC=$FFFD for register select, then only change B to $BF
+    ; for data write. Keeps C=$FD throughout — saves reloading.
+    ld   c, $FD                 ; 2 bytes — C stays $FD for all AY I/O
+    ld   a, 7                   ; 2 bytes — register 7: mixer control
+    ld   b, $FF                 ; 2 bytes — port $FFFD: register select
+    out  (c), a                 ; 2 bytes — select mixer register
+    ld   a, %00111110           ; 2 bytes — enable channel A tone only
+                                ;   noise C,B,A = off,off,off
+                                ;   tone  C,B,A = off,off,ON
+    ld   b, $BF                 ; 2 bytes — port $BFFD: data write
+    out  (c), a                 ; 2 bytes — configure mixer
+
+    ; --- AY channel A volume ---
+    ld   a, 8                   ; 2 bytes — register 8: channel A volume
+    ld   b, $FF                 ; 2 bytes — register select port
+    out  (c), a                 ; 2 bytes — select volume register
+    ld   a, 12                  ; 2 bytes — volume 12 (of 15) — bright
+    ld   b, $BF                 ; 2 bytes — data write port
+    out  (c), a                 ; 2 bytes — set volume
+    ; C = $FD throughout — preserved for main loop AY writes.
+
+; ============================================================
+; Main loop — runs at 50Hz (PAL frame rate)
+; ============================================================
+main_loop:
+    ; SIZE-CODING TRICK #7: HALT is 1 byte. The CPU sleeps until
+    ; the maskable interrupt fires (every 20ms on PAL Spectrum).
+    ; Perfect frame sync with zero polling code.
+    halt                        ; 1 byte — wait for vblank
+
+    ; --- Read frame counter (self-modifying code) ---
+    ; SIZE-CODING TRICK #1: The operand byte of LD A,n below
+    ; IS the frame counter. At the end of each frame, we write
+    ; the new value directly into the instruction stream. No
+    ; separate variable needed — saves 1+ bytes.
+.smc_frame:
+    ld   a, 1                   ; 2 bytes — operand is frame counter
+                                ; (patched at end of each frame)
+    push af                     ; 1 byte — save frame value on stack
+
+    ; --- Border colour from frame counter (timing indicator) ---
+    and  7                      ; 2 bytes — mask to valid border colour
+    out  ($FE), a               ; 2 bytes — border = f(frame)
+
+    ; === AY TONE UPDATE (sound) ===
+    ; SIZE-CODING TRICK #12: No note table. The frame counter IS
+    ; the tone period. As it advances 0..255, pitch sweeps down
+    ; then jumps back up. Crude but recognisable — and zero data bytes.
+    ;
+    ; Register 0 = channel A tone period (low byte).
+    ; Register 1 defaults to 0 (high byte), giving periods 0..255.
+    ;
+    ; SIZE-CODING TRICK #10 (continued): C was $FD from init, but
+    ; we overwrote it with the frame counter inside the attr loop.
+    ; Restore C=$FD here for the AY port writes. In a tighter intro,
+    ; you would restructure to avoid this reload — maybe keeping the
+    ; frame counter in IXL or a shadow register instead.
+    ld   c, $FD                 ; 2 bytes — restore AY port low byte
+    xor  a                      ; 1 byte — A = 0 = AY register 0
+    ld   b, $FF                 ; 2 bytes — port $FFFD
+    out  (c), a                 ; 2 bytes — select tone period register
+    pop  af                     ; 1 byte — recover frame counter into A
+    push af                     ; 1 byte — keep it for later (attr loop)
+    ld   b, $BF                 ; 2 bytes — port $BFFD
+    out  (c), a                 ; 2 bytes — tone period = frame counter
+
+    ; === ATTRIBUTE EFFECT (visual) ===
+    ; Fill the 32x24 attribute grid (768 bytes at $5800) with an
+    ; animated interference pattern. Two wave terms — one from
+    ; (row XOR col), one from (row + col) — combine via XOR,
+    ; offset by the frame counter for animation.
+    ;
+    ; SIZE-CODING TRICK #8: D and E serve as BOTH loop counters
+    ; AND effect parameters. The row/column position used in the
+    ; visual formula comes directly from the loop state. No
+    ; separate position variables needed.
+    ;
+    ; SIZE-CODING TRICK #11: The visual effect is pure arithmetic
+    ; on registers — no sine table, no data at all. Every byte
+    ; saved from tables is a byte available for more code.
+
+    ; Recover frame counter into C for the attr loop
+    pop  af                     ; 1 byte — frame counter back into A
+    ld   c, a                   ; 1 byte — C = frame counter
+
+    ld   h, $58                 ; 2 bytes — HL -> attribute memory
+    ld   l, 0                   ; 2 bytes — $5800 = start of attrs
+    ld   d, 24                  ; 2 bytes — 24 rows
+
+.row_loop:
+    ld   e, 32                  ; 2 bytes — 32 columns per row
+
+.col_loop:
+    ; --- Wave term 1: (row XOR col) * 4 + frame ---
+    ld   a, d                   ; 1 byte — row position (24..1)
+    xor  e                      ; 1 byte — interference with column
+    ; SIZE-CODING TRICK #3: ADD A,A is 1 byte, SLA A is 2 bytes.
+    ; Both shift left by 1. At 256 bytes, use ADD A,A always.
+    add  a, a                   ; 1 byte — * 2
+    add  a, a                   ; 1 byte — * 4 (controls band width)
+    add  a, c                   ; 1 byte — offset by frame counter
+
+    ; --- Wave term 2: (row + col) * 8 - frame ---
+    ld   b, a                   ; 1 byte — save term 1
+    ld   a, d                   ; 1 byte — row
+    add  a, e                   ; 1 byte — + column (diagonal axis)
+    add  a, a                   ; 1 byte — * 2
+    add  a, a                   ; 1 byte — * 4
+    add  a, a                   ; 1 byte — * 8 (tighter diagonal bands)
+    sub  c                      ; 1 byte — counter-rotate vs term 1
+
+    ; Combine: XOR creates the Moire interference pattern
+    xor  b                      ; 1 byte
+
+    ; --- Map to attribute byte ---
+    ; The raw computed value IS the attribute. We set BRIGHT (bit 6)
+    ; for vivid colours. The XOR/ADD arithmetic distributes bits
+    ; across paper and ink fields, creating varied colour pairs.
+    or   %01000000              ; 2 bytes — set BRIGHT bit
+
+    ld   (hl), a                ; 1 byte — write to attribute memory
+    inc  hl                     ; 1 byte — next cell
+
+    dec  e                      ; 1 byte — next column
+    jr   nz, .col_loop          ; 2 bytes
+
+    dec  d                      ; 1 byte — next row
+    jr   nz, .row_loop          ; 2 bytes
+
+    ; === UPDATE FRAME COUNTER (self-modifying write) ===
+    ; SIZE-CODING TRICK #1 (continued): We patch the operand byte
+    ; at address .smc_frame + 1 (the byte after the $3E opcode).
+    ; ADD A,3 advances the counter — step of 3 gives smooth motion
+    ; and a prime-ish cycle length (wraps every 85 frames ≈ 1.7s).
+    ld   a, c                   ; 1 byte — current frame value
+    add  a, 3                   ; 2 bytes — advance by 3
+    ld   (.smc_frame + 1), a    ; 3 bytes — patch the instruction
+
+    ; SIZE-CODING TRICK #6: JR back to main_loop — 2 bytes.
+    ; JP would cost 3 bytes. Every JP in a 256-byte intro should
+    ; be a JR — the whole program is within -128..+127 range.
+    jr   main_loop              ; 2 bytes — next frame
+
+; ============================================================
+; Size verification
+; ============================================================
+; SIZE-CODING TRICK #13: ASSERT at assembly time catches
+; overflows immediately. In competition, 257 bytes = DQ.
+; ============================================================
+intro_end:
+
+    ASSERT intro_end - init <= 256, "Intro exceeds 256 bytes!"
+    DISPLAY "Intro size: ", /D, intro_end - init, " bytes"

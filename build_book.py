@@ -15,7 +15,6 @@ Usage:
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from datetime import datetime
@@ -34,6 +33,7 @@ LANG = "en"
 # Chapters in order (glob sorts correctly thanks to chNN- prefix)
 CHAPTER_GLOB = "chapters/ch*/draft.md"
 EXTRA_FILES = ["glossary.md"]
+APPENDIX_GLOB = "appendices/appendix-*.md"
 
 
 def load_version():
@@ -83,6 +83,13 @@ def combine_chapters():
             parts.append("\n\\newpage\n")
             with open(path, encoding="utf-8") as f:
                 parts.append(f.read())
+
+    # Append appendices (sorted alphabetically: appendix-a, appendix-b, ...)
+    appendices = sorted(glob(str(ROOT / APPENDIX_GLOB)))
+    for path in appendices:
+        parts.append("\n\\newpage\n")
+        with open(path, encoding="utf-8") as f:
+            parts.append(f.read())
 
     return "\n".join(parts)
 
@@ -187,6 +194,9 @@ def build_epub(meta, combined, vs):
     return out
 
 
+CHANGELOG_FILE = ROOT / "CHANGELOG.md"
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build Coding the Impossible book")
     parser.add_argument("--pdf", action="store_true", help="Build A4 PDF")
@@ -196,6 +206,7 @@ def main():
     parser.add_argument("--version-major", action="store_true", help="Bump major version")
     parser.add_argument("--version-minor", action="store_true", help="Bump minor version")
     parser.add_argument("--no-increment", action="store_true", help="Don't increment build number")
+    parser.add_argument("--no-changelog", action="store_true", help="Skip changelog appendix")
     args = parser.parse_args()
 
     # Default to --all if nothing specified
@@ -234,6 +245,13 @@ def main():
     # Prepare
     BUILD_DIR.mkdir(exist_ok=True)
     text = combine_chapters()
+
+    # Append changelog appendix (manually maintained CHANGELOG.md)
+    if not args.no_changelog and CHANGELOG_FILE.exists():
+        print("  Including CHANGELOG.md")
+        text += "\n\\newpage\n"
+        text += "\n" + CHANGELOG_FILE.read_text(encoding="utf-8")
+
     combined = write_combined(text, vs)
     meta = write_metadata(vs)
 

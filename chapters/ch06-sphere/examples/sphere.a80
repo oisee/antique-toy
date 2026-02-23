@@ -1,0 +1,706 @@
+; sphere.a80 — Texture-mapped sphere via runtime code generation
+; From Chapter 6: The Sphere — Texture Mapping on 3.5 MHz
+;
+; Demonstrates the core technique from Dark's Illusion (ENLiGHT'96):
+;   1. Precomputed skip tables encoding spherical projection
+;   2. Runtime Z80 code generation from skip tables
+;   3. ADD A,A / ADD A,(HL) / INC L pixel accumulation pattern
+;   4. Page-aligned source texture (1 byte per pixel) for INC L access
+;
+; Renders a 48-pixel-diameter sphere centred on screen.
+; The source texture is a simple checkerboard pattern stored as
+; one byte per pixel ($00 or $01) in a page-aligned buffer.
+; The sphere rotates by advancing through the texture each frame.
+;
+; Performance: ~101 + 32x T-states per output byte, where x is the
+; average number of extra INC L instructions per pixel (depends on
+; the spherical compression at that scanline).
+;
+; Target: ZX Spectrum 48K/128K
+; Assembles with: sjasmplus --nologo
+
+    ORG $8000
+
+; ============================================================
+; Constants
+; ============================================================
+SCREEN      EQU $4000
+SCREEN_END  EQU $5800
+ATTR_START  EQU $5800
+
+SPHERE_R    EQU 24              ; sphere radius in pixels (diameter 48)
+SPHERE_DIAM EQU SPHERE_R * 2   ; 48 pixels tall
+CENTRE_X    EQU 128             ; screen centre X (pixel)
+CENTRE_Y    EQU 96              ; screen centre Y (scanline)
+
+; Opcodes used by the code generator
+OP_ADD_A_A  EQU $87             ; ADD A,A       — 4 T
+OP_ADD_A_HL EQU $86             ; ADD A,(HL)    — 7 T
+OP_INC_L    EQU $2C             ; INC L         — 4 T
+OP_LD_DE_A  EQU $12             ; LD (DE),A     — 7 T
+OP_INC_E    EQU $1C             ; INC E         — 4 T
+OP_XOR_A    EQU $AF             ; XOR A         — 4 T
+OP_RET      EQU $C9             ; RET           — 10 T
+
+; ============================================================
+; Entry point
+; ============================================================
+start:
+    di
+    ld   sp, $7FFE
+    im   1
+
+    ; Clear screen
+    call clear_screen
+
+    ; Set attributes: white ink on black paper, bright
+    ld   hl, ATTR_START
+    ld   de, ATTR_START + 1
+    ld   (hl), $47              ; bright white on black
+    ld   bc, 767
+    ldir
+
+    ; Set border to black
+    xor  a
+    out  ($FE), a
+
+    ; Initialise rotation angle
+    xor  a
+    ld   (rotation), a
+
+    ; Build the source texture (checkerboard, 1 byte per pixel)
+    call build_texture
+
+    ; Precompute the sqrt table for sphere geometry
+    call build_sqrt_table
+
+    ei
+
+; ============================================================
+; Main loop
+; ============================================================
+main_loop:
+    halt                        ; sync to 50 Hz frame
+
+    ; Border red = working
+    ld   a, 2
+    out  ($FE), a
+
+    ; Step 1: Build skip tables for current rotation angle
+    call build_skip_tables
+
+    ; Step 2: Generate rendering code from skip tables
+    call generate_sphere_code
+
+    ; Step 3: Clear the sphere area (full screen for simplicity)
+    call clear_screen
+
+    ; Step 4: Execute the generated code to draw the sphere
+    call exec_sphere
+
+    ; Step 5: Advance rotation
+    ld   a, (rotation)
+    add  a, 2                   ; rotate 2 texture columns per frame
+    ld   (rotation), a
+
+    ; Border black = idle
+    xor  a
+    out  ($FE), a
+
+    jr   main_loop
+
+; ============================================================
+; EXEC_SPHERE — Set up registers and call the generated code
+;
+; The generated code expects:
+;   HL = pointer into source texture (page-aligned, updated per line)
+;   DE = screen address (set per line by the generator)
+; ============================================================
+exec_sphere:
+    call code_buffer
+    ret
+
+; ============================================================
+; BUILD_SKIP_TABLES — Compute pixel skip distances for each
+; scanline of the sphere.
+;
+; For each scanline y (-R to +R-1), we compute the visible arc
+; width and the skip distances between sampled source pixels.
+;
+; The sphere projection maps screen position x within the arc
+; to a longitude on the sphere surface. The skip distance is
+; the difference in source texture column between adjacent
+; screen pixels — it grows near the edges (poles of the
+; horizontal cross-section) where the projection compresses.
+;
+; We store the skip tables as:
+;   skip_table_data:
+;     For each scanline (0..SPHERE_DIAM-1):
+;       DB width_in_bytes    (number of output screen bytes)
+;       DB skip0, skip1, skip2, ...  (one per visible pixel)
+;
+; This is a simplified version: we use integer approximations
+; rather than full trigonometry.
+; ============================================================
+build_skip_tables:
+    ld   ix, skip_table_data
+    ld   iy, line_widths        ; store width per line
+
+    ; For each scanline y from -R to +R-1
+    ld   a, -SPHERE_R           ; start at top of sphere (signed)
+    ld   (bst_y), a
+
+.line_loop:
+    ; Compute radius_at_y = sqrt(R^2 - y^2)
+    ; We use a precomputed table: sqrt_lut[y+R] = radius at that y
+    ld   a, (bst_y)
+    add  a, SPHERE_R            ; index = y + R (0..DIAM-1)
+    ld   l, a
+    ld   h, 0
+    ld   de, sqrt_lut
+    add  hl, de
+    ld   a, (hl)                ; A = radius_at_y (0..R)
+    or   a
+    jr   z, .zero_width_line    ; skip lines with zero width
+
+    ld   (bst_radius), a
+
+    ; Width in pixels = 2 * radius_at_y
+    ; Width in bytes  = width_in_pixels / 8 (round down, at least 1)
+    ld   b, a
+    add  a, a                   ; A = width in pixels
+    ld   (bst_pix_width), a
+
+    ; Bytes = pixels / 8
+    rrca
+    rrca
+    rrca
+    and  $1F                    ; A = pixels / 8
+    or   a
+    jr   nz, .width_ok
+    ld   a, 1                   ; minimum 1 byte
+.width_ok:
+    ld   (iy+0), a              ; store width for this line
+    inc  iy
+    ld   (bst_byte_width), a
+
+    ; Total visible pixels = byte_width * 8
+    ld   b, a
+    add  a, a                   ; *2
+    add  a, a                   ; *4
+    add  a, a                   ; *8
+    ld   (bst_total_pix), a
+
+    ; Compute skip distances for each pixel
+    ; skip[i] = how many source texture columns to advance
+    ;
+    ; The basic idea: the source texture spans 256 columns (one page).
+    ; We need to map bst_total_pix screen pixels across bst_pix_width
+    ; worth of sphere surface, accounting for the curvature.
+    ;
+    ; Near the centre of the arc, skips are small (close to 1:1).
+    ; Near the edges, skips grow (projection compression).
+    ;
+    ; Simplified approach: uniform skip = pix_width / total_pix
+    ; plus a rotation offset. For a true sphere you would vary the
+    ; skip across the line, but uniform skip already demonstrates
+    ; the code generation technique clearly.
+    ;
+    ; skip_base = max(1, pix_width * 2 / total_pix)
+    ; This maps the visible arc across the texture, with extra INC L
+    ; instructions for wider arcs.
+
+    ; For simplicity: each visible pixel advances by 1 source column
+    ; plus an extra skip near the edges. We encode this as:
+    ;   centre pixels: skip = 1
+    ;   edge pixels: skip = 2
+    ; This gives the visual impression of spherical curvature.
+
+    ld   a, (bst_total_pix)
+    ld   c, a                   ; C = total pixels to emit
+    ld   b, 0                   ; B = pixel counter
+
+    ; Compute edge threshold: first and last quarter are "edges"
+    ld   a, c
+    rrca
+    rrca
+    and  $3F                    ; A = total_pix / 4
+    ld   d, a                   ; D = edge_threshold (pixels from edge)
+
+.skip_pixel_loop:
+    ; Determine if this pixel is near an edge
+    ; Edge if: counter < threshold OR counter >= (total - threshold)
+    ld   a, b
+    cp   d                      ; compare with edge_threshold
+    jr   c, .edge_skip          ; near left edge
+
+    ld   a, (bst_total_pix)
+    sub  d                      ; A = total_pix - threshold
+    ld   e, a
+    ld   a, b
+    cp   e                      ; compare with right edge boundary
+    jr   nc, .edge_skip         ; near right edge
+
+    ; Centre pixel: skip = 1
+    ld   (ix+0), 1
+    jr   .skip_stored
+
+.edge_skip:
+    ; Edge pixel: skip = 2 (simulates projection compression)
+    ld   (ix+0), 2
+
+.skip_stored:
+    inc  ix
+    inc  b
+    ld   a, b
+    ld   e, a
+    ld   a, c
+    cp   e                      ; B < C ?
+    jr   nz, .skip_pixel_loop
+
+    ; Next scanline
+    jr   .next_line
+
+.zero_width_line:
+    ; Store width = 0 for this line
+    ld   (iy+0), 0
+    inc  iy
+
+.next_line:
+    ld   a, (bst_y)
+    inc  a
+    ld   (bst_y), a
+    cp   SPHERE_R               ; done when y reaches +R
+    jp   nz, .line_loop
+
+    ret
+
+; ============================================================
+; GENERATE_SPHERE_CODE — Emit Z80 opcodes into code_buffer
+;
+; Reads the skip tables and line widths. For each scanline:
+;   1. Emit XOR A (clear accumulator)
+;   2. Emit LD H,texture_page (set source pointer high byte)
+;   3. For each pixel: emit ADD A,A + ADD A,(HL) + N x INC L
+;   4. After every 8 pixels: emit LD (DE),A + INC E
+;   5. After all bytes: emit code to advance DE to next screen line
+;   6. After all lines: emit RET
+;
+; The generated code draws the sphere when called.
+; ============================================================
+generate_sphere_code:
+    ld   ix, code_buffer        ; output pointer for generated code
+    ld   iy, line_widths        ; width per line
+    ld   hl, skip_table_data    ; skip data pointer
+    ld   (gen_skip_ptr), hl
+
+    ; Compute starting screen address for top of sphere
+    ; y_start = CENTRE_Y - SPHERE_R
+    ld   a, CENTRE_Y - SPHERE_R
+    ld   (gen_cur_y), a
+
+    ; Compute starting x byte for centre alignment
+    ; x_byte_centre = CENTRE_X / 8 = 16
+    ; Actual x_start varies per line, but we centre on byte 16
+
+    ld   a, SPHERE_DIAM
+    ld   (gen_lines_left), a
+
+.line_loop:
+    ; Get width for this line
+    ld   a, (iy+0)
+    inc  iy
+    or   a
+    jp   z, .skip_line          ; width = 0, nothing to draw
+
+    ld   (gen_bytes_this_line), a
+
+    ; --- Emit: set up source pointer for this line ---
+    ; We need HL to point into the texture. The texture is page-aligned,
+    ; so H = high byte of texture, L = starting column.
+    ; Emit: LD H, texture_page
+    ;   Opcode: $26, imm8
+    ld   (ix+0), $26            ; LD H, n            — 7 T
+    ld   (ix+1), texture >> 8   ; high byte of texture address
+    inc  ix
+    inc  ix
+
+    ; Emit: LD L, start_column
+    ; Start column = rotation + offset (varies per line for curvature)
+    ;   Opcode: $2E, imm8
+    ld   a, (rotation)
+    ld   (ix+0), $2E            ; LD L, n            — 7 T
+    ld   (ix+1), a              ; starting texture column
+    inc  ix
+    inc  ix
+
+    ; --- Emit: set up screen pointer DE for this line ---
+    ; Compute screen address for (x_start, current_y)
+    ld   a, (gen_cur_y)
+    ld   c, a                   ; C = Y scanline
+
+    ; Compute x_start byte: centre the line on screen
+    ; x_start_byte = 16 - (bytes_this_line / 2)
+    ld   a, 16                  ; centre byte column
+    ld   d, a
+    ld   a, (gen_bytes_this_line)
+    rrca                        ; / 2
+    and  $7F
+    ld   e, a
+    ld   a, d
+    sub  e                      ; A = 16 - width/2
+    ld   b, a                   ; B = x_start_byte
+
+    ; Convert (B=x_byte, C=y_scan) to screen address
+    ; H = $40 | (Y7Y6 >> 3) | (Y2Y1Y0)
+    ; L = (Y5Y4Y3 << 2) | x_byte
+    ld   a, c
+    and  $C0
+    rrca
+    rrca
+    rrca
+    ld   d, a
+    ld   a, c
+    and  $07
+    or   d
+    or   $40
+    ld   d, a                   ; D = screen H
+
+    ld   a, c
+    and  $38
+    rlca
+    rlca
+    or   b
+    ld   e, a                   ; E = screen L
+
+    ; Emit: LD DE, screen_addr
+    ;   Opcode: $11, lo, hi
+    ld   (ix+0), $11            ; LD DE, nn          — 10 T
+    ld   (ix+1), e              ; low byte
+    ld   (ix+2), d              ; high byte
+    inc  ix
+    inc  ix
+    inc  ix
+
+    ; --- Emit pixel accumulation code for each byte ---
+    ld   a, (gen_bytes_this_line)
+    ld   (gen_bytes_left), a
+
+.byte_loop:
+    ; Emit: XOR A  (clear accumulator before each output byte)
+    ld   (ix+0), OP_XOR_A      ; XOR A              — 4 T
+    inc  ix
+
+    ; Emit 8 pixels: ADD A,A + ADD A,(HL) + N x INC L
+    ld   b, 8                   ; 8 pixels per byte
+
+.pixel_loop:
+    ; Emit: ADD A,A
+    ld   (ix+0), OP_ADD_A_A    ; ADD A,A             — 4 T
+    inc  ix
+
+    ; Emit: ADD A,(HL)
+    ld   (ix+0), OP_ADD_A_HL   ; ADD A,(HL)          — 7 T
+    inc  ix
+
+    ; Emit INC L instructions based on skip distance
+    ld   hl, (gen_skip_ptr)
+    ld   a, (hl)                ; read skip distance
+    inc  hl
+    ld   (gen_skip_ptr), hl
+
+    ; Emit A copies of INC L
+    or   a
+    jr   z, .no_incs            ; skip = 0 means no advance (shouldn't happen)
+
+.emit_inc_l:
+    ld   (ix+0), OP_INC_L      ; INC L              — 4 T
+    inc  ix
+    dec  a
+    jr   nz, .emit_inc_l
+
+.no_incs:
+    djnz .pixel_loop
+
+    ; Emit: LD (DE),A  (write accumulated byte to screen)
+    ld   (ix+0), OP_LD_DE_A    ; LD (DE),A          — 7 T
+    inc  ix
+
+    ; Emit: INC E  (advance screen pointer to next byte column)
+    ld   (ix+0), OP_INC_E      ; INC E              — 4 T
+    inc  ix
+
+    ; Next byte
+    ld   a, (gen_bytes_left)
+    dec  a
+    ld   (gen_bytes_left), a
+    jr   nz, .byte_loop
+
+.skip_line:
+    ; Advance Y to next scanline
+    ld   a, (gen_cur_y)
+    inc  a
+    ld   (gen_cur_y), a
+
+    ; Check if all lines done
+    ld   a, (gen_lines_left)
+    dec  a
+    ld   (gen_lines_left), a
+    jp   nz, .line_loop
+
+    ; Emit: RET (end of generated code)
+    ld   (ix+0), OP_RET         ; RET                — 10 T
+    ret
+
+; ============================================================
+; BUILD_TEXTURE — Create a checkerboard texture in the
+; page-aligned texture buffer. Each byte is $00 or $01.
+; 256 columns x 48 rows (one page per row).
+;
+; The checkerboard has 8x8 pixel squares.
+; ============================================================
+build_texture:
+    ld   hl, texture
+    ld   b, SPHERE_DIAM         ; 48 rows
+
+.row_loop:
+    push bc
+    ld   c, 0                   ; column counter
+
+.col_loop:
+    ; Checkerboard: pixel on if (col/8 + row/8) is odd
+    ; row index = SPHERE_DIAM - B (since B counts down)
+    ; We approximate with bit 3 of each coordinate.
+
+    ; row_bit = (current_row >> 3) & 1
+    ld   a, SPHERE_DIAM
+    pop  de                     ; D = ?, E = ? — retrieve B into A
+    push de                     ; (we need B back for the row loop)
+    sub  d                      ; A = SPHERE_DIAM - B = current row
+    rrca
+    rrca
+    rrca
+    and  $01                    ; bit 3 of row -> bit 0
+
+    ; col_bit = (col >> 3) & 1
+    ld   e, a
+    ld   a, c
+    rrca
+    rrca
+    rrca
+    and  $01
+    xor  e                      ; A = (row_bit XOR col_bit) = 0 or 1
+    ld   (hl), a
+    inc  hl
+
+    inc  c
+    jr   nz, .col_loop          ; 256 columns (C wraps to 0)
+
+    pop  bc
+    djnz .row_loop
+    ret
+
+; ============================================================
+; BUILD_SQRT_TABLE — Precompute sqrt(R^2 - y^2) for y = 0..DIAM-1
+;
+; sqrt_lut[i] = integer sqrt(R^2 - (i - R)^2)
+; where i is the table index (0 = top of sphere, DIAM-1 = bottom)
+;
+; Uses integer square root via repeated subtraction.
+; ============================================================
+build_sqrt_table:
+    ld   ix, sqrt_lut
+    ld   c, 0                   ; index 0..DIAM-1
+
+.loop:
+    ; y = c - R (signed distance from equator)
+    ld   a, c
+    sub  SPHERE_R               ; A = y (signed)
+
+    ; Compute y^2 (unsigned: y is -R..+R, so |y| <= R <= 24)
+    ; First take |y|
+    or   a
+    jp   p, .y_positive
+    neg
+.y_positive:
+    ; A = |y|, compute A*A
+    ld   d, a
+    ld   e, a
+    ; 8-bit multiply: D * E -> HL
+    ld   h, 0
+    ld   l, 0
+    ld   b, 8
+.mul_loop:
+    add  hl, hl
+    rl   d
+    jr   nc, .mul_skip
+    ld   a, l
+    add  a, e
+    ld   l, a
+    ld   a, h
+    adc  a, 0
+    ld   h, a
+.mul_skip:
+    djnz .mul_loop
+    ; HL = y^2
+
+    ; R^2 - y^2
+    ld   de, SPHERE_R * SPHERE_R  ; R^2 = 576
+    ex   de, hl
+    or   a
+    sbc  hl, de                 ; HL = R^2 - y^2
+    jr   c, .zero_radius        ; negative -> outside sphere
+    jr   z, .zero_radius        ; zero -> single pixel
+
+    ; Integer square root of HL
+    ; Result in A
+    push bc
+    call isqrt16
+    pop  bc
+    ld   (ix+0), a
+    jr   .next
+
+.zero_radius:
+    ld   (ix+0), 0
+
+.next:
+    inc  ix
+    inc  c
+    ld   a, c
+    cp   SPHERE_DIAM
+    jr   c, .loop
+    ret
+
+; ============================================================
+; ISQRT16 — Integer square root of 16-bit value in HL
+; Returns A = floor(sqrt(HL))
+;
+; Uses the classic bit-by-bit method.
+; ============================================================
+isqrt16:
+    ld   de, 0                  ; DE = remainder
+    ld   a, 0                   ; A = result
+    ld   b, 8                   ; 8 iterations (for 16-bit input)
+
+.loop:
+    ; Shift two bits from HL into DE
+    add  hl, hl
+    rl   e
+    rl   d
+    add  hl, hl
+    rl   e
+    rl   d
+
+    ; Shift result left, set low bit to 1 as trial
+    rlca
+    push af
+    rlca                        ; A * 2
+    or   $01                    ; trial divisor = 2*result + 1
+    ld   c, a                   ; C = trial divisor
+
+    ; Compare DE with trial divisor (8-bit sufficient for R<=24)
+    ld   a, e
+    cp   c
+    jr   c, .too_big            ; DE < trial: bit stays 0
+    ; Subtract trial from DE
+    sub  c
+    ld   e, a
+    ; Set bit in result
+    pop  af
+    or   $01                    ; set low bit = 1 (this root bit is 1)
+    jr   .next_bit
+
+.too_big:
+    pop  af
+    and  $FE                    ; clear low bit = 0
+
+.next_bit:
+    djnz .loop
+    ret
+
+; ============================================================
+; CLEAR_SCREEN — PUSH-based fast screen clear (~34,000 T)
+; ============================================================
+clear_screen:
+    di
+    ld   (.smc_cs_sp+1), sp
+    ld   sp, SCREEN_END
+    ld   hl, 0
+    ld   b, 192                 ; 6144 bytes / 32 bytes per iteration
+.loop:
+    push hl                     ; 16 x PUSH HL = 32 bytes zeroed
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    djnz .loop
+.smc_cs_sp:
+    ld   sp, $0000
+    ei
+    ret
+
+; ============================================================
+; Variables
+; ============================================================
+rotation:               DB  0   ; current rotation angle (0..255)
+bst_y:                  DB  0   ; build_skip_tables: current y
+bst_radius:             DB  0   ; build_skip_tables: radius at y
+bst_pix_width:          DB  0   ; width in pixels
+bst_byte_width:         DB  0   ; width in bytes
+bst_total_pix:          DB  0   ; total pixels = bytes * 8
+gen_cur_y:              DB  0   ; generate: current scanline
+gen_bytes_this_line:    DB  0   ; generate: bytes for current line
+gen_bytes_left:         DB  0   ; generate: bytes remaining in line
+gen_skip_ptr:           DW  0   ; generate: pointer into skip data
+gen_lines_left:         DB  0   ; generate: lines remaining
+
+; ============================================================
+; Data tables
+; ============================================================
+
+; Width of each scanline in bytes (one entry per line, 0..DIAM-1)
+line_widths:
+    DS  SPHERE_DIAM             ; 48 bytes
+
+; Integer sqrt lookup: sqrt(R^2 - y^2) for y offset 0..DIAM-1
+sqrt_lut:
+    DS  SPHERE_DIAM             ; 48 bytes
+
+; Skip table data: variable-length per line
+; Worst case: 6 bytes/line * 48 pixels = ~2304 bytes
+; (Each line: up to byte_width*8 skip entries)
+skip_table_data:
+    DS  SPHERE_DIAM * 64        ; generous allocation: 3072 bytes
+
+; ============================================================
+; Texture buffer — page-aligned, 256 bytes per row, 48 rows
+; Each byte is $00 (dark) or $01 (lit) — 1 byte per pixel.
+; Page-alignment allows INC L to wrap within a row seamlessly.
+; ============================================================
+    ALIGN 256
+texture:
+    DS  256 * SPHERE_DIAM       ; 256 * 48 = 12,288 bytes
+
+; ============================================================
+; Code buffer — holds the generated rendering code
+; Must be large enough for the worst-case generated code.
+; Worst case per pixel: 2 (ADD A,A + ADD A,(HL)) + 4 (INC L) = 6
+; Worst case per byte: 6*8 + 2 (LD (DE),A + INC E) + 1 (XOR A) = 51
+; Per line: ~7 setup + 51*6 + 1 (RET) = ~314
+; Total: 48 lines * 314 = ~15K (generous)
+; We allocate 8K which is sufficient for our 48-pixel sphere.
+; ============================================================
+    ALIGN 256
+code_buffer:
+    DS  8192

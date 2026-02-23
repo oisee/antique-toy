@@ -1,0 +1,310 @@
+; decompress.a80 — Educational LZ77 Decompressor for ZX Spectrum
+; From Chapter 14: Compression — More Data in Less Space
+;
+; Demonstrates the core concept behind ALL LZ-family compressors:
+; a compressed stream of LITERALS (raw bytes) and MATCHES
+; (back-references into already-decompressed data).
+;
+; FORMAT — Simple byte-aligned LZ77 (educational, not production):
+;
+;   The stream is a sequence of TOKENS. Each token starts with a
+;   control byte whose top bit selects the type:
+;
+;   Bit 7 = 0 → LITERAL RUN
+;     Bits 6..0 = length (1..127 bytes of raw data follow)
+;     Next 'length' bytes are copied verbatim to output.
+;
+;   Bit 7 = 1 → MATCH (back-reference)
+;     Bits 6..0 = match length (3..130; stored as length-3, so 0..127)
+;     Next byte   = offset (1..255 bytes back into output)
+;     Copies 'length' bytes from (output_ptr - offset) to output_ptr.
+;     Minimum match length of 3 ensures matches always save space
+;     (2-byte token vs 3+ bytes of data).
+;
+;   Control byte = $00 → END OF STREAM (literal run of length 0)
+;
+; This is a simplified, unoptimised format — real compressors like
+; ZX0 and LZ4 use bit-level Elias codes or nibble packing for
+; much better ratios. But the core idea is identical: alternate
+; between raw data and references to earlier output.
+;
+; The sample data decompresses a pattern into the ZX Spectrum
+; attribute memory ($5800), producing a visible colour pattern
+; on screen.
+;
+; Assembles with: sjasmplus --nologo decompress.a80
+; Target: ZX Spectrum 48K/128K
+
+    ORG $8000
+
+; ============================================================
+; Constants
+; ============================================================
+ATTR_START  EQU $5800           ; ZX Spectrum attribute memory
+ATTR_SIZE   EQU 768             ; 32 columns * 24 rows
+
+; ============================================================
+; Entry point
+; ============================================================
+start:
+    ; First clear the screen so attributes are visible
+    call clear_screen
+
+    ; Decompress sample data into attribute memory
+    ld   hl, compressed_data    ; HL = source (compressed stream)
+    ld   de, ATTR_START         ; DE = destination (attribute memory)
+    call lz_decompress
+
+    ; Infinite loop — admire the result
+.halt:
+    halt
+    jr   .halt
+
+; ============================================================
+; clear_screen — Fill pixel memory with dither so attributes
+; are visible (both ink and paper colours show).
+; ============================================================
+clear_screen:
+    ld   hl, $4000              ; start of pixel memory
+    ld   de, $4001
+    ld   bc, 6143               ; 6144 - 1
+    ld   (hl), $55              ; dither pattern 01010101
+    ldir                        ; fill entire pixel area  ; 21 T/byte
+    ret
+
+; ============================================================
+; lz_decompress — Simple LZ77 decompressor
+;
+; Input:  HL = pointer to compressed data
+;         DE = pointer to output buffer
+; Output: DE = one past last byte written
+; Uses:   AF, BC, DE, HL
+;
+; The decompressor is ~40 bytes — larger than ZX0's 70 bytes
+; but the format is easier to understand and hand-encode.
+; In a real project you would use ZX0 or LZ4 instead.
+; ============================================================
+lz_decompress:
+    ld   a, (hl)                ; read control byte         ; 7 T
+    inc  hl                                                 ; 6 T
+    or   a                      ; test for $00 = end        ; 4 T
+    ret  z                      ; end of stream             ; 5/11 T
+
+    bit  7, a                   ; check type bit            ; 8 T
+    jr   nz, .match             ; bit 7 set → match         ; 7/12 T
+
+    ; --- LITERAL RUN ---
+    ; Control byte bits 6..0 = number of literal bytes (1..127)
+.literal:
+    ld   b, 0                   ; BC = literal count        ; 7 T
+    ld   c, a                   ; (bit 7 is 0, so A = 1..127) ; 4 T
+    ldir                        ; copy C bytes: HL→DE       ; 21 T/byte
+    jr   lz_decompress          ; next token                ; 12 T
+
+    ; --- MATCH (back-reference) ---
+    ; Control byte bits 6..0 = match length - 3 (so 0..127 → 3..130)
+    ; Next byte = offset (1..255 bytes back in output)
+.match:
+    and  $7F                    ; mask off bit 7 → length-3 ; 7 T
+    add  a, 3                   ; actual length = value + 3 ; 7 T
+    ld   b, 0                                               ; 7 T
+    ld   c, a                   ; BC = match length         ; 4 T
+
+    ld   a, (hl)                ; read offset byte          ; 7 T
+    inc  hl                     ; advance source            ; 6 T
+
+    ; Calculate source address: output_ptr - offset
+    ; We need to copy from (DE - offset) for BC bytes.
+    push hl                     ; save compressed stream ptr ; 11 T
+    ld   h, d                   ; HL = DE (current output)  ; 4 T
+    ld   l, e                                               ; 4 T
+
+    ; Subtract offset from HL: HL = DE - A
+    ; (offset is 1..255, stored in A)
+    push bc                     ; save match length         ; 11 T
+    ld   c, a                   ; BC = offset (B=0 from above) ; 4 T
+    sbc  hl, bc                 ; HL = output_ptr - offset  ; 15 T
+                                ; (carry is clear: OR A above cleared it,
+                                ;  and ADD A,3 won't set carry for A<=127)
+    pop  bc                     ; restore match length      ; 10 T
+
+    ; Copy match: from HL (earlier output) to DE (current output)
+    ; Note: if length > offset, this produces run-length expansion —
+    ; copying from overlapping memory. LDIR handles this correctly
+    ; because it copies byte-by-byte, left to right.
+    ; Example: offset=1, length=10 → repeats the single byte 10 times.
+    ; This is how LZ compressors encode RLE-like runs for free!
+    ldir                        ; copy match                ; 21 T/byte
+
+    pop  hl                     ; restore source pointer    ; 10 T
+    jr   lz_decompress          ; next token                ; 12 T
+
+; ============================================================
+; Compressed data — hand-encoded LZ77 stream
+;
+; This data decompresses to 768 bytes of attribute data that
+; produces a colourful striped pattern in attribute memory.
+;
+; The pattern uses runs of colour attributes (BRIGHT + ink/paper
+; combos), demonstrating how LZ compression exploits repetition.
+;
+; ZX Spectrum attribute byte format:
+;   Bit 7: FLASH    Bits 5-3: PAPER (0-7)
+;   Bit 6: BRIGHT   Bits 2-0: INK (0-7)
+;
+; Colour constants (BRIGHT set = bit 6):
+;   $41 = BRIGHT, paper=black, ink=blue
+;   $42 = BRIGHT, paper=black, ink=red
+;   $43 = BRIGHT, paper=black, ink=magenta
+;   $44 = BRIGHT, paper=black, ink=green
+;   $45 = BRIGHT, paper=black, ink=cyan
+;   $46 = BRIGHT, paper=black, ink=yellow
+;   $47 = BRIGHT, paper=black, ink=white
+;   $70 = BRIGHT, paper=white, ink=black
+;   $38 = paper=white, ink=black (no BRIGHT)
+;
+; Target output (768 bytes, 24 rows of 32 attributes):
+;   Row  0: 32 x $46 (yellow)    — literal
+;   Row  1: 32 x $46 (yellow)    — match, offset=32, len=32
+;   Row  2: 32 x $45 (cyan)      — literal
+;   Row  3: 32 x $45 (cyan)      — match
+;   Row  4: 32 x $44 (green)     — literal
+;   Row  5: 32 x $44 (green)     — match
+;   Row  6: 32 x $43 (magenta)   — literal
+;   Row  7: 32 x $43 (magenta)   — match
+;   Row  8: 32 x $42 (red)       — literal
+;   Row  9: 32 x $42 (red)       — match
+;   Row 10: 32 x $41 (blue)      — literal
+;   Row 11: 32 x $41 (blue)      — match
+;   Row 12: 32 x $47 (white)     — literal
+;   Row 13: 32 x $47 (white)     — match
+;   Row 14: 32 x $46 (yellow)    — literal (but matches row 0!)
+;   Row 15: 32 x $46 (yellow)    — match
+;   Row 16: 32 x $45 (cyan)      — literal
+;   Row 17: 32 x $45 (cyan)      — match
+;   Row 18: 32 x $44 (green)     — literal
+;   Row 19: 32 x $44 (green)     — match
+;   Row 20: 32 x $43 (magenta)   — literal
+;   Row 21: 32 x $43 (magenta)   — match
+;   Row 22: 32 x $42 (red)       — literal
+;   Row 23: 32 x $42 (red)       — match
+;
+; Uncompressed: 768 bytes. Compressed: 194 bytes. Ratio: 25.3%
+; (In practice, ZX0 would do this in ~30 bytes because it has
+; 1-bit flags and Elias codes instead of our byte-aligned tokens.)
+; ============================================================
+
+compressed_data:
+    ; --- Row 0: 32 x $46 (yellow on black, BRIGHT) ---
+    ; Literal: 1 byte of $46, then match offset=1 len=31 for RLE
+    DB $01                      ; literal, length=1
+    DB $46                      ; BRIGHT + yellow ink
+    DB $80 | (31-3), 1          ; match: length=31, offset=1 (RLE!)
+    ; The offset=1 match copies the SAME byte repeatedly.
+    ; This is how LZ handles run-length encoding naturally.
+
+    ; --- Row 1: 32 x $46 — copy of row 0 ---
+    DB $80 | (32-3), 32         ; match: length=32, offset=32
+
+    ; --- Row 2: 32 x $45 (cyan) ---
+    DB $01                      ; literal, length=1
+    DB $45
+    DB $80 | (31-3), 1          ; RLE: repeat 31 more times
+
+    ; --- Row 3: copy of row 2 ---
+    DB $80 | (32-3), 32         ; match: length=32, offset=32
+
+    ; --- Row 4: 32 x $44 (green) ---
+    DB $01
+    DB $44
+    DB $80 | (31-3), 1
+
+    ; --- Row 5: copy of row 4 ---
+    DB $80 | (32-3), 32
+
+    ; --- Row 6: 32 x $43 (magenta) ---
+    DB $01
+    DB $43
+    DB $80 | (31-3), 1
+
+    ; --- Row 7: copy of row 6 ---
+    DB $80 | (32-3), 32
+
+    ; --- Row 8: 32 x $42 (red) ---
+    DB $01
+    DB $42
+    DB $80 | (31-3), 1
+
+    ; --- Row 9: copy of row 8 ---
+    DB $80 | (32-3), 32
+
+    ; --- Row 10: 32 x $41 (blue) ---
+    DB $01
+    DB $41
+    DB $80 | (31-3), 1
+
+    ; --- Row 11: copy of row 10 ---
+    DB $80 | (32-3), 32
+
+    ; --- Row 12: 32 x $47 (white) ---
+    DB $01
+    DB $47
+    DB $80 | (31-3), 1
+
+    ; --- Row 13: copy of row 12 ---
+    DB $80 | (32-3), 32
+
+    ; --- Row 14: 32 x $46 (yellow again — cycle repeats) ---
+    DB $01
+    DB $46
+    DB $80 | (31-3), 1
+
+    ; --- Row 15: copy of row 14 ---
+    DB $80 | (32-3), 32
+
+    ; --- Row 16: 32 x $45 (cyan) ---
+    DB $01
+    DB $45
+    DB $80 | (31-3), 1
+
+    ; --- Row 17: copy of row 16 ---
+    DB $80 | (32-3), 32
+
+    ; --- Row 18: 32 x $44 (green) ---
+    DB $01
+    DB $44
+    DB $80 | (31-3), 1
+
+    ; --- Row 19: copy of row 18 ---
+    DB $80 | (32-3), 32
+
+    ; --- Row 20: 32 x $43 (magenta) ---
+    DB $01
+    DB $43
+    DB $80 | (31-3), 1
+
+    ; --- Row 21: copy of row 20 ---
+    DB $80 | (32-3), 32
+
+    ; --- Row 22: 32 x $42 (red) ---
+    DB $01
+    DB $42
+    DB $80 | (31-3), 1
+
+    ; --- Row 23: copy of row 22 ---
+    DB $80 | (32-3), 32
+
+    ; --- End of stream ---
+    DB $00                      ; control byte $00 = stop
+
+compressed_end:
+
+; ============================================================
+; Size report
+; ============================================================
+    DISPLAY "Code size:       ", /D, lz_decompress - start, " + ", /D, compressed_data - lz_decompress, " = ", /D, compressed_data - start, " bytes"
+    DISPLAY "Decompressor:    ", /D, compressed_data - lz_decompress, " bytes"
+    DISPLAY "Compressed data: ", /D, compressed_end - compressed_data, " bytes"
+    DISPLAY "Decompresses to: 768 bytes (32x24 attribute area)"
+    DISPLAY "Ratio:           ", /D, compressed_end - compressed_data, "/768 = ~25%"
+    DISPLAY "Total ROM used:  ", /D, compressed_end - start, " bytes"

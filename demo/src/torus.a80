@@ -1,4 +1,4 @@
-; torus.a80 — "Not Eager" hexagonal torus demo effect
+; torus.a80 — "Antique Toy" hexagonal torus demo effect
 ; Spinning wireframe torus using Dark's midpoint method (SE#02, 1998)
 ;
 ; Target: ZX Spectrum 128K, Pentagon timing (71,680 T/frame)

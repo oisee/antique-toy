@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Working repository for **"Coding the Impossible: Z80 Demoscene Techniques for Modern Makers"** — a book about Z80/eZ80 assembly on ZX Spectrum and Agon Light 2, with deep focus on demoscene techniques. Companion demo project ("Not Eager") included.
+Working repository for **"Coding the Impossible: Z80 Demoscene Techniques for Modern Makers"** — a book about Z80/eZ80 assembly on ZX Spectrum and Agon Light 2, with deep focus on demoscene techniques. Companion demo project ("Antique Toy") included.
 
 **Merged outline:** `book-outline.md` (23 chapters + 8 appendices, 2 platforms: ZX Spectrum 128K + Agon Light 2). NEO6502/65C02 dropped for now.
 
@@ -19,7 +19,7 @@ chapters/
     examples/*.a80       # Compilable Z80 assembly
   ch02-screen-as-puzzle/
   ...ch23-ai-assisted/
-demo/                    # "Not Eager" companion demo project
+demo/                    # "Antique Toy" companion demo project
   README.md
   src/                   # Demo Z80 source (WIP)
 _in/                     # Input materials, research, raw sources
@@ -54,7 +54,7 @@ make clean        # remove build artifacts
 - Two target platforms: **ZX Spectrum 128K** (primary, all demoscene + game dev) and **Agon Light 2** (eZ80, game dev chapters + porting)
 - Sound focus: **AY-3-8910 → TurboSound (2×AY) → Triple AY (Next)**. Beeper is sidebar only.
 - Core narrative: Dark/X-Trade wrote algorithms (SE#01-02, 1997-98) AND coded Illusion. Introspec reverse-engineered Illusion on Hype in 2017. Both sides available.
-- "Not Eager" demo: AI-assisted demo project to prove Claude Code can help with real Z80 demoscene work. Response to Introspec's skepticism.
+- "Antique Toy" demo: AI-assisted demo project to prove Claude Code can help with real Z80 demoscene work. Response to Introspec's skepticism.
 - Source materials include closed/private code (Eager source from Introspec) — respect permissions.
 - The author (Alice) is active in the ZX Spectrum demoscene community with direct contacts (Introspec, psndcj/sq, 4D, Screamer).
 

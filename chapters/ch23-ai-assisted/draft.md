@@ -3,7 +3,7 @@
 > "Z80 they still don't know."
 > -- Introspec (spke), Life on Mars, 2024
 
-This book was partially written with AI assistance. The chapter you are reading was drafted by Claude Code. The assembler used to build the examples -- MinZ's `mza` -- was built with AI assistance. The "Not Eager" companion demo that this book documents was coded in a feedback loop between a human and an AI agent. If that makes you uncomfortable, good. That discomfort is worth examining.
+This book was partially written with AI assistance. The chapter you are reading was drafted by Claude Code. The assembler used to build the examples -- MinZ's `mza` -- was built with AI assistance. The "Antique Toy" companion demo that this book documents was coded in a feedback loop between a human and an AI agent. If that makes you uncomfortable, good. That discomfort is worth examining.
 
 This is the most self-aware chapter in the book. We are going to look honestly at what AI assistance means for Z80 development in 2026 -- where it genuinely helps, where it confidently fails, and where the answer is a frustrating "it depends." We will do this with real examples, real code, and real failure cases, because the demoscene has never had patience for hype.
 
@@ -328,9 +328,9 @@ The demoscene has always been about the last 20%. The AI does not change that. I
 
 ---
 
-## 23.7 The "Not Eager" Demo: AI in Practice
+## 23.7 The "Antique Toy" Demo: AI in Practice
 
-The companion demo for this book -- "Not Eager" -- is a deliberate experiment: build a ZX Spectrum demo with AI assistance and document what happens.
+The companion demo for this book -- "Antique Toy" -- is a deliberate experiment: build a ZX Spectrum demo with AI assistance and document what happens.
 
 The name is a nod to Introspec's *Eager* (2015, 1st place at 3BM openair). We are implementing effects inspired by Eager -- the attribute tunnel with 4-fold symmetry, the chaos zoomer, 4-phase colour animation -- plus Dark's midpoint 3D engine from *Spectrum Expert* #02.
 
@@ -338,13 +338,13 @@ The name is a nod to Introspec's *Eager* (2015, 1st place at 3BM openair). We ar
 
 **What has not worked:** Dark's midpoint 3D engine. The virtual processor with packed 2-bit opcodes and 6-bit point numbers was incorrectly decoded. The averaging instruction computed `(A+B)/2` using `ADD A,B : SRA A`, which overflows for signed coordinates. Three debugging sessions, longer than writing it from scratch. Music integration failed similarly -- the AI generated a player that conflicted with the effect code's use of shadow registers (EXX, EX AF,AF'). Both the player and the effect used shadow BC for different purposes, and the EXX in the interrupt handler swapped in stale values. This class of bug -- system-level register conflicts across interrupt boundaries -- requires understanding full system architecture, not just individual routines.
 
-**The honest assessment:** "Not Eager" is not finished. The effects work individually. Integration is ongoing. But AI assistance made the project *feasible* for a solo developer working evenings and weekends. The right question is not "does AI match a dedicated human team?" but "does AI assistance let more people make demos?" The answer, provisionally, is yes.
+**The honest assessment:** "Antique Toy" is not finished. The effects work individually. Integration is ongoing. But AI assistance made the project *feasible* for a solo developer working evenings and weekends. The right question is not "does AI match a dedicated human team?" but "does AI assistance let more people make demos?" The answer, provisionally, is yes.
 
 ---
 
 ## 23.8 The Feedback Loop in Practice
 
-A concrete example from the "Not Eager" project: implementing 4-fold symmetry for the tunnel effect by copying the top-left 16x12 attribute quadrant to the other three quadrants with mirroring.
+A concrete example from the "Antique Toy" project: implementing 4-fold symmetry for the tunnel effect by copying the top-left 16x12 attribute quadrant to the other three quadrants with mirroring.
 
 The prompt was specific: "Write a Z80 routine that copies the top-left 16x12 quadrant of the ZX Spectrum attribute area ($5800) to the other three quadrants with appropriate mirroring." Claude Code generated 47 lines that assembled on the first attempt.
 

@@ -1,0 +1,695 @@
+; rotozoomer.a80 — 2x2 Chunky pixel rotozoomer with per-frame code patching
+; From Chapter 7: Rotozoomer and Chunky Pixels
+;
+; Demonstrates the core technique from Illusion by X-Trade (ENLiGHT'96),
+; as analysed by Introspec on Hype (2017):
+;
+;   1. Checkerboard texture stored as $03/$00 chunky values (page-aligned)
+;   2. Inner loop: LD A,(HL) / ADD A,A / ADD A,A / ADD A,(HL)
+;      combines 4 chunky pixels into one output byte
+;   3. Walk direction (INC L, DEC L, INC H, DEC H, NOP) patched per-frame
+;      based on current rotation angle — 8 cardinal directions
+;   4. Rendering to off-screen buffer, then transfer to screen
+;   5. 2x2 chunky pixels: each texel maps to a 2x2 screen block
+;
+; The texture is page-aligned so H selects the row and L the column.
+; INC L / DEC L wrap within a 256-byte row; INC H / DEC H move between
+; rows. The combination of H and L steps traces a diagonal = rotation.
+;
+; Performance estimate per output byte:
+;   4 x (LD A,(HL)/ADD A,(HL) + 2xADD A,A + 2 walk instructions)
+;   + LD (DE),A + INC DE + DJNZ
+;   ~107 T-states per byte
+;
+; Introspec measured ~95T for the Illusion version which uses
+; INC E instead of INC DE and tighter output logic.
+;
+; This example renders a 128x96 pixel strip (16 bytes x 48 rows,
+; each row duplicated for 2x2 chunky) to keep the focus on technique.
+;
+; Target: ZX Spectrum 48K/128K
+; Assembles with: sjasmplus --nologo
+
+    ORG  $8000
+
+; ============================================================
+; Constants
+; ============================================================
+SCREEN      EQU  $4000
+SCREEN_END  EQU  $5800
+ATTR_START  EQU  $5800
+
+; Rendering dimensions (2x2 chunky pixels)
+; Each output byte encodes 4 chunky pixels (each 2x2 screen pixels)
+; 16 output bytes = 64 chunky pixels = 128 screen pixels wide
+RENDER_W    EQU  16             ; output bytes per row
+RENDER_H    EQU  48             ; unique rows to render
+BUF_SIZE    EQU  RENDER_W * RENDER_H  ; 768 bytes
+
+; Screen position (centred horizontally, vertically)
+; 256 pixels / 8 = 32 byte columns; (32 - 16) / 2 = 8
+SCREEN_X    EQU  8              ; starting byte column
+SCREEN_Y    EQU  48             ; starting scanline (48 + 96 = 144, centred)
+
+; Opcodes for self-modifying code patching
+OP_INC_L    EQU  $2C            ; INC L       — 4 T
+OP_DEC_L    EQU  $2D            ; DEC L       — 4 T
+OP_INC_H    EQU  $24            ; INC H       — 4 T
+OP_DEC_H    EQU  $25            ; DEC H       — 4 T
+OP_NOP      EQU  $00            ; NOP         — 4 T
+
+; Opcodes for row_advance patching (operates on A register)
+OP_INC_A    EQU  $3C            ; INC A       — 4 T
+OP_DEC_A    EQU  $3D            ; DEC A       — 4 T
+
+; ============================================================
+; Entry point
+; ============================================================
+start:
+    di
+    ld   sp, $7FFE
+    im   1
+
+    ; Clear screen
+    call clear_screen
+
+    ; Set attributes: white on black (bright)
+    ld   hl, ATTR_START
+    ld   de, ATTR_START + 1
+    ld   (hl), $47              ; bright white ink, black paper
+    ld   bc, 767
+    ldir
+
+    ; Black border
+    xor  a
+    out  ($FE), a
+
+    ; Build the screen address lookup table (once at init)
+    call build_screen_addr_table
+
+    ; Initialise animation state
+    xor  a
+    ld   (angle), a
+    ld   (zoom_phase), a
+
+    ei
+
+; ============================================================
+; Main loop — one iteration per displayed frame
+; ============================================================
+main_loop:
+    halt                        ; sync to 50 Hz vsync
+
+    ; Red border = rendering (visual raster bar for profiling)
+    ld   a, 2
+    out  ($FE), a
+
+    ; Step 1: Compute walk direction for current angle
+    call compute_walk_dir
+
+    ; Step 2: Patch the inner loop with current walk opcodes
+    call patch_inner_loop
+
+    ; Step 3: Render rotozoomed texture into off-screen buffer
+    call render_rotozoom
+
+    ; Step 4: Transfer buffer to screen
+    call buffer_to_screen
+
+    ; Step 5: Advance angle and zoom phase
+    ld   a, (angle)
+    add  a, 1                   ; rotate ~1.4 degrees per frame
+    ld   (angle), a
+
+    ld   a, (zoom_phase)
+    add  a, 3                   ; zoom phase advances faster for motion
+    ld   (zoom_phase), a
+
+    ; Black border = idle
+    xor  a
+    out  ($FE), a
+
+    jr   main_loop
+
+; ============================================================
+; COMPUTE_WALK_DIR — Determine H-step and L-step opcodes
+;
+; The rotation angle (0..255) maps to one of 8 cardinal directions.
+; Each direction is a pair of opcodes: one for H (texture row)
+; and one for L (texture column).
+;
+; Angle range  | H step  | L step  | Direction
+; 0..15        | NOP     | INC L   | Pure right
+; 16..47       | DEC H   | INC L   | Right + up (~45 deg)
+; 48..79       | DEC H   | NOP     | Pure up (~90 deg)
+; 80..111      | DEC H   | DEC L   | Left + up (~135 deg)
+; 112..143     | NOP     | DEC L   | Pure left (~180 deg)
+; 144..175     | INC H   | DEC L   | Left + down (~225 deg)
+; 176..207     | INC H   | NOP     | Pure down (~270 deg)
+; 208..239     | INC H   | INC L   | Right + down (~315 deg)
+; 240..255     | NOP     | INC L   | Pure right (wrap)
+;
+; The perpendicular direction (for advancing rows) is 90 degrees
+; clockwise from the walk direction. Since row_advance operates
+; on the A register (loaded from memory), we store INC A / DEC A
+; / NOP opcodes for perpendicular patching.
+;
+; A real demo would use Bresenham-style error distribution for
+; intermediate angles. This simplified version uses 8 cardinal
+; directions to clearly demonstrate the patching technique.
+; ============================================================
+compute_walk_dir:
+    ld   a, (angle)
+
+    ; Dispatch to the appropriate direction handler
+    ; JP used (not JR) because the direction bodies are large
+    cp   16
+    jp   c, .dir_right          ; 0..15
+    cp   48
+    jp   c, .dir_right_up       ; 16..47
+    cp   80
+    jp   c, .dir_up             ; 48..79
+    cp   112
+    jp   c, .dir_left_up        ; 80..111
+    cp   144
+    jp   c, .dir_left           ; 112..143
+    cp   176
+    jp   c, .dir_left_down      ; 144..175
+    cp   208
+    jp   c, .dir_down           ; 176..207
+    cp   240
+    jp   c, .dir_right_down     ; 208..239
+    jp   .dir_right             ; 240..255 (wrap)
+
+    ; --- Direction handlers ---
+    ; Each sets: walk_h_op, walk_l_op (for inner loop)
+    ;            perp_h_op, perp_l_op (for row advance, INC A/DEC A/NOP)
+
+.dir_right:                     ; walk: right (L+), perp: down (H+)
+    ld   a, OP_NOP
+    ld   (walk_h_op), a
+    ld   a, OP_INC_L
+    ld   (walk_l_op), a
+    ld   a, OP_INC_A            ; perp H: move down (increase row)
+    ld   (perp_h_op), a
+    ld   a, OP_NOP
+    ld   (perp_l_op), a
+    ret
+
+.dir_right_up:                  ; walk: right+up, perp: right+down
+    ld   a, OP_DEC_H
+    ld   (walk_h_op), a
+    ld   a, OP_INC_L
+    ld   (walk_l_op), a
+    ld   a, OP_INC_A            ; perp H: down
+    ld   (perp_h_op), a
+    ld   a, OP_INC_A            ; perp L: right
+    ld   (perp_l_op), a
+    ret
+
+.dir_up:                        ; walk: up (H-), perp: right (L+)
+    ld   a, OP_DEC_H
+    ld   (walk_h_op), a
+    ld   a, OP_NOP
+    ld   (walk_l_op), a
+    ld   a, OP_NOP
+    ld   (perp_h_op), a
+    ld   a, OP_INC_A            ; perp L: right
+    ld   (perp_l_op), a
+    ret
+
+.dir_left_up:                   ; walk: left+up, perp: left+down
+    ld   a, OP_DEC_H
+    ld   (walk_h_op), a
+    ld   a, OP_DEC_L
+    ld   (walk_l_op), a
+    ld   a, OP_INC_A            ; perp H: down
+    ld   (perp_h_op), a
+    ld   a, OP_DEC_A            ; perp L: left
+    ld   (perp_l_op), a
+    ret
+
+.dir_left:                      ; walk: left (L-), perp: up (H-)
+    ld   a, OP_NOP
+    ld   (walk_h_op), a
+    ld   a, OP_DEC_L
+    ld   (walk_l_op), a
+    ld   a, OP_DEC_A            ; perp H: up
+    ld   (perp_h_op), a
+    ld   a, OP_NOP
+    ld   (perp_l_op), a
+    ret
+
+.dir_left_down:                 ; walk: left+down, perp: left+up
+    ld   a, OP_INC_H
+    ld   (walk_h_op), a
+    ld   a, OP_DEC_L
+    ld   (walk_l_op), a
+    ld   a, OP_DEC_A            ; perp H: up
+    ld   (perp_h_op), a
+    ld   a, OP_DEC_A            ; perp L: left
+    ld   (perp_l_op), a
+    ret
+
+.dir_down:                      ; walk: down (H+), perp: left (L-)
+    ld   a, OP_INC_H
+    ld   (walk_h_op), a
+    ld   a, OP_NOP
+    ld   (walk_l_op), a
+    ld   a, OP_NOP
+    ld   (perp_h_op), a
+    ld   a, OP_DEC_A            ; perp L: left
+    ld   (perp_l_op), a
+    ret
+
+.dir_right_down:                ; walk: right+down, perp: right+up
+    ld   a, OP_INC_H
+    ld   (walk_h_op), a
+    ld   a, OP_INC_L
+    ld   (walk_l_op), a
+    ld   a, OP_DEC_A            ; perp H: up
+    ld   (perp_h_op), a
+    ld   a, OP_INC_A            ; perp L: right
+    ld   (perp_l_op), a
+    ret
+
+; ============================================================
+; PATCH_INNER_LOOP — Write walk opcodes into the inner loop
+;
+; The inner loop has 4 pairs of walk instructions (one per
+; chunky pixel). Each pair: H-step, L-step.
+; The self-modifying code targets are .smc_walk_h_N / .smc_walk_l_N.
+;
+; This is the per-frame code generation that Introspec describes:
+; the rendering loop literally changes every frame because the
+; walk direction changes with the rotation angle.
+; ============================================================
+patch_inner_loop:
+    ; Patch all 4 walk pairs in the inner loop
+    ld   a, (walk_h_op)
+    ld   (inner_loop.smc_walk_h_0), a
+    ld   (inner_loop.smc_walk_h_1), a
+    ld   (inner_loop.smc_walk_h_2), a
+    ld   (inner_loop.smc_walk_h_3), a
+
+    ld   a, (walk_l_op)
+    ld   (inner_loop.smc_walk_l_0), a
+    ld   (inner_loop.smc_walk_l_1), a
+    ld   (inner_loop.smc_walk_l_2), a
+    ld   (inner_loop.smc_walk_l_3), a
+
+    ; Patch the perpendicular step (row advance)
+    ld   a, (perp_h_op)
+    ld   (row_advance.smc_perp_h), a
+    ld   a, (perp_l_op)
+    ld   (row_advance.smc_perp_l), a
+    ret
+
+; ============================================================
+; RENDER_ROTOZOOM — Render texture into off-screen buffer
+;
+; Uses the core Illusion technique:
+;   - HL points into the page-aligned texture
+;   - H = texture page (row), L = column within that page
+;   - Walk instructions (INC/DEC H/L) advance through texture
+;   - 4 chunky pixels are packed into 1 byte via shift-and-add
+;
+; The texture stores $03 (on) or $00 (off) per chunky pixel.
+; Two ADD A,A instructions shift left by 2 positions, then
+; ADD A,(HL) merges the next pixel into the low bits.
+; After 4 pixels, the byte contains a 4-pixel stripe pattern.
+;
+; Each output byte covers 8 screen pixels (4 chunky x 2 wide).
+; Each row is duplicated during screen transfer (2x2 chunky),
+; so 48 unique rows produce 96 visible screen rows.
+; ============================================================
+render_rotozoom:
+    ; Compute starting texture coordinate from angle + zoom
+    ld   a, (zoom_phase)
+    ld   (tex_start_l), a       ; starting column
+    ld   a, (angle)
+    ld   (tex_start_h), a       ; starting row
+
+    ; DE = output buffer pointer
+    ld   de, render_buffer
+
+    ; Row counter
+    ld   a, RENDER_H
+    ld   (rows_left), a
+
+.row_loop:
+    ; Set HL to texture address for this row's start
+    ld   a, (tex_start_h)
+    and  $3F                    ; mask to 64 rows (texture wrapping)
+    add  a, texture >> 8        ; offset by texture base page
+    ld   h, a
+    ld   a, (tex_start_l)
+    ld   l, a
+
+    ; Render RENDER_W bytes for this row
+    ld   b, RENDER_W            ; 16 bytes = 64 chunky pixels
+    call inner_loop
+
+    ; Step the row-start position perpendicular to walk direction
+    call row_advance
+
+    ; Decrement row counter
+    ld   a, (rows_left)
+    dec  a
+    ld   (rows_left), a
+    jr   nz, .row_loop
+
+    ret
+
+; ============================================================
+; INNER_LOOP — The heart of the rotozoomer
+;
+; Combines 4 chunky pixels into one output byte using the
+; shift-and-add pattern from Illusion.
+;
+; Walk instructions between reads are patched per-frame.
+; The walk directions are the same for all 4 pixels within
+; a byte (cardinal-direction simplification).
+;
+; Cycle count per output byte (diagonal walk, e.g. INC L + DEC H):
+;   LD A,(HL)           7T   read pixel 1
+;   DEC H               4T   walk H
+;   INC L               4T   walk L
+;   ADD A,A             4T   \
+;   ADD A,A             4T    > shift + read pixel 2
+;   ADD A,(HL)          7T   /
+;   DEC H               4T   walk H
+;   INC L               4T   walk L
+;   ADD A,A             4T   \
+;   ADD A,A             4T    > shift + read pixel 3
+;   ADD A,(HL)          7T   /
+;   DEC H               4T   walk H
+;   INC L               4T   walk L
+;   ADD A,A             4T   \
+;   ADD A,A             4T    > shift + read pixel 4
+;   ADD A,(HL)          7T   /
+;   DEC H               4T   walk H
+;   INC L               4T   walk L
+;   LD (DE),A           7T   write output
+;   INC DE              6T   advance buffer
+;   DJNZ               13T   loop (8T on last)
+;                      -----
+;   Total:            ~107T per byte
+; ============================================================
+inner_loop:
+    ; --- Chunky pixel 1: read first texel ---
+    ld   a, (hl)                ;  7T  read texel ($03 or $00)
+.smc_walk_h_0:
+    nop                         ;  4T  H-step (patched per-frame)
+.smc_walk_l_0:
+    nop                         ;  4T  L-step (patched per-frame)
+
+    ; --- Chunky pixel 2: shift and merge ---
+    add  a, a                   ;  4T  shift left
+    add  a, a                   ;  4T  shift left (pixel 1 in bits 7-6)
+    add  a, (hl)                ;  7T  merge pixel 2 into bits 1-0
+.smc_walk_h_1:
+    nop                         ;  4T  H-step (patched)
+.smc_walk_l_1:
+    nop                         ;  4T  L-step (patched)
+
+    ; --- Chunky pixel 3: shift and merge ---
+    add  a, a                   ;  4T  shift left
+    add  a, a                   ;  4T  shift left (pixels 1-2 in bits 7-4)
+    add  a, (hl)                ;  7T  merge pixel 3 into bits 1-0
+.smc_walk_h_2:
+    nop                         ;  4T  H-step (patched)
+.smc_walk_l_2:
+    nop                         ;  4T  L-step (patched)
+
+    ; --- Chunky pixel 4: shift and merge ---
+    add  a, a                   ;  4T  shift left
+    add  a, a                   ;  4T  shift left (pixels 1-3 in bits 7-2)
+    add  a, (hl)                ;  7T  merge pixel 4 into bits 1-0
+.smc_walk_h_3:
+    nop                         ;  4T  H-step (patched)
+.smc_walk_l_3:
+    nop                         ;  4T  L-step (patched)
+
+    ; --- Output: write packed byte to buffer ---
+    ld   (de), a                ;  7T  write to buffer
+    inc  de                     ;  6T  next buffer position
+
+    djnz inner_loop             ; 13T/8T  loop for RENDER_W bytes
+    ret
+
+; ============================================================
+; ROW_ADVANCE — Step the texture start position perpendicular
+; to the walk direction.
+;
+; This moves to the next row in the rotated coordinate system.
+; The perpendicular direction is 90 degrees from the walk.
+;
+; Since we store tex_start_h and tex_start_l as 8-bit values
+; (not in registers), the patched opcodes are INC A / DEC A / NOP
+; — they operate on A after loading from memory.
+; ============================================================
+row_advance:
+    ld   a, (tex_start_h)
+.smc_perp_h:
+    nop                         ;  4T  patched: INC A / DEC A / NOP
+    ld   (tex_start_h), a
+
+    ld   a, (tex_start_l)
+.smc_perp_l:
+    nop                         ;  4T  patched: INC A / DEC A / NOP
+    ld   (tex_start_l), a
+    ret
+
+; ============================================================
+; BUFFER_TO_SCREEN — Transfer render buffer to video memory
+;
+; For each of the 48 buffer rows, copies 16 bytes to two
+; consecutive scanlines (2x2 chunky pixel duplication).
+;
+; Uses LDIR for clarity. A production demo would use the
+; stack trick (POP HL / LD (nn),HL) for speed, but LDIR
+; keeps this example readable and avoids the complexity of
+; precomputed literal-address code generation.
+;
+; Cost: LDIR at 21T/byte x 16 bytes x 96 lines = ~32,256 T
+; (about half a frame — acceptable for a teaching example).
+; ============================================================
+buffer_to_screen:
+    ld   ix, screen_addr_table  ; precomputed screen addresses
+    ld   hl, render_buffer      ; source pointer
+
+    ld   a, RENDER_H
+    ld   (bts_rows), a
+
+.row_loop:
+    ; --- First scanline of the 2x2 pair ---
+    push hl                     ; save start of this buffer row
+
+    ld   e, (ix+0)              ; load screen address for scanline 1
+    ld   d, (ix+1)
+    inc  ix
+    inc  ix
+
+    ld   bc, RENDER_W           ; 16 bytes per row
+    ldir                        ; copy buffer row -> screen  ; 21T/byte
+
+    ; --- Second scanline (duplicate for 2x2 chunky) ---
+    pop  hl                     ; restore to start of same buffer row
+    push hl
+
+    ld   e, (ix+0)              ; load screen address for scanline 2
+    ld   d, (ix+1)
+    inc  ix
+    inc  ix
+
+    ld   bc, RENDER_W
+    ldir                        ; duplicate row -> next scanline
+
+    ; Advance HL past this buffer row (HL is already past after LDIR,
+    ; but we pushed the original start, so restore and skip)
+    pop  hl
+    ld   bc, RENDER_W
+    add  hl, bc                 ; HL now points to next buffer row
+
+    ; Count rows
+    ld   a, (bts_rows)
+    dec  a
+    ld   (bts_rows), a
+    jr   nz, .row_loop
+
+    ret
+
+; ============================================================
+; BUILD_SCREEN_ADDR_TABLE — Precompute screen addresses
+;
+; For each of RENDER_H rows, compute 2 screen addresses
+; (2x2 chunky: each row rendered to two consecutive scanlines).
+;
+; Spectrum screen layout:
+;   D = %010 Y7 Y6 Y2 Y1 Y0
+;   E = %Y5 Y4 Y3 X4 X3 X2 X1 X0
+;
+; SCREEN_X is added to E for horizontal positioning.
+;
+; Total table size: RENDER_H * 2 * 2 = 192 bytes
+; ============================================================
+build_screen_addr_table:
+    ld   ix, screen_addr_table
+    ld   a, SCREEN_Y            ; starting scanline
+
+    ld   b, RENDER_H            ; 48 rows
+.loop:
+    push bc
+    push af                     ; save current scanline
+
+    ; First scanline of 2x2 pair
+    call scanline_to_addr       ; A -> DE
+    ld   (ix+0), e
+    ld   (ix+1), d
+    inc  ix
+    inc  ix
+
+    ; Second scanline = first + 1
+    pop  af
+    push af
+    inc  a
+    call scanline_to_addr
+    ld   (ix+0), e
+    ld   (ix+1), d
+    inc  ix
+    inc  ix
+
+    pop  af
+    add  a, 2                   ; advance by 2 scanlines (2x2 chunky)
+    pop  bc
+    djnz .loop
+    ret
+
+; ============================================================
+; SCANLINE_TO_ADDR — Convert scanline number to screen address
+;
+; Input:  A = scanline (0..191)
+; Output: DE = screen address with SCREEN_X byte offset
+;
+; ZX Spectrum screen address encoding:
+;   D = %010 Y7 Y6 Y2 Y1 Y0
+;   E = %Y5 Y4 Y3 X4 X3 X2 X1 X0
+; ============================================================
+scanline_to_addr:
+    ld   c, a                   ; save scanline in C
+
+    ; Compute D: $40 | (Y7Y6 >> 3) | Y2Y1Y0
+    and  $C0                    ; isolate Y7 Y6 (bits 7-6)
+    rrca
+    rrca
+    rrca                        ; shift right 3 -> bits 4-3
+    ld   d, a
+    ld   a, c
+    and  $07                    ; isolate Y2 Y1 Y0 (bits 2-0)
+    or   d
+    or   $40                    ; set screen base ($4000 high byte)
+    ld   d, a
+
+    ; Compute E: (Y5Y4Y3 << 2) | SCREEN_X
+    ld   a, c
+    and  $38                    ; isolate Y5 Y4 Y3 (bits 5-3)
+    rlca
+    rlca                        ; shift left 2 -> bits 7-5
+    or   SCREEN_X              ; add horizontal byte offset
+    ld   e, a
+
+    ret
+
+; ============================================================
+; CLEAR_SCREEN — Fast PUSH-based screen clear (~34,000 T)
+; ============================================================
+clear_screen:
+    di
+    ld   (.smc_sp+1), sp        ; save SP (self-modifying)
+    ld   sp, SCREEN_END
+    ld   hl, 0
+    ld   b, 192                 ; 6144 / 32 = 192 iterations
+.loop:
+    push hl                     ; 16 x PUSH = 32 bytes zeroed per iteration
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    push hl
+    djnz .loop
+.smc_sp:
+    ld   sp, $0000              ; restore SP (patched above)
+    ei
+    ret
+
+; ============================================================
+; Variables
+; ============================================================
+angle:          DB  0           ; current rotation angle (0..255)
+zoom_phase:     DB  0           ; zoom animation phase
+rows_left:      DB  0           ; row counter for renderer
+tex_start_h:    DB  0           ; texture H at start of current row
+tex_start_l:    DB  0           ; texture L at start of current row
+bts_rows:       DB  0           ; row counter for buffer-to-screen
+
+; Walk direction opcodes (set per-frame, used to patch inner loop)
+walk_h_op:      DB  OP_NOP     ; H-axis walk opcode for inner loop
+walk_l_op:      DB  OP_INC_L   ; L-axis walk opcode for inner loop
+perp_h_op:      DB  OP_INC_A   ; perpendicular H-step for row advance
+perp_l_op:      DB  OP_NOP     ; perpendicular L-step for row advance
+
+; ============================================================
+; Screen address lookup table
+; RENDER_H * 2 entries, 2 bytes each (little-endian addresses)
+; ============================================================
+screen_addr_table:
+    DS  RENDER_H * 2 * 2        ; 48 * 2 * 2 = 192 bytes
+
+; ============================================================
+; Render buffer — off-screen storage for one frame
+; ============================================================
+render_buffer:
+    DS  BUF_SIZE                ; 16 * 48 = 768 bytes
+
+; ============================================================
+; Texture — Page-aligned 256x64 checkerboard
+;
+; Each byte is $03 (2-pixel-wide "on" chunky value) or $00 (off).
+; Page-aligned so that INC L wraps within a 256-byte row and
+; INC H / DEC H moves between rows (pages).
+;
+; Pattern: 16-column-wide stripes, alternating every 2 rows,
+; XORed to create a checkerboard. This produces clearly visible
+; blocks at the 2x2 chunky resolution.
+;
+; 64 pages x 256 bytes = 16,384 bytes (16KB).
+; On 128K Spectrum this fits easily. A 48K version would use
+; fewer rows or a simpler texture.
+; ============================================================
+    ALIGN 256
+texture:
+    LUA ALLPASS
+    for row = 0, 63 do
+        for col = 0, 255 do
+            local row_bit = math.floor(row / 2) % 2
+            local col_bit = math.floor(col / 16) % 2
+            -- Lua ~ is bitwise XOR
+            if (row_bit ~ col_bit) == 1 then
+                sj.add_byte(0x03)
+            else
+                sj.add_byte(0x00)
+            end
+        end
+    end
+    ENDLUA

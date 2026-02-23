@@ -1,4 +1,4 @@
-; main.a80 — "Not Eager" multi-effect demo
+; main.a80 — "Antique Toy" multi-effect demo
 ; ZX Spectrum 128K, sjasmplus
 ;
 ; Entry point: IM2 setup, checkerboard init, engine main loop
@@ -231,4 +231,4 @@ proj_buf:      DS NUM_VERTS * 2   ; 96 bytes — projected 2D coords
     ORG $FFFF
     DB   $18                 ; JR opcode — offset from ROM $0000
 
-    SAVESNA "not-eager.sna", start
+    SAVESNA "antique-toy.sna", start

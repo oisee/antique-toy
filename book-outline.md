@@ -445,7 +445,7 @@ A book that bridges two worlds: the hard-won wisdom of ZX Spectrum demoscene cod
 
 ---
 
-## Side Project: "Not Eager" Demo
+## Side Project: "Antique Toy" Demo
 
 > A companion demo built with AI assistance — proof that Claude Code *can* help with real Z80 demoscene work. Response to Introspec's (valid) skepticism.
 

@@ -1,0 +1,372 @@
+; bank_inspect.a80 — 128K Memory Bank Inspector
+; From Chapter 15: Anatomy of Two Machines
+;
+; Pages through all 8 RAM banks (0-7) mapped at $C000 via port $7FFD.
+; For each bank, reads and displays 64 bytes from $C000 as hex on screen.
+; Shows current bank number via border colour and on-screen indicator.
+; Press SPACE to advance to the next bank (0 -> 1 -> ... -> 7 -> 0).
+;
+; Demonstrates:
+;   - Port $7FFD bank switching with shadow variable
+;   - Preserving ROM selection bit (bit 4)
+;   - Reading from the banked region at $C000
+;   - Keyboard input via port $FE
+;   - Direct screen memory writes for hex display
+;
+; ORG $8000 — sits in page 2 (fixed, uncontended on 128K),
+; safely above screen memory ($4000-$5AFF) and below banked
+; region ($C000-$FFFF).
+;
+; Assembles with: sjasmplus --nologo --raw=build/bank_inspect.bin
+
+    ORG  $8000
+
+; ============================================================
+; Constants
+; ============================================================
+PORT_7FFD       EQU  $7FFD        ; 128K bank switching port
+PORT_FE         EQU  $FE          ; ULA port (border colour + keyboard)
+BANK_REGION     EQU  $C000        ; start of banked memory slot
+SCREEN_PIXELS   EQU  $4000        ; pixel data base
+SCREEN_ATTR     EQU  $5800        ; attribute data base
+NUM_BANKS       EQU  8            ; banks 0-7
+BYTES_PER_ROW   EQU  8            ; hex bytes per display row
+NUM_ROWS        EQU  8            ; rows of data to display (8x8 = 64 bytes)
+
+; ============================================================
+; Entry point
+; ============================================================
+entry:
+    di
+    ld   sp, $BFFF                ; 4T  stack at top of page 2
+    im   1                        ; 8T
+    ei                            ; 4T
+
+    ; Initialise bank shadow — select bank 0, ROM 1 (48K BASIC),
+    ; normal screen (page 5), paging enabled.
+    ; Bit layout: 0b00010000 = ROM 1 selected, bank 0
+    ld   a, %00010000             ; 7T  ROM1 + bank 0
+    ld   (bank_shadow), a         ; 13T shadow the initial value
+    ld   bc, PORT_7FFD            ; 10T
+    out  (c), a                   ; 12T apply initial config
+
+    xor  a                        ; 4T
+    ld   (current_bank), a        ; 13T start at bank 0
+
+    call clear_screen             ; blank the display
+    call clear_attrs              ; set default attributes (white on black)
+
+; ============================================================
+; Main loop — runs once per frame
+; ============================================================
+main_loop:
+    halt                          ; wait for vsync interrupt
+
+    ; --- Set border to current bank number (colour 0-7) ---
+    ld   a, (current_bank)        ; 13T
+    out  (PORT_FE), a             ; 11T border = bank number
+
+    ; --- Draw header: "BANK:" and bank digit ---
+    call draw_header
+
+    ; --- Read 64 bytes from $C000 and display as hex ---
+    call draw_hex_dump
+
+    ; --- Check keyboard: SPACE to advance bank ---
+    call check_space
+    jr   z, main_loop             ; Z set = key not pressed, loop
+
+    ; --- Debounce: wait for key release ---
+.wait_release:
+    halt                          ; 4T  one frame delay
+    call check_space
+    jr   nz, .wait_release        ; still held, keep waiting
+
+    ; --- Advance to next bank ---
+    ld   a, (current_bank)        ; 13T
+    inc  a                        ; 4T
+    and  NUM_BANKS - 1            ; 7T  wrap 0-7 (AND 7)
+    ld   (current_bank), a        ; 13T
+    call bank_switch              ; switch the hardware
+
+    jr   main_loop
+
+; ============================================================
+; bank_switch — Map bank number in A to $C000
+;
+; Reads the shadow variable to preserve ROM select (bit 4),
+; screen select (bit 3), and paging-disable (bit 5).
+; Only modifies bits 0-2 (bank number).
+;
+; In:  A = bank number (0-7)
+; Out: bank mapped at $C000, shadow updated
+; ============================================================
+bank_switch:
+    ld   b, a                     ; 4T   save desired bank
+    ld   a, (bank_shadow)         ; 13T  load current $7FFD state
+    and  %11111000                ; 7T   clear bank bits (0-2)
+    or   b                        ; 4T   merge new bank number
+    ld   (bank_shadow), a         ; 13T  update shadow
+    ld   bc, PORT_7FFD            ; 10T
+    out  (c), a                   ; 12T  perform the bank switch
+    ret                           ; 10T
+                                  ; --- 73T total
+
+; ============================================================
+; check_space — Test if SPACE is pressed
+;
+; SPACE is bit 0 of half-row $7FFE (keys: B N M Sym Space).
+; Bits are active LOW: 0 = pressed, 1 = released.
+;
+; Out: Z flag clear (NZ) if SPACE pressed, Z set if not
+; ============================================================
+check_space:
+    ld   a, $7F                   ; 7T  high byte of port address
+    in   a, (PORT_FE)             ; 11T read keyboard half-row
+    cpl                           ; 4T  invert: now 1 = pressed
+    and  %00000001                ; 7T  isolate bit 0 (SPACE)
+    ret                           ; 10T NZ if pressed, Z if not
+
+; ============================================================
+; draw_header — Print "BANK:N" at screen row 0
+;
+; Uses ROM font at $3D00 to render characters.
+; Prints at character position (0,0) in screen memory.
+; ============================================================
+draw_header:
+    ; Print "BANK:" at (col=0, row=0)
+    ld   de, SCREEN_PIXELS        ; screen address for (0,0)
+    ld   hl, str_bank
+    ld   b, 5                     ; 5 characters: "BANK:"
+.str_loop:
+    ld   a, (hl)                  ; get ASCII code
+    push hl
+    push bc
+    call print_char_at_de         ; render character at DE
+    pop  bc
+    pop  hl
+    inc  hl                       ; next character in string
+    djnz .str_loop
+
+    ; Print bank digit (0-7) as ASCII
+    ld   a, (current_bank)
+    add  a, '0'                   ; convert to ASCII '0'-'7'
+    call print_char_at_de
+
+    ; Print two spaces to clear any leftover
+    ld   a, ' '
+    call print_char_at_de
+    ld   a, ' '
+    call print_char_at_de
+    ret
+
+str_bank:
+    DB   "BANK:"
+
+; ============================================================
+; draw_hex_dump — Display 8 rows x 8 bytes from $C000
+;
+; Starts at screen row 2 (leaving row 0 for header, row 1 blank).
+; Each row: "ADDR: XX XX XX XX XX XX XX XX"
+; ============================================================
+draw_hex_dump:
+    ld   hl, BANK_REGION          ; source: $C000 (banked memory)
+    ld   c, NUM_ROWS              ; 8 rows
+
+    ; Screen row 2, column 0 — calculate pixel address.
+    ; Row 2 in character coords = pixel line 16.
+    ; Screen address for pixel line 16: $4000 + (16/8)*$0100 = $4200
+    ; (Using Spectrum screen layout: lines 0-7 at $4000, 8-15 at $4100, etc.)
+    ; Actually: char row 2 = pixel line 16 -> third 0-block row
+    ; Address = $4000 | ((row & $18) << 8) | ((row & $07) << 5) for col=0
+    ; row=2: (2 & $18)=0, (2 & $07)=2 -> $4000 | (2 << 5) = $4040
+    ; But we need the top pixel line of char row 2:
+    ; Char row 2 means scan line 16. For scan line 16:
+    ; $4000 + ((16 & $C0)<<5) + ((16 & $38)<<2) + ((16 & $07)<<8)
+    ; 16 = $10: C0 bits=0, $38 bits=$10, $07 bits=0
+    ; = $4000 + 0 + ($10 << 2) + 0 = $4000 + $40 = $4040
+    ; Wait — the standard formula for scan line Y:
+    ; addr = $4000 + ((Y & $C0) << 5) + ((Y & $38) << 2) + ((Y & 7) << 8)
+    ; Y=16: $C0->0, $38->$10, $07->0
+    ; = $4000 + $40 = $4040
+    ; For char row R, scan line = R*8, so R=2 -> Y=16 -> $4040. Correct.
+
+    ld   de, $4040                ; screen addr for char row 2, col 0
+
+.row_loop:
+    push bc                       ; save row counter (in C)
+    push hl                       ; save source pointer
+    push de                       ; save screen position
+
+    ; --- Print 4-digit hex address of source ---
+    ld   a, h
+    call print_hex_at_de          ; print high byte (e.g. "C0")
+    ld   a, l
+    call print_hex_at_de          ; print low byte (e.g. "00")
+
+    ; Print ":" separator
+    ld   a, ':'
+    call print_char_at_de
+
+    ; --- Print 8 hex bytes ---
+    ld   b, BYTES_PER_ROW
+.byte_loop:
+    ld   a, (hl)                  ; 7T  read from banked memory
+    push hl
+    call print_hex_at_de          ; render 2 hex digits
+    ld   a, ' '
+    call print_char_at_de         ; space separator
+    pop  hl
+    inc  hl                       ; 6T  next source byte
+    djnz .byte_loop
+
+    pop  de                       ; restore screen row start
+    pop  hl                       ; restore source (start of this row)
+    pop  bc                       ; restore row counter
+
+    ; Advance source by 8 bytes
+    push bc
+    ld   bc, BYTES_PER_ROW
+    add  hl, bc
+    pop  bc
+
+    ; Advance screen to next character row (add 32*8 = 256 scan lines?).
+    ; Actually: next char row in Spectrum screen is not simply +$20.
+    ; We use a helper to move DE down by one character row.
+    push hl
+    ex   de, hl
+    call next_screen_row          ; HL = next char row address
+    ex   de, hl
+    pop  hl
+
+    dec  c
+    jr   nz, .row_loop
+    ret
+
+; ============================================================
+; print_hex_at_de — Print byte in A as two hex digits
+;
+; In:  A = byte, DE = screen address
+; Out: DE advanced by 2 character cells
+; ============================================================
+print_hex_at_de:
+    push af
+    rrca                          ; 4T  shift high nibble down
+    rrca                          ; 4T
+    rrca                          ; 4T
+    rrca                          ; 4T
+    and  $0F                      ; 7T  isolate high nibble
+    call .nibble                  ; print high nibble
+    pop  af
+    and  $0F                      ; 7T  isolate low nibble
+    ; fall through to print low nibble
+
+.nibble:
+    ; Convert nibble (0-15) in A to ASCII and print
+    cp   10
+    jr   c, .digit
+    add  a, 'A' - 10 - '0'       ; adjust for A-F
+.digit:
+    add  a, '0'                   ; convert to ASCII
+    ; fall through to print_char_at_de
+
+; ============================================================
+; print_char_at_de — Render ASCII char in A at screen pos DE
+;
+; Uses the ZX Spectrum ROM font at $3D00. Each character is
+; 8 bytes (8x8 pixels). The ROM font covers ASCII 32-127,
+; starting at address $3D00 + (char - 32) * 8.
+;
+; In:  A = ASCII character, DE = screen pixel address (top-left)
+; Out: DE advanced by 1 column (DE += 1)
+; ============================================================
+print_char_at_de:
+    push de
+    push bc
+
+    ; Calculate font address: $3D00 + (A - 32) * 8
+    sub  32                       ; 7T  offset from space character
+    ld   l, a                     ; 4T
+    ld   h, 0                     ; 7T
+    add  hl, hl                   ; 11T * 2
+    add  hl, hl                   ; 11T * 4
+    add  hl, hl                   ; 11T * 8
+    ld   bc, $3D00                ; 10T ROM font base
+    add  hl, bc                   ; 11T HL = font data pointer
+
+    ; Copy 8 bytes from font to screen.
+    ; Screen lines within a character cell are 256 bytes apart:
+    ; line 0 at DE, line 1 at DE+$100, ... line 7 at DE+$700.
+    ld   b, 8                     ; 8 pixel rows
+.font_loop:
+    ld   a, (hl)                  ; 7T  font pixel row
+    ld   (de), a                  ; 7T  write to screen
+    inc  hl                       ; 6T  next font byte
+    inc  d                        ; 4T  next screen pixel row (D += 1 = +$100)
+    djnz .font_loop               ; 13/8T
+
+    pop  bc
+    pop  de
+    inc  e                        ; 4T  advance to next column
+    ret
+
+; ============================================================
+; next_screen_row — Advance HL to the next character row
+;
+; Handles the Spectrum's interleaved screen layout.
+; Each character row is 8 pixel lines. Moving down one char row
+; means adding $20 to the high byte part and handling the
+; third-of-screen boundaries.
+;
+; In:  HL = screen address (column 0 of current char row)
+; Out: HL = screen address of next char row (column 0)
+; ============================================================
+next_screen_row:
+    ld   a, l
+    and  $E0                      ; clear column bits
+    ld   l, a
+    ld   a, h                     ; 4T
+    add  a, $08                   ; 7T  next character row (+8 pixel rows)
+    ld   h, a                     ; 4T
+    and  $07                      ; check if we crossed a third boundary
+    ret  nz                       ; no crossing, done
+
+    ; Crossed a screen-third boundary: add $20 to L, fix H
+    ld   a, l
+    add  a, $20                   ; advance to next third
+    ld   l, a
+    ld   a, h
+    sub  $08                      ; compensate the H overshoot
+    ld   h, a
+    ret
+
+; ============================================================
+; clear_screen — Fill pixel area ($4000-$57FF) with 0
+; ============================================================
+clear_screen:
+    ld   hl, SCREEN_PIXELS
+    ld   de, SCREEN_PIXELS + 1
+    ld   bc, $1800 - 1            ; 6144 - 1 bytes
+    ld   (hl), 0
+    ldir
+    ret
+
+; ============================================================
+; clear_attrs — Set all attributes to white ink on black paper
+;              (ink 7, paper 0, no bright, no flash = $07)
+; ============================================================
+clear_attrs:
+    ld   hl, SCREEN_ATTR
+    ld   de, SCREEN_ATTR + 1
+    ld   bc, $0300 - 1            ; 768 - 1 attribute bytes
+    ld   (hl), $07                ; white ink, black paper
+    ldir
+    ret
+
+; ============================================================
+; Data
+; ============================================================
+current_bank:   DB   0            ; which bank is currently paged in (0-7)
+bank_shadow:    DB   %00010000    ; shadow of port $7FFD
+                                  ; bit 4 set = 48K BASIC ROM selected
+                                  ; bits 0-2 = bank 0 initially

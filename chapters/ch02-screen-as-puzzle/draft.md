@@ -515,7 +515,58 @@ This advances by one character row within a third. If L overflows (carry set), y
     dec  h             ; 4T    (within a character cell)
 ```
 
-The inverse of `INC H`. Same boundary issues.
+The inverse of `INC H`. Same boundary issues at character cell and third boundaries. Here is the full UP_HL routine, the mirror of DOWN_HL:
+
+```z80
+; UP_HL: move HL one pixel row up on the Spectrum screen
+; Input:  HL = current screen address
+; Output: HL = screen address one row above
+;
+; Classic version:
+up_hl:
+    dec  h             ; 4T   try moving one scan line up
+    ld   a, h          ; 4T
+    and  7             ; 7T   did we cross a character boundary?
+    cp   7             ; 7T
+    ret  nz            ; 11T  (5T if taken) no: done
+
+    ; Crossed a character cell boundary upward.
+    ld   a, l          ; 4T
+    sub  32            ; 7T   previous character row (L -= 32)
+    ld   l, a          ; 4T
+    ret  c             ; 11T  (5T if taken) if carry, crossed into prev third
+
+    ld   a, h          ; 4T
+    add  a, 8          ; 7T   compensate H
+    ld   h, a          ; 4T
+    ret                ; 10T
+```
+
+There is a subtle optimisation here, contributed by Artem Topchiy: replacing `and 7 / cp 7` with `cpl / and 7`. After `DEC H`, if the low 3 bits of H wrapped from `000` to `111`, we crossed a character boundary. The classic test checks `AND 7` then compares with 7. The optimised version complements first: if the bits are `111`, CPL makes them `000`, and `AND 7` gives zero. This saves 1 byte and 3 T-states in the boundary-crossing path:
+
+```z80
+; UP_HL optimised (Artem Topchiy)
+; Saves 1 byte, 3 T-states on boundary crossing
+;
+up_hl_opt:
+    dec  h             ; 4T
+    ld   a, h          ; 4T
+    cpl                ; 4T   complement: 111 -> 000
+    and  7             ; 7T   zero if we crossed boundary
+    ret  nz            ; 11T  (5T if taken)
+
+    ld   a, l          ; 4T
+    sub  32            ; 7T
+    ld   l, a          ; 4T
+    ret  c             ; 11T  (5T if taken)
+
+    ld   a, h          ; 4T
+    add  a, 8          ; 7T
+    ld   h, a          ; 4T
+    ret                ; 10T
+```
+
+The same `CPL / AND 7` trick works in DOWN_HL too, though the boundary condition there tests for `000` (which CPL turns into `111`, also non-zero after AND), so it does not help going downward. It is specifically the *upward* direction where the classic code needs the extra `CP 7` that the optimisation eliminates.
 
 ### Computing the attribute address from a pixel address
 
@@ -631,6 +682,23 @@ So the final clean version is:
 
 This works because L already contains `LLL CCCCC` -- the character row within the third (0--7) combined with the column (0--31) -- and that is exactly the low byte of the attribute address. The high byte just needs the third number added to `$58`. Elegant.
 
+**Special case: when H has scanline bits = 111.** If you are iterating through a character cell top-to-bottom and have just processed the last scanline (scanline 7), the low 3 bits of H are `111`. In this case there is a faster 4-instruction conversion, contributed by Artem Topchiy:
+
+```z80
+; Pixel-to-attribute when H low bits are %111
+; (e.g., after processing the last scanline of a character cell)
+; Input:  HL where H = 010TT111
+; Output: HL = attribute address
+;
+    srl  h             ; 8T   010TT111 -> 0010TT11
+    rrc  h             ; 8T   0010TT11 -> 10010TT1
+    srl  h             ; 8T   10010TT1 -> 010010TT
+    set  4, h          ; 8T   010010TT -> 010110TT = $58+TT
+    ; L unchanged.     --- Total: 32T, 4 instructions
+```
+
+This is 2 T-states faster than the general method and avoids the `AND / OR` sequence. The trade-off is that it only works when the scanline bits are `111` -- but that is exactly the situation after a top-to-bottom character cell render loop, which is one of the most common use cases.
+
 ---
 
 > **Agon Light 2 Sidebar**
@@ -691,6 +759,6 @@ Every technique in the rest of this book is shaped by the screen layout describe
 
 ---
 
-> **Sources:** Introspec "Eshchyo raz pro DOWN_HL" (Hype, 2020); Introspec "GO WEST Part 1" (Hype, 2015) for contended memory effects at screen addresses; Introspec "Making of Eager" (Hype, 2015) for attribute-based effect design; the Spectrum's ULA documentation for memory layout rationale.
+> **Sources:** Introspec "Eshchyo raz pro DOWN_HL" (Hype, 2020); Introspec "GO WEST Part 1" (Hype, 2015) for contended memory effects at screen addresses; Introspec "Making of Eager" (Hype, 2015) for attribute-based effect design; the Spectrum's ULA documentation for memory layout rationale; Artem Topchiy (personal communication, 2026) for the optimised UP_HL and fast pixel-to-attribute conversion.
 
 *Next: Chapter 3 -- The Demoscener's Toolbox. Unrolled loops, self-modifying code, the stack as a data pipe, and the techniques that let you do the impossible within the budget.*
