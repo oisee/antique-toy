@@ -27,13 +27,10 @@ DEMO_MAIN := demo/src/main.a80
 DEMO_TORUS := demo/src/torus.a80
 
 # Book build
-BOOK_META    := book-metadata.yaml
-BOOK_CHAPTERS := $(sort $(wildcard chapters/ch*/draft.md))
-BOOK_EXTRA   := glossary.md
-PANDOC       ?= pandoc
-PANDOC_PDF   := --pdf-engine=lualatex --resource-path=chapters
+PYTHON ?= python3
+BUILD_BOOK := $(PYTHON) build_book.py
 
-.PHONY: all clean test test-mza test-compare demo book-a4 book-a5 book-epub book
+.PHONY: all clean test test-mza test-compare demo book book-a4 book-a5 book-epub release version-major version-minor
 
 all: $(patsubst chapters/%.a80,$(BUILD_DIR)/%.bin,$(CHAPTERS))
 
@@ -145,30 +142,30 @@ test-compare:
 	fi; \
 	echo "---"; echo "$$ok match, $$fail differ, $$skip skipped"
 
-# --- Book targets ---
-book: book-a4 book-a5 book-epub
+# --- Book targets (via build_book.py, auto-increments version) ---
+book:
+	$(BUILD_BOOK) --all
 
-book-a4: $(BOOK_META) $(BOOK_CHAPTERS)
-	@mkdir -p $(BUILD_DIR)
-	$(PANDOC) $(BOOK_META) $(BOOK_CHAPTERS) $(BOOK_EXTRA) \
-		-o $(BUILD_DIR)/book-a4.pdf \
-		$(PANDOC_PDF) \
-		-V fontsize=11pt \
-		-V geometry="a4paper, margin=1in"
+book-a4:
+	$(BUILD_BOOK) --pdf
 
-book-a5: $(BOOK_META) $(BOOK_CHAPTERS)
-	@mkdir -p $(BUILD_DIR)
-	$(PANDOC) $(BOOK_META) $(BOOK_CHAPTERS) $(BOOK_EXTRA) \
-		-o $(BUILD_DIR)/book-a5.pdf \
-		$(PANDOC_PDF) \
-		-V fontsize=10pt \
-		-V geometry="a5paper, top=15mm, bottom=15mm, left=18mm, right=15mm"
+book-a5:
+	$(BUILD_BOOK) --pdf-a5
 
-book-epub: $(BOOK_META) $(BOOK_CHAPTERS)
-	@mkdir -p $(BUILD_DIR)
-	$(PANDOC) $(BOOK_META) $(BOOK_CHAPTERS) $(BOOK_EXTRA) \
-		-o $(BUILD_DIR)/book.epub \
-		--epub-chapter-level=1
+book-epub:
+	$(BUILD_BOOK) --epub
+
+release: clean book
+	@mkdir -p release
+	cp $(BUILD_DIR)/Coding_the_Impossible_*.pdf $(BUILD_DIR)/Coding_the_Impossible_*.epub release/ 2>/dev/null || true
+	cp $(BUILD_DIR)/book-a4.pdf $(BUILD_DIR)/book-a5.pdf $(BUILD_DIR)/book.epub release/
+	@echo "Release files copied to release/"
+
+version-major:
+	$(BUILD_BOOK) --version-major
+
+version-minor:
+	$(BUILD_BOOK) --version-minor
 
 clean:
 	rm -rf $(BUILD_DIR)

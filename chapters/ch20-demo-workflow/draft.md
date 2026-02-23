@@ -78,9 +78,9 @@ restorer's toolchain for Lo-Fi Motion is a concrete answer to the question "what
 
 **Assembler: sjasmplus.** The standard Z80 macro assembler for the modern ZX scene. Memory banking (SLOT/PAGE directives), conditional assembly, macros, INCBIN for embedded data, DISPLAY for build-time diagnostics, output to .tap/.sna/.trd. The scene table, effect code, compressed data, and engine all compile in one sjasmplus invocation.
 
-**Emulator: BGE 3.05.** A Russian-developed emulator designed for demo development. Exact Pentagon timing, TurboSound, border effects, and -- crucially -- deterministic execution. The same binary plays the same way every time.
+**Emulator: zemu.** restorer's emulator of choice for Lo-Fi Motion. Unreal Speccy and Fuse are equally common. What matters is accurate timing and fast reload -- you need to test a new build every few minutes.
 
-**Graphics: Photoshop** (or Multipaint, GIMP). Pre-rendered images exported as raw data through custom scripts.
+**Graphics: BGE 3.05 + Photoshop.** BGE (Burial Graphics Editor, by Sinn/Delirium Tremens) is a ZX Spectrum-native graphics editor, widely used in the Russian scene for creating attribute-level artwork directly on the target platform. Pre-rendered PC images go through Photoshop (or Multipaint, GIMP) and custom scripts.
 
 **Scripts: Ruby.** Conversion pipeline automation: images to attribute data, sine tables to binary includes, animation sequences to delta-compressed streams. Python, Perl, and Processing are equally common. What matters is that conversion is automated and repeatable.
 
@@ -108,10 +108,10 @@ sjasmplus assembly
 Output binary (.trd or .sna)
     |
     v
-Test in BGE emulator
+Test in emulator (zemu)
 ```
 
-Each arrow is a Makefile rule. Change a PNG, run `make`, and the entire chain re-executes -- conversion, compression, assembly -- producing a fresh binary in seconds. Load it in BGE, watch the result, decide what to change, edit the source, run `make` again. This edit-build-test loop, measured in seconds, is what makes it possible to build fourteen effects in two weeks.
+Each arrow is a Makefile rule. Change a PNG, run `make`, and the entire chain re-executes -- conversion, compression, assembly -- producing a fresh binary in seconds. Load it in the emulator, watch the result, decide what to change, edit the source, run `make` again. This edit-build-test loop, measured in seconds, is what makes it possible to build fourteen effects in two weeks.
 
 The Makefile also serves as documentation. Reading the build rules tells you exactly which scripts produce which outputs, which effects depend on which data files, and what the complete dependency graph looks like. When you return to the project after a six-month break, the Makefile tells you how everything fits together.
 
@@ -192,7 +192,7 @@ The workhorse. Memory banking via SLOT/PAGE directives, conditional assembly, ma
 
 ### Emulators
 
-**BGE** (Born of Galaxy Emulator) is preferred by many Russian-scene demosceners for its deterministic timing and accurate Pentagon emulation. **Unreal Speccy** supports TR-DOS, TurboSound, and multiple clone models. **Fuse** is widely available on Linux and macOS. For source-level debugging, **DeZog** in VS Code connects to ZEsarUX and provides breakpoints, register inspection, and memory views.
+**Unreal Speccy** is preferred by many Russian-scene demosceners for its deterministic timing and accurate Pentagon emulation, with TR-DOS, TurboSound, and multiple clone model support. **Fuse** is widely available on Linux and macOS. **zemu** is another option, used by restorer for Lo-Fi Motion. For source-level debugging, **DeZog** in VS Code connects to ZEsarUX and provides breakpoints, register inspection, and memory views.
 
 Pick one emulator for primary development. Test on others before release. Demos that work in one emulator and crash in another are a party tradition best avoided.
 
@@ -294,7 +294,7 @@ Most demos are collaborations. Three principles keep them on track:
 
 Demo bugs are uniquely painful because they manifest in front of an audience. A crash during the compo showing is both a technical failure and a social embarrassment. Testing is not optional.
 
-**Test on multiple emulators.** Each emulator has slightly different timing, memory initialisation, and AY behaviour. A demo that works in BGE but crashes in Fuse probably has a timing or memory assumption that is valid on Pentagon but not on standard Spectrum.
+**Test on multiple emulators.** Each emulator has slightly different timing, memory initialisation, and AY behaviour. A demo that works in Unreal Speccy but crashes in Fuse probably has a timing or memory assumption that is valid on Pentagon but not on standard Spectrum.
 
 **Test from a cold start.** Clear all memory before loading the demo. Do not assume any register values or memory contents from a previous program. If your demo works after running a previous demo but crashes from a fresh boot, you have an initialisation bug.
 
@@ -330,7 +330,7 @@ For the reader who has followed this book from Chapter 1 and wants to make a dem
 
 ### Week 1: Foundation
 
-1. **Set up the toolchain.** Install sjasmplus, choose an emulator (BGE, Unreal Speccy, or Fuse), set up a project directory with a Makefile. Verify that you can assemble a minimal program and run it in the emulator.
+1. **Set up the toolchain.** Install sjasmplus, choose an emulator (Unreal Speccy, Fuse, or ZEsarUX), set up a project directory with a Makefile. Verify that you can assemble a minimal program and run it in the emulator.
 
 2. **Build the scene table engine.** Write a minimal engine that reads a scene table and calls effect routines for the specified duration. Start with Lo-Fi Motion's architecture: bank number, entry address, frame count. Get it working with a single dummy effect (fill the screen with a colour, increment the colour each frame).
 
@@ -368,13 +368,13 @@ You will not win. Your effects will be simpler than the experienced groups' entr
 
 - **Design is everything.** Introspec defines demo design as "the complete aggregate of all demo components, both visible and concealed" -- the code architecture, the memory layout, the pacing, and the emotional arc, not just the visual effects.
 
-- **Lo-Fi Motion provides a replicable production template:** a scene table drives the demo structure, effects render into virtual 1-byte-per-pixel buffers, and the toolchain (sjasmplus + BGE + Ruby scripts + hrust1opt) chains together through a Makefile. Fourteen effects were built in two weeks of evening work.
+- **Lo-Fi Motion provides a replicable production template:** a scene table drives the demo structure, effects render into virtual 1-byte-per-pixel buffers, and the toolchain (sjasmplus + zemu + Ruby scripts + hrust1opt) chains together through a Makefile. Fourteen effects were built in two weeks of evening work.
 
 - **The scene table pattern** separates content from engine. Adding, removing, or reordering effects means editing a data table, not restructuring code. This supports rapid iteration on pacing and structure.
 
 - **Making-of culture is a strength of the ZX scene.** Detailed technical writeups -- from Eager's NFO to GABBA's video-editor workflow to NHBF's 256-byte puzzle -- serve as education, documentation, and community building.
 
-- **The standard toolchain** converges on sjasmplus (assembler), BGE or Unreal Speccy (emulator), Photoshop or Multipaint (graphics), Ruby or Python scripts (conversion and code generation), ZX0 or hrust1opt (compression), and a Makefile (build automation). CI via GitHub Actions is increasingly common.
+- **The standard toolchain** converges on sjasmplus (assembler), Unreal Speccy or Fuse (emulator), BGE or Multipaint (graphics), Ruby or Python scripts (conversion and code generation), ZX0 or hrust1opt (compression), and a Makefile (build automation). CI via GitHub Actions is increasingly common.
 
 - **Compo culture** centres on events like Chaos Constructions, DiHalt, Multimatograf, CAFe, and Revision. Entering your first compo requires choosing an appropriate event, following the rules, testing thoroughly, and submitting early.
 
