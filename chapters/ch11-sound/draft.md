@@ -52,6 +52,8 @@ Note the trick: we only change the high byte of BC between the two OUT instructi
 | R12 | Envelope period, high | 8 | Upper 8 bits of envelope period |
 | R13 | Envelope shape | 4 | Envelope waveform shape (0-15) |
 
+![AY-3-8910 register map](illustrations/output/ch11_ay_registers.png)
+
 ### Tone Channels (R0-R5): How Pitch Works
 
 Each of the three tone channels produces a square wave. The frequency is controlled by a 12-bit period value split across two registers:
@@ -196,6 +198,8 @@ $0B: |\                    $0D:    /|
      |  ''''''''                /  |''''''''
 ```
 
+![AY envelope shape waveforms](illustrations/output/ch11_envelope_shapes.png)
+
 **Key insight:** Writing to R13 *restarts* the envelope from the beginning. This is crucial for bass techniques -- you can trigger a new envelope cycle at any time by writing to R13, even with the same value.
 
 ---
@@ -279,6 +283,122 @@ envelope_period = AY_clock / (256 x desired_frequency)
 For a bass C2 (65.4 Hz): period = 1,773,400 / (256 x 65.4) = 106.
 
 The buzz-bass gives you a bass instrument that sounds fundamentally different from the tone channels, effectively adding a fourth voice to your arrangement.
+
+### The Period Alignment Problem
+
+There is a catch with buzz-bass that equal-tempered note tables hide from you. Look at the formula again:
+
+```
+tone_period    = AY_clock / (16 x frequency)
+envelope_period = tone_period / 16
+```
+
+For the buzz to sound clean, the envelope period must be *exactly* `tone_period / 16`. But integer division truncates. If the tone period is not divisible by 16, the envelope period has a rounding error -- and the envelope waveform drifts against the tone, producing audible beating.
+
+Check our standard table. Octave 4:
+
+| Note | Period | Period mod 16 | Envelope = Period / 16 | Error? |
+|------|--------|---------------|------------------------|--------|
+| C4   | 424    | 8             | 26 (should be 26.5)    | Yes    |
+| D4   | 378    | 10            | 23 (should be 23.625)  | Yes    |
+| E4   | 337    | 1             | 21 (should be 21.0625) | Yes    |
+| F4   | 318    | 14            | 19 (should be 19.875)  | Yes    |
+| G4   | 283    | 11            | 17 (should be 17.6875) | Yes    |
+| A4   | 252    | 12            | 15 (should be 15.75)   | Yes    |
+| B4   | 225    | 1             | 14 (should be 14.0625) | Yes    |
+
+Not a single clean division! Every note in the equal-tempered scale produces a slightly detuned envelope. For short percussive buzz sounds the beating is masked, but for sustained bass notes it creates an unpleasant warble.
+
+![Tone + Envelope Phase Alignment: clean T+E with period divisible by 16 (top) vs beating T+E with rounding error (bottom)](illustrations/output/ch11_te_alignment.png)
+
+### Natural Tuning: Table #5
+
+In June 2001, Ivan Roshin published "Частотная таблица с нулевой погрешностью" (A Frequency Table with Zero Error), arriving at the same conclusion that centuries of music theory had already established: replace equal temperament with *just intonation* -- integer-ratio intervals that the AY hardware can divide cleanly.
+
+The natural scale for C major / A minor uses these intervals:
+
+```
+C [9/8] D [10/9] E [16/15] F [9/8] G [10/9] A [9/8] B [16/15] C
+```
+
+This gives pure fifths (3:2 ratio) for C--G, E--B, A--E. Chromatic notes (sharps/flats) are calculated with the 16/15 ratio.
+
+![Just Intonation: interval structure of the natural scale with period divisibility table for buzz-bass](illustrations/output/ch11_just_intonation.png)
+
+The resulting periods, computed for a *non-standard* AY clock of 1,520,640 Hz:
+
+```z80
+; Table #5: Natural tuning for AY clock = 1,520,640 Hz
+; 96 notes (8 octaves), C major / A minor
+; Ivan Roshin (concept, 2001), oisee/siril (VTi implementation, 2009)
+natural_note_table:
+    ; Octave 1: every period divisible by 16!
+    DW 2880, 2700, 2560, 2400, 2304, 2160
+    DW 2025, 1920, 1800, 1728, 1620, 1536
+    ; Octave 2
+    DW 1440, 1350, 1280, 1200, 1152, 1080
+    DW 1013,  960,  900,  864,  810,  768
+    ; Octave 3
+    DW  720,  675,  640,  600,  576,  540
+    DW  506,  480,  450,  432,  405,  384
+    ; Octave 4
+    DW  360,  338,  320,  300,  288,  270
+    DW  253,  240,  225,  216,  203,  192
+    ; Octave 5
+    DW  180,  169,  160,  150,  144,  135
+    DW  127,  120,  113,  108,  101,   96
+    ; Octave 6
+    DW   90,   84,   80,   75,   72,   68
+    DW   63,   60,   56,   54,   51,   48
+    ; Octave 7
+    DW   45,   42,   40,   38,   36,   34
+    DW   32,   30,   28,   27,   25,   24
+    ; Octave 8
+    DW   23,   21,   20,   19,   18,   17
+    DW   16,   15,   14,   14,   13,   12
+```
+
+The key insight is that most main-scale periods are now divisible by 16. Here is octave 2 -- the bass range that matters most for buzz:
+
+| Note | Period | mod 16 | Envelope = Period/16 | Clean? |
+|------|--------|--------|----------------------|--------|
+| C2   | 1440   | 0      | 90                   | Yes |
+| C#2  | 1350   | 6      | 84.375 → 84          | No  |
+| D2   | 1280   | 0      | 80                   | Yes |
+| D#2  | 1200   | 0      | 75                   | Yes |
+| E2   | 1152   | 0      | 72                   | Yes |
+| F2   | 1080   | 0      | 67.5 → 68            | ~   |
+| F#2  | 1013   | 5      | 63.3 → 63            | No  |
+| G2   |  960   | 0      | 60                   | Yes |
+| G#2  |  900   | 4      | 56.25 → 56           | No  |
+| A2   |  864   | 0      | 54                   | Yes |
+| A#2  |  810   | 2      | 50.6 → 51            | No  |
+| B2   |  768   | 0      | 48                   | Yes |
+
+Seven of twelve notes divide cleanly -- all the natural notes of C major. Compare to the equal-tempered table where *none* do. On those seven notes the envelope and tone generators lock in phase, and the buzz-bass sounds pure.
+
+**The tradeoff:** this table is only correct for C major / A minor. To play in other keys, you change the AY clock frequency:
+
+| Key | Chip Frequency (Hz) |
+|-----|---------------------|
+| C/Am    | 1,520,640 |
+| C#/A#m  | 1,611,062 |
+| D/Bm    | 1,706,861 |
+| D#/Cm   | 1,808,356 |
+| E/C#m   | 1,915,886 |
+| F/Dm    | 2,029,811 |
+| F#/D#m  | 2,150,510 |
+| G/Em    | 2,278,386 |
+| G#/Fm   | 2,413,866 |
+| A/F#m   | 2,557,401 |
+| A#/Gm   | 2,709,472 |
+| B/G#m   | 2,870,586 |
+
+On real hardware the AY clock is fixed, so you cannot actually change keys at runtime. But in an emulator or tracker like Vortex Tracker II, the "chip frequency" is a setting. This is exactly what the Vortex Tracker Improved (VTi) modification by oisee did in 2009: it added Table #5 (the fifth table, index 4 counting from zero) with these natural periods, plus a per-module chip frequency setting that selects the key.
+
+The autosiril MIDI-to-PT3 converter defaults to Table #5 precisely because of these clean envelope ratios -- most converted tracks use buzz-bass extensively, and the natural tuning eliminates beating.
+
+**In practice:** if you are writing a tracker module that relies heavily on buzz-bass, consider composing in C/Am with Table #5. The envelopes will lock perfectly to the tone. If you need a different key, either transpose the chip frequency (tracker-side) or accept the small rounding errors of equal temperament. For short percussive buzz sounds, the difference is inaudible; for sustained bass drones, it is very noticeable.
 
 ### Drum Synthesis
 

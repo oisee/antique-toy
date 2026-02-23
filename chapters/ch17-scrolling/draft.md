@@ -469,6 +469,8 @@ This leaves 18% (~12,900 T-states) for sprites, game logic, and music. Tight but
 | Shadow screen + tile redraw | ~59,000 | 82% | Smooth, tear-free | Requires 128K |
 | Character scroll (8px jumps) | ~52,000--66,000 | 73--92% | Jerky | For scrolling text/status |
 
+![Scrolling technique cost comparison](illustrations/output/ch17_scroll_costs.png)
+
 ---
 
 ## Scrolling Right (and the Direction Problem)

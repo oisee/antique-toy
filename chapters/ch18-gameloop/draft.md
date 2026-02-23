@@ -79,6 +79,8 @@ That 11.7% headroom is your safety margin. Eat into it and you start dropping fr
 
 On the Agon, the same game logic runs in a fraction of the budget. The entity update, collision detection, and input reading might consume 15,000 T-states total -- about 4% of the Agon's frame. The VDP handles sprite rendering on the ESP32 coprocessor, so CPU-side sprite cost drops to the VDU command overhead. You have enormous room for more complex AI, more entities, or simply less stress.
 
+![Game loop architecture](illustrations/output/ch18_game_loop.png)
+
 ---
 
 ## 18.2 The Game State Machine

@@ -137,7 +137,7 @@ def write_combined(text, vs):
 
 def run_pandoc(args, label):
     print(f"  Building {label}...")
-    cmd = ["pandoc"] + args
+    cmd = ["pandoc", f"--resource-path={ROOT}"] + args
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"ERROR building {label}:", file=sys.stderr)

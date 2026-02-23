@@ -576,6 +576,89 @@ get_note_period:
     ret
 ```
 
+### Table #5: Natural Tuning (Just Intonation)
+
+The standard note table above uses equal temperament (12-TET) -- every semitone is the 12th root of 2 apart. This works well for tone channels, but creates a problem for **buzz-bass (T+E)**: since `envelope_period = tone_period / 16`, any tone period not divisible by 16 introduces a rounding error. The envelope drifts against the tone, producing audible beating on sustained bass notes.
+
+Ivan Roshin's "Frequency Table with Zero Error" (2001) and oisee's VTi implementation (2009) solve this by using **just intonation** -- integer-ratio intervals for C major / A minor:
+
+```
+C [9/8] D [10/9] E [16/15] F [9/8] G [10/9] A [9/8] B [16/15] C
+```
+
+This produces pure fifths (C--G, E--B, A--E at exact 3:2) and, critically, periods where most main-scale notes divide evenly by 16.
+
+**AY clock: 1,520,640 Hz** (non-standard; select per-key frequency below):
+
+```z80
+; Table #5: Natural tuning note table
+; 96 notes, C-1 to B-8, for AY clock = 1,520,640 Hz
+; C major / A minor only; other keys via chip frequency change
+natural_note_table:
+    ; Octave 1
+    DW 2880, 2700, 2560, 2400, 2304, 2160
+    DW 2025, 1920, 1800, 1728, 1620, 1536
+    ; Octave 2
+    DW 1440, 1350, 1280, 1200, 1152, 1080
+    DW 1013,  960,  900,  864,  810,  768
+    ; Octave 3
+    DW  720,  675,  640,  600,  576,  540
+    DW  506,  480,  450,  432,  405,  384
+    ; Octave 4
+    DW  360,  338,  320,  300,  288,  270
+    DW  253,  240,  225,  216,  203,  192
+    ; Octave 5
+    DW  180,  169,  160,  150,  144,  135
+    DW  127,  120,  113,  108,  101,   96
+    ; Octave 6
+    DW   90,   84,   80,   75,   72,   68
+    DW   63,   60,   56,   54,   51,   48
+    ; Octave 7
+    DW   45,   42,   40,   38,   36,   34
+    DW   32,   30,   28,   27,   25,   24
+    ; Octave 8
+    DW   23,   21,   20,   19,   18,   17
+    DW   16,   15,   14,   14,   13,   12
+```
+
+**Period divisibility check (Octave 2, bass range):**
+
+| Note | Period | mod 16 | Env Period | Clean T+E? |
+|------|--------|--------|------------|------------|
+| C2   | 1440   | 0      | 90         | Yes |
+| C#2  | 1350   | 6      | 84         | No  |
+| D2   | 1280   | 0      | 80         | Yes |
+| D#2  | 1200   | 0      | 75         | Yes |
+| E2   | 1152   | 0      | 72         | Yes |
+| F2   | 1080   | 0      | 67         | ~   |
+| F#2  | 1013   | 5      | 63         | No  |
+| G2   | 960    | 0      | 60         | Yes |
+| G#2  | 900    | 4      | 56         | No  |
+| A2   | 864    | 0      | 54         | Yes |
+| A#2  | 810    | 2      | 50         | No  |
+| B2   | 768    | 0      | 48         | Yes |
+
+Seven of twelve notes (all natural notes of C major) divide cleanly -- compared to *zero* in the equal-tempered table.
+
+**Transposition via chip frequency:** since the table is fixed to C/Am, other keys require a different AY clock. Each step multiplies by 2^(1/12):
+
+| Key | Chip Frequency (Hz) |
+|-----|---------------------|
+| C/Am    | 1,520,640 |
+| C#/A#m  | 1,611,062 |
+| D/Bm    | 1,706,861 |
+| D#/Cm   | 1,808,356 |
+| E/C#m   | 1,915,886 |
+| F/Dm    | 2,029,811 |
+| F#/D#m  | 2,150,510 |
+| G/Em    | 2,278,386 |
+| G#/Fm   | 2,413,866 |
+| A/F#m   | 2,557,401 |
+| A#/Gm   | 2,709,472 |
+| B/G#m   | 2,870,586 |
+
+On hardware the AY clock is fixed; in trackers (Vortex Tracker II/Improved) and emulators, this is a per-module setting. Table #5 is the default for the autosiril MIDI-to-PT3 converter because most converted tracks use buzz-bass heavily. See Chapter 11 for a detailed explanation of the T+E alignment problem.
+
 ---
 
 ## TurboSound: 2 x AY

@@ -50,6 +50,8 @@ The cost is 196 to 204 T-states depending on how many multiplier bits are set --
 
 For 16x16 producing a 32-bit result, Dark's MULU224 runs in 730 to 826 T-states. In practice, demoscene 3D engines avoid full 16x16 multiplies by keeping coordinates in 8.8 fixed-point and using 8x8 multiplies where possible.
 
+![Shift-and-add 8x8 multiply walkthrough](illustrations/output/ch04_multiply_walkthrough.png)
+
 ### Method 2: Square Table Lookup
 
 Dark's second method trades memory for speed, exploiting an algebraic identity that every demoscener eventually discovers:
