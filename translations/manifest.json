@@ -267,6 +267,78 @@
     "chapters/ch10-scroller": {
       "source_sha256": "552c244a4d268bb7e78bd446f355757966920d5f78870ed84ea492ff3b2913ce",
       "translation_sha256": "07e0939f51abd30fd06b3f796dceca9a05cd9e1809a1e3d0411ceeb63422ac29"
+    },
+    "chapters/ch11-sound": {
+      "source_sha256": "f6b7fc6ae181fc9224d8b633b3d779c7dd1a879729ac14a12983163af805ab4f",
+      "translation_sha256": "d4cb3efcfab739f41233f87f2398b2ea9e99e55091cb72d09b3f1ea61acf2a39"
+    },
+    "chapters/ch12-music-sync": {
+      "source_sha256": "11abb51cd63e2f6bf548755db7183d5343dbdd00c856845e1b1721bb03f09120",
+      "translation_sha256": "95225a6ee701ee2b1b2049753e6db93251c5957d4bda8136e22c4b60dcc3d503"
+    },
+    "chapters/ch13-sizecoding": {
+      "source_sha256": "98ad8d61882732306cbb6fe0f57c854cfbabbe7da780b0e258ad9a7894965c29",
+      "translation_sha256": "1915bb445644e07b52fb917b9e3b140694f97077f039ddd52a255d4f143a6a69"
+    },
+    "chapters/ch14-compression": {
+      "source_sha256": "c317e2a7f0d4a94005c69bc213f6a277b8bd93922f828150e075cee3e182dfd0",
+      "translation_sha256": "1670bcea509ae0e0becb627d1c69a2fbbc3483869e1d399b51fee4b8e648a51d"
+    },
+    "chapters/ch15-anatomy": {
+      "source_sha256": "d282505e53bebfe41e08ae5395cd49d8190057fba3d6df28505febaacc4d63b1",
+      "translation_sha256": "f85a8ab76ac194273f7b300148220007d40d06df654195a53807cfaeab541671"
+    },
+    "chapters/ch16-sprites": {
+      "source_sha256": "b0fc8cb8d6164899f231e63cf6625faa7a321749819211f64fdfc8e601410df9",
+      "translation_sha256": "dc3d6c0692f2f445c20123ea3843639062317b2a70466a3ca9fac48f4b04433a"
+    },
+    "chapters/ch17-scrolling": {
+      "source_sha256": "4c28ebc25b1d4c91b246993d58f190258c7b1657c93e2c45148278b46475cbc2",
+      "translation_sha256": "c36351490f0016eb47775379957e860e105740bf85db67861826bfcdcc1e17d8"
+    },
+    "chapters/ch18-gameloop": {
+      "source_sha256": "c717a2495a52343629832dcf11b7e90020bf5c54e67d33a2315295800b2aab86",
+      "translation_sha256": "3fea19791c13c4aa7abc3ec8203bf60214196380502150a2e40923336af5f0e1"
+    },
+    "chapters/ch19-collisions": {
+      "source_sha256": "bb205f2ebaba78a365ac5675a6bd22cf083c0fa2fb4eb112c58223eaf68576eb",
+      "translation_sha256": "538e856657ba64f75405da64980b6dc60a4788805d78ebf2fc6ed44dd0a5acd4"
+    },
+    "chapters/ch20-demo-workflow": {
+      "source_sha256": "4a68271bfc1de53d3ae5365ad136829be11df28505f69c68a703ba4249f2f15f",
+      "translation_sha256": "528ca5490104470497ed16534374a029ddfc1537147bc0f96817cb1b81100a69"
+    },
+    "chapters/ch21-full-game": {
+      "source_sha256": "184ea5b26a1ca24fa2fc414eda2088e8e08e1f1812a007e4dbaa007ada76aabc",
+      "translation_sha256": "14f61dbb941c7b2c5b52262f1c1b5828833cb5b0e19becb3b8a7fad344a432dd"
+    },
+    "chapters/ch22-porting-agon": {
+      "source_sha256": "774344c9cea76ac2572aa913b4b0c46de38965b28670f100533ad5de73451197",
+      "translation_sha256": "1955141b69216364e3bc496f2b778092dfd827da9511fa5ab428012806f666c7"
+    },
+    "chapters/ch23-ai-assisted": {
+      "source_sha256": "1f3ca2081abb17aae0a4033d2f71c13a349b214fcd309f057b18f607d13658d5",
+      "translation_sha256": "c2430839f7e748c275f339a5109490a74fcb491f35b816cabdbe18e7560aa0fb"
+    },
+    "appendices/appendix-a-z80-reference": {
+      "source_sha256": "81fa93515eba88e023420e2d8fefec25ef9a23f4292322287630cc31b10771dd",
+      "translation_sha256": "8b003d1addadc9f71f6ec4c40f974edc06e09fe8a89a03fbb1a13608d83f2158"
+    },
+    "appendices/appendix-b-sine-tables": {
+      "source_sha256": "b690f6af10f6901449d82aa0ed93751f0d4b1242cb54da7c1e235e6a0bf2fa62",
+      "translation_sha256": "e44151b4c426df473d44a5d16798fa677eb856eb7eb45aab8ccb11e3d27eba74"
+    },
+    "appendices/appendix-c-compression": {
+      "source_sha256": "0eb3271c7f1d1225eb7e225436482902bb72a24f2dd60c7207b323597574ac97",
+      "translation_sha256": "3b2690eeab1620c59b1a7a4de146825d237989ab16883b9c7478450a098c496d"
+    },
+    "appendices/appendix-g-ay-registers": {
+      "source_sha256": "9735f280f9a1e24a033fa07bfa917d60a2efa2a87d60df5d12e54405375b5f5c",
+      "translation_sha256": "785d9db9a7e6f3b50f17d55e900024c395c1e6ebab48f1a3c7661a227c095815"
+    },
+    "glossary": {
+      "source_sha256": "e90a190d328017f008a1604d042c22e80e211e8e2cb1dc18f2c337f3f58c460e",
+      "translation_sha256": "de669830cc7f47408a542c0523814f02f53f46f11aa8b74bc40d621fd97b406e"
     }
   }
 }
