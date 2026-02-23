@@ -1,0 +1,19 @@
+[project]
+name = "spectools"
+version = "0.1.0"
+description = "ZX Spectrum development toolkit — companion tools for 'Coding the Impossible'"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "Alice Vinogradova" }
+]
+
+[project.optional-dependencies]
+images = ["Pillow>=10.0"]
+
+[project.scripts]
+notetable = "spectools.cli.notetable:main"
+sinetable = "spectools.cli.sinetable:main"
+tstate = "spectools.cli.tstate:main"
+scrview = "spectools.cli.scrview:main"
+autodiver = "spectools.cli.autodiver:main"
