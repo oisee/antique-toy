@@ -1,0 +1,188 @@
+{
+  "es": {
+    "chapters/ch01-thinking-in-cycles": {
+      "source_sha256": "50736432451bc83ef7d26a6b612a20e8eaa297a333aae8f2130af2a815555c07",
+      "translation_sha256": "b476dd66254ba087b9ad85762b8102fcc1e37f51a7bfc11cf879ebbac6acee32"
+    },
+    "chapters/ch02-screen-as-puzzle": {
+      "source_sha256": "fdf7f29e8da791d1f14b72404c1f7aad5def0f6fc87aaa40833652818e1fe1a0",
+      "translation_sha256": "ea2e4a88e7373835235bc98d8a713860f9a459c5c6efaea7ea7b7527743df5a6"
+    },
+    "chapters/ch03-demoscene-toolbox": {
+      "source_sha256": "69e51b79481d6c4e6bcb86473121bc00127a7eaa46f7a2be6a0cb398502398c6",
+      "translation_sha256": "3c88dba058b5207be78c80006b386c69721a20e49604c927140cfc3c130159d8"
+    },
+    "chapters/ch04-maths": {
+      "source_sha256": "2f3acc48d57f178e8b9982ac5fcfccf44972faa2dad567ba2c551d14acc8bf1f",
+      "translation_sha256": "432b912ab879c7251aaf1340be0fa8021f1aabd20bbde1c65db9f89e4000714d"
+    },
+    "chapters/ch05-3d": {
+      "source_sha256": "3337167f98fc92b5927d42cf6f6d3bfa3a3c9d7891c7c59d16389886f83cebe0",
+      "translation_sha256": "895e6c94e246784434878daed726e151b9819bde665aa926ff624affe98ae02f"
+    },
+    "chapters/ch06-sphere": {
+      "source_sha256": "18b9074575d50d4e3e9d4aeaf701f7fa558485dfd14b193209e72e4a3a5e717c",
+      "translation_sha256": "ab2dda885a81866e2550e3c4a1e872b5159f409b51118e042fcaee1724558714"
+    },
+    "chapters/ch07-rotozoomer": {
+      "source_sha256": "44d6686170aa72f635196cbac381d7a8613cecea9fd93055106fb3f6967c273d",
+      "translation_sha256": "e629553f838c330ee47f89690b0dbb249038db0d8bfff4bb1b07b7dddb180a37"
+    },
+    "chapters/ch08-multicolor": {
+      "source_sha256": "8b521b5cd28f2cb832a26919f48f5c6a1dea93e7457077d992c0dcda99b30cb9",
+      "translation_sha256": "45b09e2bb9b0a2e7fb1e4eaa8d2d2f6d08d32ea15f7310d78adb4586a3e9c77b"
+    },
+    "chapters/ch09-tunnels": {
+      "source_sha256": "8654f14988f572df34ad466f438ca1291d4928a0018238ab4c7256359bb1cf7c",
+      "translation_sha256": "445209aafd3f5d9a3f17fb738c12d82214c3595e1282827a6e65428a873929df"
+    },
+    "chapters/ch10-scroller": {
+      "source_sha256": "552c244a4d268bb7e78bd446f355757966920d5f78870ed84ea492ff3b2913ce",
+      "translation_sha256": "cc07c6401af00fe4bdfc718c57515360307aecb603f16299b24ea6d4f9124a43"
+    },
+    "chapters/ch11-sound": {
+      "source_sha256": "f6b7fc6ae181fc9224d8b633b3d779c7dd1a879729ac14a12983163af805ab4f",
+      "translation_sha256": "742769ca5c8144ae2cbdec3a9e9f841c1164368781162581d373075c49fb3a9a"
+    },
+    "chapters/ch12-music-sync": {
+      "source_sha256": "11abb51cd63e2f6bf548755db7183d5343dbdd00c856845e1b1721bb03f09120",
+      "translation_sha256": "0db9aaf93b04a0296effa276663c10e07da5a08f6290fc393cacdf06067d730a"
+    },
+    "chapters/ch13-sizecoding": {
+      "source_sha256": "98ad8d61882732306cbb6fe0f57c854cfbabbe7da780b0e258ad9a7894965c29",
+      "translation_sha256": "3e63cbf620b9d8046fd40c4aaad00618f8b608c3b47fcebbc1e8676540321e86"
+    },
+    "chapters/ch14-compression": {
+      "source_sha256": "c317e2a7f0d4a94005c69bc213f6a277b8bd93922f828150e075cee3e182dfd0",
+      "translation_sha256": "5298854bcc4d45c6e8e09d4827946d45b88d20410792a4be8702b71bf73cbd35"
+    },
+    "chapters/ch15-anatomy": {
+      "source_sha256": "d282505e53bebfe41e08ae5395cd49d8190057fba3d6df28505febaacc4d63b1",
+      "translation_sha256": "d50fee155d5f4d67db3552ecc42c4cbc84582c2065a8c96c6fed5481f92ce2ab"
+    },
+    "chapters/ch16-sprites": {
+      "source_sha256": "b0fc8cb8d6164899f231e63cf6625faa7a321749819211f64fdfc8e601410df9",
+      "translation_sha256": "622d41b7534fa221f16cc2101706d16c6789d31e10b1d7b68f7ef06d95d0b06a"
+    },
+    "chapters/ch18-gameloop": {
+      "source_sha256": "c717a2495a52343629832dcf11b7e90020bf5c54e67d33a2315295800b2aab86",
+      "translation_sha256": "2443504783f3b9a275c18b79fc216120659aed3f05949b5e23126a3eb416a383"
+    },
+    "chapters/ch19-collisions": {
+      "source_sha256": "bb205f2ebaba78a365ac5675a6bd22cf083c0fa2fb4eb112c58223eaf68576eb",
+      "translation_sha256": "1a23200ef958d40b3dfda9f54e1a0737b7703cc3fb64ffd9c3162e63f93148cf"
+    },
+    "chapters/ch20-demo-workflow": {
+      "source_sha256": "4a68271bfc1de53d3ae5365ad136829be11df28505f69c68a703ba4249f2f15f",
+      "translation_sha256": "3f95b20c0a991ea6677ed8950dcd9780076710acf8b3b5aa29c026d03b9597d3"
+    },
+    "chapters/ch21-full-game": {
+      "source_sha256": "184ea5b26a1ca24fa2fc414eda2088e8e08e1f1812a007e4dbaa007ada76aabc",
+      "translation_sha256": "aec46df551a7b0a9d8f042bdbbbd7b81f4a5717a1de94a56ad71f2d5df0e25dd"
+    },
+    "appendices/appendix-a-z80-reference": {
+      "source_sha256": "81fa93515eba88e023420e2d8fefec25ef9a23f4292322287630cc31b10771dd",
+      "translation_sha256": "050e897e8a2662d23a916b8162f92358d8a2f4600ba330b3a116b4054b5db1a0"
+    },
+    "appendices/appendix-b-sine-tables": {
+      "source_sha256": "b690f6af10f6901449d82aa0ed93751f0d4b1242cb54da7c1e235e6a0bf2fa62",
+      "translation_sha256": "797daf8929a2bb1a5941298c27541ba6e5b9d566e8e44dce78d8acb8bee8423d"
+    },
+    "appendices/appendix-c-compression": {
+      "source_sha256": "0eb3271c7f1d1225eb7e225436482902bb72a24f2dd60c7207b323597574ac97",
+      "translation_sha256": "d91273ee9b84d4461f14e8e507f51edce0beafeb37c9dc29924f831e044bd0cb"
+    },
+    "appendices/appendix-g-ay-registers": {
+      "source_sha256": "9735f280f9a1e24a033fa07bfa917d60a2efa2a87d60df5d12e54405375b5f5c",
+      "translation_sha256": "c9475f48b160e1954c29900896ad25824bedcd1563685c4cf7648b1fc38609c2"
+    },
+    "glossary": {
+      "source_sha256": "e90a190d328017f008a1604d042c22e80e211e8e2cb1dc18f2c337f3f58c460e",
+      "translation_sha256": "8af943f56ad97ce79b9dc89e814d3fc5efd76b46834b86f6ec79a1cbf1691a9a"
+    }
+  },
+  "ru": {
+    "chapters/ch01-thinking-in-cycles": {
+      "source_sha256": "50736432451bc83ef7d26a6b612a20e8eaa297a333aae8f2130af2a815555c07",
+      "translation_sha256": "e416e30a2039e9d8e0839b98da0f8cfc129f4878d220f4fd5ceea01c9ab34985"
+    },
+    "chapters/ch02-screen-as-puzzle": {
+      "source_sha256": "fdf7f29e8da791d1f14b72404c1f7aad5def0f6fc87aaa40833652818e1fe1a0",
+      "translation_sha256": "84f03b6bd7c724ac6923ad0cbe444ae01e6cb0729de3176a4558785fd5d0ad3c"
+    },
+    "chapters/ch03-demoscene-toolbox": {
+      "source_sha256": "69e51b79481d6c4e6bcb86473121bc00127a7eaa46f7a2be6a0cb398502398c6",
+      "translation_sha256": "25272946f25929293e28212e9404c495ebe28fcdc78abab58d792b4b8cadc582"
+    },
+    "chapters/ch04-maths": {
+      "source_sha256": "2f3acc48d57f178e8b9982ac5fcfccf44972faa2dad567ba2c551d14acc8bf1f",
+      "translation_sha256": "337a0e648739844e9159b5eaf89e329fa66bd57d28f5b059903fcfe668ef2d9a"
+    },
+    "chapters/ch05-3d": {
+      "source_sha256": "3337167f98fc92b5927d42cf6f6d3bfa3a3c9d7891c7c59d16389886f83cebe0",
+      "translation_sha256": "d9037ada62f87faebab85d3637d6ecf4bc70bb8155fd08cac7f3224afec14204"
+    },
+    "chapters/ch06-sphere": {
+      "source_sha256": "18b9074575d50d4e3e9d4aeaf701f7fa558485dfd14b193209e72e4a3a5e717c",
+      "translation_sha256": "9acc544656e5ab1b5e41f4413cd68693fc346367afbb7806556251375ddfc267"
+    },
+    "chapters/ch07-rotozoomer": {
+      "source_sha256": "44d6686170aa72f635196cbac381d7a8613cecea9fd93055106fb3f6967c273d",
+      "translation_sha256": "409f08a2a4fdf53c286086916126330cbc2a9ffbf2cb5c7a6d722fcd3d3cc7b5"
+    },
+    "chapters/ch08-multicolor": {
+      "source_sha256": "8b521b5cd28f2cb832a26919f48f5c6a1dea93e7457077d992c0dcda99b30cb9",
+      "translation_sha256": "ee70c2474ed3226660969e58e985c0b76727454feff66078710988b8659e7189"
+    },
+    "chapters/ch09-tunnels": {
+      "source_sha256": "8654f14988f572df34ad466f438ca1291d4928a0018238ab4c7256359bb1cf7c",
+      "translation_sha256": "1307797dc572c8dbe1351f99b1c535e00d2fb07565e755cd0a326a8605b88854"
+    },
+    "chapters/ch10-scroller": {
+      "source_sha256": "552c244a4d268bb7e78bd446f355757966920d5f78870ed84ea492ff3b2913ce",
+      "translation_sha256": "19900c3cc8ff6000730e77bb4d4a1ed8cabc8face5237b80175350083ffc9869"
+    }
+  },
+  "uk": {
+    "chapters/ch01-thinking-in-cycles": {
+      "source_sha256": "50736432451bc83ef7d26a6b612a20e8eaa297a333aae8f2130af2a815555c07",
+      "translation_sha256": "0693e56b76d08b075b0606911481491c4c6a890197c06b5c8d2b62b5a5a8c39c"
+    },
+    "chapters/ch02-screen-as-puzzle": {
+      "source_sha256": "fdf7f29e8da791d1f14b72404c1f7aad5def0f6fc87aaa40833652818e1fe1a0",
+      "translation_sha256": "2e5179ed8fff9bdb46d501bf677eab8cd305f2ff38df4d29412cbab765a15690"
+    },
+    "chapters/ch03-demoscene-toolbox": {
+      "source_sha256": "69e51b79481d6c4e6bcb86473121bc00127a7eaa46f7a2be6a0cb398502398c6",
+      "translation_sha256": "89d3bd92db1872b7048b739542137efd41a125fd219c06cd3cfebe9c1f3066fd"
+    },
+    "chapters/ch04-maths": {
+      "source_sha256": "2f3acc48d57f178e8b9982ac5fcfccf44972faa2dad567ba2c551d14acc8bf1f",
+      "translation_sha256": "840e2be4358717c683df93e3da15aa5e526d19ed71cd463f1bff6f717e642051"
+    },
+    "chapters/ch05-3d": {
+      "source_sha256": "3337167f98fc92b5927d42cf6f6d3bfa3a3c9d7891c7c59d16389886f83cebe0",
+      "translation_sha256": "a307c3a24d4e509a8c881c98aa00b7ba5f92b1eda7c51e5ab6e603d795f598fc"
+    },
+    "chapters/ch06-sphere": {
+      "source_sha256": "18b9074575d50d4e3e9d4aeaf701f7fa558485dfd14b193209e72e4a3a5e717c",
+      "translation_sha256": "5fd8f771ce3868c8e925990c18f0d7def54ef37eebacdca77804d34b337cd9e2"
+    },
+    "chapters/ch07-rotozoomer": {
+      "source_sha256": "44d6686170aa72f635196cbac381d7a8613cecea9fd93055106fb3f6967c273d",
+      "translation_sha256": "f3c482da1e79c5b3e3983039d52e1272e569d5d63f621affa31dc995b6304b2e"
+    },
+    "chapters/ch08-multicolor": {
+      "source_sha256": "8b521b5cd28f2cb832a26919f48f5c6a1dea93e7457077d992c0dcda99b30cb9",
+      "translation_sha256": "facc3ea3fe0ce2d60c8ff95d0521c99c5e79281583f7076ee075c4b3108e4b11"
+    },
+    "chapters/ch09-tunnels": {
+      "source_sha256": "8654f14988f572df34ad466f438ca1291d4928a0018238ab4c7256359bb1cf7c",
+      "translation_sha256": "4aa3f70041123a89345069724a74187ecd5175dd09a2e3c695a7b7f495f43d26"
+    },
+    "chapters/ch10-scroller": {
+      "source_sha256": "552c244a4d268bb7e78bd446f355757966920d5f78870ed84ea492ff3b2913ce",
+      "translation_sha256": "07e0939f51abd30fd06b3f796dceca9a05cd9e1809a1e3d0411ceeb63422ac29"
+    }
+  }
+}
