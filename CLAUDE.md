@@ -77,3 +77,12 @@ Project is bilingual. Planning documents and conversations primarily in Russian.
 ## Translations
 
 Translations into Spanish, Russian, and Ukrainian are in `translations/{es,ru,uk}/`. When translating chapters, **always load `translations/glossary-lookup.md` first** — it contains 161 canonical term mappings and forbidden alternatives (e.g. RU: "кадр" not "фрейм"). Progress tracked in `translations/PROGRESS.md`.
+
+**Manifest system** (`translations/manifest.py`) tracks which EN source version each translation was made from:
+```sh
+python3 translations/manifest.py stamp es       # record EN source SHA256 for existing ES translations
+python3 translations/manifest.py check es       # show missing + stale translations
+python3 translations/manifest.py check all      # check all languages
+python3 translations/manifest.py diff es        # show EN chapters changed since last translation
+```
+After translating → `stamp`. Before translating → `check`. After editing EN → `diff` to find stale translations.
