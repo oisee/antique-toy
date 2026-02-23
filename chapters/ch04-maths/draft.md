@@ -387,4 +387,230 @@ In the next chapter, Dark and STS extend this mathematical foundation into a com
 
 ---
 
+## Random Numbers: When Tables Won't Do
+
+Everything so far in this chapter is deterministic. Given the same inputs, the same multiply, the same sine lookup, the same line draw -- you get the same output. That is exactly what you want for a spinning wireframe cube or a smooth plasma.
+
+But sometimes you need chaos. Stars twinkling in a star field. Particles scattering from an explosion. Noise textures for terrain generation. A shuffled order for loading screens. In size-coding competitions (256 bytes or less), a good random number generator can produce surprisingly complex visual effects from almost no code.
+
+The Z80 has no hardware random number generator. You must synthesize randomness from arithmetic, and the quality of that arithmetic matters more than you might think.
+
+### The R Register Trick
+
+The Z80 has a built-in source of entropy that many coders reach for first: the R register. It increments automatically with each instruction fetch (every M1 cycle), cycling through 0-127. You can read it in 9 T-states:
+
+```z80
+    ld   a, r              ; 9 T -- read refresh counter
+```
+
+This is *not* a PRNG. The R register is fully deterministic -- it advances by one per instruction, and its value at any point depends entirely on the code path taken since reset. In a demo with a fixed main loop, R produces the same sequence every time. But it is useful as a seed source: read R once at startup (when timing depends on how long the user waited before pressing a key) and feed that unpredictable value into a proper PRNG.
+
+Some coders mix R into their generator at every call, adding genuine instruction-timing entropy. The Ion generator below uses exactly this trick.
+
+### Four Generators from the Community
+
+In 2024, Gogin (of the Russian ZX scene) assembled a collection of Z80 PRNG routines and shared them for evaluation. Artem Topchiy tested them systematically, filling large bitmaps to reveal statistical patterns. The results are instructive -- not all "random" routines are equally random.
+
+Here are four generators from that collection, ordered from best to worst quality.
+
+#### Patrik Rak's CMWC Generator (Best Quality)
+
+This is a **Complement Multiply-With-Carry** generator by Patrik Rak, using the multiplier 253 and an 8-byte circular buffer. The mathematics behind CMWC are well-studied: George Marsaglia proved that certain multiplier/buffer combinations produce sequences with enormous periods. With multiplier 253 and buffer size 8, the theoretical period is (253^8 - 1) / 254 -- approximately 2^66 values before repeating.
+
+```z80
+; Patrik Rak's CMWC PRNG
+; Quality: Excellent -- passes visual bitmap tests
+; Size:    ~30 bytes code + 8 bytes table
+; Output:  A = pseudo-random byte
+; Period:  ~2^66
+
+patrik_rak_cmwc_rnd:
+    ld   hl, .table
+.smc_idx:
+    ld   bc, 0              ; 10 T -- i (self-modifying)
+    add  hl, bc             ; 11 T
+    ld   a, c               ; 4 T
+    inc  a                  ; 4 T
+    and  7                  ; 7 T -- wrap index to 0-7
+    ld   (.smc_idx+1), a    ; 13 T -- store new index
+    ld   c, (hl)            ; 7 T -- y = q[i]
+    ex   de, hl             ; 4 T
+    ld   h, c               ; 4 T -- t = 256 * y
+    ld   l, b               ; 4 T
+    sbc  hl, bc             ; 15 T -- t = 255 * y
+    sbc  hl, bc             ; 15 T -- t = 254 * y
+    sbc  hl, bc             ; 15 T -- t = 253 * y
+.smc_car:
+    ld   c, 0               ; 7 T -- carry (self-modifying)
+    add  hl, bc             ; 11 T -- t = 253 * y + c
+    ld   a, h               ; 4 T
+    ld   (.smc_car+1), a    ; 13 T -- c = t / 256
+    ld   a, l               ; 4 T -- x = t % 256
+    cpl                     ; 4 T -- x = ~x (complement)
+    ld   (de), a            ; 7 T -- q[i] = x
+    ret                     ; 10 T
+
+.table:
+    DB   82, 97, 120, 111, 102, 116, 20, 12
+```
+
+The algorithm multiplies the current buffer entry by 253, adds a carry value, stores the new carry, and complements the result. The 8-byte circular buffer means the generator's state space is vast -- 8 bytes of buffer plus 1 byte of carry plus the index, giving far more internal state than any single-register generator can achieve.
+
+Artem Topchiy's verdict: **best quality** in the collection. When filling a 256x192 bitmap, no visible patterns emerge even at large scales.
+
+#### Ion Random (Second Best)
+
+Originally from Ion Shell for the TI-83 calculator, adapted for Z80. This generator mixes the R register with a feedback loop, achieving surprisingly good randomness from just ~15 bytes:
+
+```z80
+; Ion Random
+; Quality: Good -- minor patterns visible only at extreme scale
+; Size:    ~15 bytes
+; Output:  A = pseudo-random byte
+; Origin:  Ion Shell (TI-83), adapted for Z80
+
+ion_rnd:
+.smc_seed:
+    ld   hl, 0              ; 10 T -- seed (self-modifying)
+    ld   a, r               ; 9 T -- read refresh counter
+    ld   d, a               ; 4 T
+    ld   e, (hl)            ; 7 T
+    add  hl, de             ; 11 T
+    add  a, l               ; 4 T
+    xor  h                  ; 4 T
+    ld   (.smc_seed+1), hl  ; 16 T -- update seed
+    ret                     ; 10 T
+```
+
+The R register injection means this generator produces different sequences depending on the calling context -- how many instructions execute between calls affects R, which feeds back into the state. For a demo main loop with fixed timing, R advances predictably, but the nonlinear mixing (ADD + XOR) still produces good output. In a game where player input varies the call pattern, the R contribution adds genuine unpredictability.
+
+Artem Topchiy's verdict: **second best**. Very compact, good quality for its size.
+
+#### XORshift 16-bit (Mediocre)
+
+A 16-bit XORshift generator -- the Z80 adaptation of Marsaglia's well-known family:
+
+```z80
+; 16-bit XORshift PRNG
+; Quality: Mediocre -- visible diagonal patterns in bitmap tests
+; Size:    ~25 bytes
+; Output:  A = pseudo-random byte (H or L)
+; Period:  65535
+
+xorshift_rnd:
+.smc_state:
+    ld   hl, 1              ; 10 T -- state (self-modifying, must not be 0)
+    ld   a, h               ; 4 T
+    rra                     ; 4 T
+    ld   a, l               ; 4 T
+    rra                     ; 4 T
+    xor  h                  ; 4 T
+    ld   h, a               ; 4 T
+    ld   a, l               ; 4 T
+    rra                     ; 4 T
+    ld   a, h               ; 4 T
+    rra                     ; 4 T
+    xor  l                  ; 4 T
+    ld   l, a               ; 4 T
+    xor  h                  ; 4 T
+    ld   h, a               ; 4 T
+    ld   (.smc_state+1), hl ; 16 T -- update state
+    ret                     ; 10 T
+```
+
+XORshift generators are fast and simple, but with only 16 bits of state the period is at most 65,535. More problematically, the bit-rotation pattern creates visible diagonal streaks when the output is mapped to pixels. For a quick star field or particle effect this may be acceptable. For anything that fills large screen areas with "noise," the patterns become obvious.
+
+#### Raxoft's CMWC Variant (Mediocre)
+
+A CMWC variant by Raxoft, similar in principle to Patrik Rak's version but with a different buffer arrangement. Artem Topchiy found it produced **visible patterns at scale** -- likely due to the way the carry propagation interacts with the buffer indexing. We include it in the compilable example (`examples/prng.a80`) for completeness, but for production use, Patrik Rak's version is strictly superior.
+
+### Elite's Tribonacci Approach
+
+Worth a brief mention: the legendary *Elite* (1984) used a Tribonacci-like sequence for its procedurally generated galaxy. Three registers feed back into each other in a cycle, producing deterministic but well-distributed sequences. The key insight was reproducibility -- given the same seed, the same galaxy generates every time, which meant the entire universe could "fit" in a few bytes of generator state. David Braben and Ian Bell used this to generate 8 galaxies of 256 star systems each from a handful of seed bytes. The technique is closer to a hash function than a PRNG, but the principle -- small state, large apparent complexity -- is the same one that drives demoscene size-coding.
+
+### Elite's Galaxy Generator: A Deeper Look
+
+The Tribonacci approach deserves more detail because it illustrates a profound principle: **a PRNG is not just a random number source -- it is a compression algorithm.**
+
+David Braben and Ian Bell needed 8 galaxies of 256 star systems, each with a name, position, economy, government type, and tech level. Storing all of that explicitly would consume kilobytes. Instead, they stored only a 6-byte seed per galaxy and a deterministic generator that expanded each seed into the full star system data. The generator was a three-register feedback loop -- each step rotates and XORs three 16-bit values:
+
+```
+; Elite's galaxy generator (conceptual, 6502 origin):
+;   seed = [s0, s1, s2]  (three 16-bit words)
+;   twist: s0' = s1, s1' = s2, s2' = s0 + s1 + s2  (mod 65536)
+;   repeat twist for each byte of star system data
+```
+
+On the Z80, the same principle works with three register pairs. The "twist" operation produces deterministic but well-distributed values. The crucial property: given the same seed, the same galaxy generates every time. Navigation between stars is just re-seeding and re-generating.
+
+This idea -- **small state, large apparent complexity** -- drives demoscene size-coding too. A 256-byte intro that fills the screen with intricate patterns is doing exactly what Elite did: expanding a tiny seed into a large, complex output through a deterministic process.
+
+### Shaped Randomness
+
+Sometimes you want numbers that are random but follow a specific distribution. A flat uniform PRNG gives every value equal probability, but real-world phenomena are rarely uniform: enemy spawn rates, particle speeds, terrain heights -- all tend to cluster around preferred values.
+
+Common tricks on the Z80:
+
+- **Triangular distribution** -- add two uniform random bytes and shift right. The sum clusters around the centre (128), producing "natural-looking" variation. Cost: two PRNG calls + ADD + SRL = ~20 extra T-states.
+
+```z80
+; Triangular random: result clusters around 128
+    call patrik_rak_cmwc_rnd  ; A = uniform random
+    ld   b, a
+    call patrik_rak_cmwc_rnd  ; A = another uniform random
+    add  a, b                 ; sum (wraps at 256)
+    rra                       ; divide by 2 → triangular distribution
+```
+
+- **Rejection sampling** -- generate a random number, reject values outside your desired range. For power-of-two ranges this is free (just AND with a mask). For arbitrary ranges, loop until the value fits.
+
+- **Weighted tables** -- store a 256-byte lookup table where each output value appears in proportion to its desired probability. Index with a uniform random byte. The table costs 256 bytes but the lookup is instant (7 T-states). Perfect when the distribution is complex and fixed.
+
+- **PRNG as hash function** -- feed structured data (coordinates, frame numbers) through the PRNG to get deterministic noise. This is how size-coded plasma and noise textures work: `random(x XOR y XOR frame)` gives a different-looking value per pixel per frame, but it is entirely reproducible.
+
+### Seeds and Reproducibility
+
+In a demo, reproducibility is usually desirable: the effect should look the same every time it runs, because the coder choreographed the visuals to match the music. Seed the PRNG once with a fixed value and the sequence is deterministic.
+
+In a game, unpredictability matters. Common seeding strategies:
+
+- **FRAMES system variable ($5C78)** -- the Spectrum ROM maintains a 3-byte frame counter at address $5C78 that increments every 1/50th of a second from power-on. Reading it gives a time-dependent seed that varies with how long the machine has been running. Artem Topchiy recommends using it to initialise Patrik Rak's CMWC table:
+
+```z80
+; Seed Patrik Rak CMWC from FRAMES system variable
+    ld   hl, $5C78            ; FRAMES (3 bytes, increments at 50 Hz)
+    ld   a, (hl)              ; low byte -- most variable
+    ld   de, patrik_rak_cmwc_rnd.table
+    ld   b, 8
+.seed_loop:
+    xor  (hl)                 ; mix with FRAMES
+    ld   (de), a              ; write to table
+    inc  de
+    rlca                      ; rotate for variety
+    add  a, b                 ; add loop counter
+    djnz .seed_loop
+```
+
+- **Read R at a user-input moment** -- the exact instruction count between reset and the player pressing a key varies each run. `LD A,R` at that moment captures timing entropy.
+- **Frame counter accumulation** -- XOR the R register into an accumulator every frame during the title screen; use the accumulated value as seed when the game starts.
+- **Combine multiple sources** -- XOR together R, the low byte of FRAMES, and a byte from the floating bus (on 48K Spectrums, reading certain ports returns whatever the ULA is currently fetching from RAM -- a source of positional entropy).
+
+For demos, simply initialise the generator's state to a known value and leave it. The compilable example (`examples/prng.a80`) shows all four generators with fixed seeds.
+
+### Comparison Table
+
+| Algorithm | Size (bytes) | Speed (T-states) | Quality | Period | Notes |
+|-----------|-------------|-------------------|---------|--------|-------|
+| Patrik Rak CMWC | ~30 + 8 table | ~170 | Excellent | ~2^66 | Best overall; 8-byte buffer |
+| Ion Random | ~15 | ~75 | Good | Depends on R | Compact; mixes R register |
+| XORshift 16 | ~25 | ~90 | Mediocre | 65,535 | Visible diagonal patterns |
+| Raxoft CMWC | ~35 + 10 table | ~180 | Mediocre | ~2^66 | Patterns visible at scale |
+| LD A,R alone | 2 | 9 | Poor | 128 | NOT a PRNG; use as seed only |
+
+For most demoscene work, **Patrik Rak's CMWC** is the clear winner: excellent quality, reasonable size, and a period so long it will never repeat during a demo. If code size is critical (size-coding, 256-byte intros), **Ion Random** packs remarkable quality into 15 bytes. XORshift is a fallback when you need something quick and do not care about visual quality.
+
+> **Credits:** PRNG collection assembled by **Gogin**. Quality assessment and bitmap testing by **Artem Topchiy**. Patrik Rak's CMWC generator is based on George Marsaglia's Complementary Multiply-With-Carry theory. Ion Random originates from **Ion Shell** for the TI-83 calculator.
+
+---
+
 *All cycle counts in this chapter are for Pentagon timing (no wait states). On a standard 48K Spectrum or Scorpion with contended memory, expect higher counts for code executing in the lower 32K of RAM. See Appendix A for the complete timing reference.*

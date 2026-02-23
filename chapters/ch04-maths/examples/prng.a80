@@ -1,0 +1,193 @@
+; Chapter 4: Pseudo-Random Number Generators
+; Four PRNG implementations from Gogin's collection
+; Quality assessed by Artem Topchiy
+;
+; Visual demo: fill ZX Spectrum attribute area with random colours
+; using Patrik Rak's CMWC generator (the best one)
+;
+; Assembles with: sjasmplus --nologo
+
+    ORG $8000
+
+; ============================================================
+; Demo: Fill attributes with random colours
+; ============================================================
+start:
+    ; Clear screen
+    ld   hl, $4000
+    ld   de, $4001
+    ld   bc, 6143
+    ld   (hl), 0
+    ldir
+
+    ; Fill attribute area ($5800-$5AFF) with random colours
+    ld   hl, $5800          ; attribute area start
+    ld   bc, 768            ; 32 x 24 = 768 attributes
+
+.fill_loop:
+    push hl
+    push bc
+    call patrik_rak_cmwc_rnd ; A = random byte
+    pop  bc
+    pop  hl
+    ld   (hl), a            ; set attribute to random value
+    inc  hl
+    dec  bc
+    ld   a, b
+    or   c
+    jr   nz, .fill_loop
+
+    ; Infinite loop -- admire the noise
+.wait:
+    halt
+    jr   .wait
+
+
+; ============================================================
+; PATRIK RAK CMWC PRNG -- Best Quality
+; ============================================================
+; Complement Multiply-With-Carry, multiplier 253, 8-byte buffer
+; Quality: Excellent -- passes visual bitmap tests
+; Size:    ~30 bytes code + 8 bytes table
+; Output:  A = pseudo-random byte
+; Period:  ~2^66
+; Credit:  Patrik Rak; collected by Gogin
+;
+; Algorithm: t = 253 * q[i] + carry
+;            carry = t >> 8
+;            q[i]  = ~(t & 0xFF)
+;            return q[i]
+; ============================================================
+patrik_rak_cmwc_rnd:
+    ld   hl, .table
+.smc_idx:
+    ld   bc, 0              ; 10 T -- i (self-modifying)
+    add  hl, bc             ; 11 T
+    ld   a, c               ; 4 T
+    inc  a                  ; 4 T
+    and  7                  ; 7 T -- wrap index to 0-7
+    ld   (.smc_idx+1), a    ; 13 T -- store new index
+    ld   c, (hl)            ; 7 T -- y = q[i]
+    ex   de, hl             ; 4 T -- DE = pointer to q[i]
+    ld   h, c               ; 4 T -- HL = 256 * y  (H=y, L=0)
+    ld   l, b               ; 4 T -- (B is still 0 from ld bc,0)
+    sbc  hl, bc             ; 15 T -- HL = 255 * y
+    sbc  hl, bc             ; 15 T -- HL = 254 * y
+    sbc  hl, bc             ; 15 T -- HL = 253 * y
+.smc_car:
+    ld   c, 0               ; 7 T -- carry (self-modifying)
+    add  hl, bc             ; 11 T -- HL = 253 * y + carry
+    ld   a, h               ; 4 T
+    ld   (.smc_car+1), a    ; 13 T -- new carry = t >> 8
+    ld   a, l               ; 4 T -- x = t & 0xFF
+    cpl                     ; 4 T -- x = ~x (complement)
+    ld   (de), a            ; 7 T -- q[i] = x
+    ret                     ; 10 T
+                            ; Total: ~167 T
+
+.table:
+    DB   82, 97, 120, 111, 102, 116, 20, 12
+
+
+; ============================================================
+; ION RANDOM -- Second Best Quality
+; ============================================================
+; From Ion Shell for TI-83, adapted for Z80
+; Mixes R register with feedback loop
+; Quality: Good -- minor patterns only at extreme scale
+; Size:    ~15 bytes
+; Output:  A = pseudo-random byte
+; Credit:  Ion Shell (TI-83 origin); collected by Gogin
+; ============================================================
+ion_rnd:
+.smc_seed:
+    ld   hl, 0              ; 10 T -- seed (self-modifying)
+    ld   a, r               ; 9 T -- read refresh counter
+    ld   d, a               ; 4 T
+    ld   e, (hl)            ; 7 T
+    add  hl, de             ; 11 T
+    add  a, l               ; 4 T
+    xor  h                  ; 4 T
+    ld   (.smc_seed+1), hl  ; 16 T -- update seed
+    ret                     ; 10 T
+                            ; Total: ~75 T
+
+
+; ============================================================
+; RAXOFT CMWC VARIANT -- Mediocre Quality
+; ============================================================
+; CMWC variant by Raxoft
+; Quality: Mediocre -- visible patterns at scale
+; Size:    ~35 bytes code + 10 bytes table
+; Output:  A = pseudo-random byte
+; Period:  ~2^66 (theoretical)
+; Note:    Table must fit within a single 256-byte page
+; Credit:  Raxoft; collected by Gogin
+; ============================================================
+raxoft_rnd:
+    ld   hl, .rnd_table
+    ld   a, (hl)            ; 7 T -- load index
+    and  7                  ; 7 T
+    inc  a                  ; 4 T -- i = (i & 7) + 1
+    ld   (hl), a            ; 7 T -- store new index
+    inc  l                  ; 4 T -- HL = &carry
+    ld   d, h               ; 4 T -- DE will point to q[i]
+    add  a, l               ; 4 T
+    ld   e, a               ; 4 T -- DE = &q[i]
+    ld   a, (de)            ; 7 T -- y = q[i]
+    ld   b, a               ; 4 T
+    ld   c, a               ; 4 T
+    ld   a, (hl)            ; 7 T -- A = carry byte
+    sub  c                  ; 4 T -- 255 * y + carry step 1
+    jr   nc, .no_dec1       ; 7/12 T
+    dec  b                  ; 4 T
+.no_dec1:
+    sub  c                  ; 4 T -- 254 * y + carry step 2
+    jr   nc, .no_dec2       ; 7/12 T
+    dec  b                  ; 4 T
+.no_dec2:
+    sub  c                  ; 4 T -- 253 * y + carry step 3
+    jr   nc, .no_dec3       ; 7/12 T
+    dec  b                  ; 4 T
+.no_dec3:
+    ld   (hl), b            ; 7 T -- carry = high byte
+    cpl                     ; 4 T -- x = ~(low byte)
+    ld   (de), a            ; 7 T -- q[i] = x
+    ret                     ; 10 T
+
+    ; Table must be within a single 256-byte page
+    ALIGN 256
+.rnd_table:
+    DB   0, 0, 82, 97, 120, 111, 102, 116, 20, 15
+
+
+; ============================================================
+; XORSHIFT 16-BIT -- Mediocre Quality
+; ============================================================
+; 16-bit XORshift (Marsaglia family)
+; Quality: Mediocre -- visible diagonal patterns in bitmap tests
+; Size:    ~25 bytes
+; Output:  A = pseudo-random byte (value in H after XOR mixing)
+; Period:  65535
+; Credit:  Marsaglia XORshift family; collected by Gogin
+; ============================================================
+xorshift_rnd:
+.smc_state:
+    ld   hl, 1              ; 10 T -- state (self-modifying, must not be 0!)
+    ld   a, h               ; 4 T  -- A = ABCDEFGH
+    rra                     ; 4 T  -- A = ?ABCDEFG, CY=H
+    ld   a, l               ; 4 T  -- A = abcdefgh
+    rra                     ; 4 T  -- A = Habcdefg, CY=h
+    xor  h                  ; 4 T  -- A = Habcdefg ^ ABCDEFGH
+    ld   h, a               ; 4 T  -- H = new value
+    ld   a, l               ; 4 T  -- A = abcdefgh
+    rra                     ; 4 T  -- A = 0abcdefg, CY=h
+    ld   a, h               ; 4 T  -- A = new H value
+    rra                     ; 4 T  -- A = shifted
+    xor  l                  ; 4 T  -- mix with L
+    ld   l, a               ; 4 T  -- L = new value
+    xor  h                  ; 4 T  -- final mix
+    ld   h, a               ; 4 T  -- H = final value
+    ld   (.smc_state+1), hl ; 16 T -- update state
+    ret                     ; 10 T
+                            ; Total: ~92 T
