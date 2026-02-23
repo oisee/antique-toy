@@ -99,6 +99,18 @@
     "glossary": {
       "source_sha256": "e90a190d328017f008a1604d042c22e80e211e8e2cb1dc18f2c337f3f58c460e",
       "translation_sha256": "8af943f56ad97ce79b9dc89e814d3fc5efd76b46834b86f6ec79a1cbf1691a9a"
+    },
+    "chapters/ch17-scrolling": {
+      "source_sha256": "4c28ebc25b1d4c91b246993d58f190258c7b1657c93e2c45148278b46475cbc2",
+      "translation_sha256": "1f5fd7744b8f3052a24df7dc4114add52a710f3430a723c1223c27aa2bb98981"
+    },
+    "chapters/ch22-porting-agon": {
+      "source_sha256": "774344c9cea76ac2572aa913b4b0c46de38965b28670f100533ad5de73451197",
+      "translation_sha256": "df894040bdf3c26990e11699c4beeadb144a7fdd98a3e8addad49e25196d3453"
+    },
+    "chapters/ch23-ai-assisted": {
+      "source_sha256": "1f3ca2081abb17aae0a4033d2f71c13a349b214fcd309f057b18f607d13658d5",
+      "translation_sha256": "1b7cdb3969726b15f8516bc5cd051343877622325825d66252c45204d87ba1b6"
     }
   },
   "ru": {
