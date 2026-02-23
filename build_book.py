@@ -61,6 +61,20 @@ def version_string(v):
     return f"{date}-v{v['major']}.{v['minor']}-b{v['build_number']}"
 
 
+def release_tag():
+    """Get the latest git tag for versioned filenames, e.g. 'v0.6'."""
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0"],
+            capture_output=True, text=True, cwd=ROOT
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except FileNotFoundError:
+        pass
+    return None
+
+
 def combine_chapters():
     """Concatenate all chapters + extras into a single markdown string."""
     chapters = sorted(glob(str(ROOT / CHAPTER_GLOB)))
@@ -150,6 +164,18 @@ def run_pandoc(args, label):
                 print(f"  [warn] {line}")
 
 
+def _copy_stable(out, base, ext):
+    """Copy build output to stable names: book-a4.pdf + book-a4-v0.6.pdf."""
+    import shutil
+    stable = BUILD_DIR / f"{base}{ext}"
+    shutil.copy2(out, stable)
+    tag = release_tag()
+    if tag:
+        versioned = BUILD_DIR / f"{base}-{tag}{ext}"
+        shutil.copy2(out, versioned)
+        print(f"    → {versioned.name}")
+
+
 def build_pdf_a4(meta, combined, vs):
     out = BUILD_DIR / f"Coding_the_Impossible_{vs}.pdf"
     run_pandoc([
@@ -159,10 +185,7 @@ def build_pdf_a4(meta, combined, vs):
         "-V", "fontsize=11pt",
         "-V", "geometry=a4paper, margin=1in",
     ], f"A4 PDF → {out.name}")
-    # Copy as stable name for release
-    stable = BUILD_DIR / "book-a4.pdf"
-    import shutil
-    shutil.copy2(out, stable)
+    _copy_stable(out, "book-a4", ".pdf")
     return out
 
 
@@ -175,9 +198,7 @@ def build_pdf_a5(meta, combined, vs):
         "-V", "fontsize=10pt",
         "-V", "geometry=a5paper, top=15mm, bottom=15mm, left=18mm, right=15mm",
     ], f"A5 PDF → {out.name}")
-    stable = BUILD_DIR / "book-a5.pdf"
-    import shutil
-    shutil.copy2(out, stable)
+    _copy_stable(out, "book-a5", ".pdf")
     return out
 
 
@@ -188,9 +209,7 @@ def build_epub(meta, combined, vs):
         "-o", str(out),
         "--epub-chapter-level=1",
     ], f"EPUB → {out.name}")
-    stable = BUILD_DIR / "book.epub"
-    import shutil
-    shutil.copy2(out, stable)
+    _copy_stable(out, "book", ".epub")
     return out
 
 
