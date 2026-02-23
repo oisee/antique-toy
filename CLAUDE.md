@@ -73,3 +73,7 @@ make clean        # remove build artifacts
 ## Languages
 
 Project is bilingual. Planning documents and conversations primarily in Russian. Chapter drafts in English. Preserve original language of source quotes.
+
+## Translations
+
+Translations into Spanish, Russian, and Ukrainian are in `translations/{es,ru,uk}/`. When translating chapters, **always load `translations/glossary-lookup.md` first** — it contains 161 canonical term mappings and forbidden alternatives (e.g. RU: "кадр" not "фрейм"). Progress tracked in `translations/PROGRESS.md`.
