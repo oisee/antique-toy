@@ -1,0 +1,621 @@
+; Chapter 8: Dual-Screen Multicolor (Ringo/DenisGrachev technique)
+; ==================================================================
+;
+; Demonstrates the dual-screen (shadow screen) multicolor technique
+; used by DenisGrachev in his Ringo engine. This is a Russian ZX
+; Spectrum scene technique published on Hype in December 2022.
+;
+; THE TECHNIQUE:
+; The ZX Spectrum 128K has two screen pages: Screen 0 ($4000) and
+; Screen 1 ($C000, bank 7), switchable via bit 3 of port $7FFD.
+;
+; Within each 8-scanline character row:
+;   - Screen A shows the "inner" 6 scanlines (lines 2-7). The beam-
+;     racing code rewrites attributes between ULA reads to produce
+;     6 bands of per-scanline colour.
+;   - At the character row boundary (line 8 of row N, line 1 of
+;     row N+1), we switch to Screen B. On Screen B, adjacent
+;     character rows naturally have different attributes — the ULA
+;     reads row N's attr for line 8 and row N+1's attr for line 1.
+;     This gives us 2 lines of "free" multicolor with NO beam racing.
+;   - Then we switch back to Screen A for the next row's inner 6.
+;
+; KEY INSIGHT: At the character row boundary, two adjacent rows
+; naturally have different attributes. By switching screens at the
+; right moment, we get 2 lines of multicolor for free, reducing
+; beam-racing from 8 bands to 6 bands per row (~25% CPU savings).
+;
+; Credits: DenisGrachev (Ringo engine, Hype 2022)
+;
+; Target: ZX Spectrum 128K (Pentagon timing: 224 T per scanline,
+;         71680 T per frame). Requires dual screens.
+;
+; Assembles with: sjasmplus --nologo
+
+    ORG $8000
+
+; --- Constants ---
+SCREEN0         EQU $4000       ; Screen 0 pixel memory
+ATTRS0          EQU $5800       ; Screen 0 attribute memory
+SCREEN1         EQU $C000       ; Screen 1 pixel memory (bank 7)
+ATTRS1          EQU $D800       ; Screen 1 attribute memory (bank 7)
+ATTR_WIDTH      EQU 32          ; bytes per attribute row
+BORDER_PORT     EQU $FE
+PORT_7FFD       EQU $7FFD       ; 128K memory paging port
+
+; Port $7FFD bit layout:
+;   Bits 0-2: RAM bank at $C000
+;   Bit 3:    Screen select (0=Screen0, 1=Screen1)
+;   Bit 4:    ROM select
+;   Bit 5:    Disable paging (lock — do NOT set this!)
+;
+; To display Screen 0 + page bank 7: $07 (bits: 0_0_0_00_111)
+; To display Screen 1 + page bank 7: $0F (bits: 0_0_0_01_111)
+; (Bank 7 must be paged in to write Screen 1 data at $C000)
+
+PAGE_SCR0_BANK7 EQU $07         ; display Screen 0, RAM bank 7 at $C000
+PAGE_SCR1_BANK7 EQU $0F         ; display Screen 1, RAM bank 7 at $C000
+
+; Multicolor parameters
+NUM_CHAR_ROWS   EQU 8           ; character rows to process
+INNER_BANDS     EQU 6           ; beam-raced bands per row (lines 2-7)
+BOUNDARY_LINES  EQU 2           ; free lines at row boundary (lines 8,1)
+
+; Attribute byte format: FBpppiii
+;   F=flash, B=bright, ppp=paper(0-7), iii=ink(0-7)
+; Colours: 0=black 1=blue 2=red 3=magenta 4=green 5=cyan 6=yellow 7=white
+
+; ===================================================================
+; Entry point
+; ===================================================================
+start:
+    ; --- Step 1: Page in bank 7 at $C000 to access Screen 1 ---
+    ld   a, PAGE_SCR0_BANK7     ; display Screen 0, bank 7 paged in
+    ld   bc, PORT_7FFD
+    out  (c), a
+
+    ; --- Step 2: Fill BOTH screens with $F0 pixel pattern ---
+    ; $F0 = 11110000b: left 4 pixels = INK, right 4 = PAPER
+    ; This makes colour changes clearly visible as two-tone columns.
+
+    ; Fill Screen 0 ($4000-$57FF)
+    ld   hl, SCREEN0
+    ld   de, SCREEN0 + 1
+    ld   bc, 6143               ; 6144 - 1
+    ld   (hl), $F0
+    ldir
+
+    ; Fill Screen 1 ($C000-$D7FF) — bank 7 is already paged in
+    ld   hl, SCREEN1
+    ld   de, SCREEN1 + 1
+    ld   bc, 6143
+    ld   (hl), $F0
+    ldir
+
+    ; --- Step 3: Set up Screen 0 attributes (initial = black) ---
+    ; Screen A attrs will be overwritten by beam-racing each frame.
+    ; We initialise to black so any un-raced area is invisible.
+    ld   hl, ATTRS0
+    ld   de, ATTRS0 + 1
+    ld   bc, 767                ; 768 - 1
+    ld   (hl), $00              ; black on black
+    ldir
+
+    ; --- Step 4: Set up Screen 1 attributes (boundary colours) ---
+    ; Screen B provides the "free" 2 lines at each row boundary.
+    ; Row N on Screen B has the colour for scanline 8 of row N.
+    ; Row N+1 on Screen B has the colour for scanline 1 of row N+1.
+    ; We set each row to a distinct colour so the boundary is visible.
+    call setup_screen1_attrs
+
+    ; --- Step 5: Set border to black ---
+    xor  a
+    out  (BORDER_PORT), a
+
+    ; --- Step 6: Build the colour tables ---
+    call build_inner_colours    ; beam-raced colours for Screen A
+    call build_boundary_colours ; static colours for Screen B
+
+; ===================================================================
+; Main loop: dual-screen multicolor rendering
+; ===================================================================
+main_loop:
+    halt                        ; sync to frame interrupt
+
+    ; --- Timing delay: wait for ULA to reach visible area ---
+    ; On Pentagon, interrupt fires at top of frame. Visible area
+    ; starts 64 scanlines later = 64 * 224 = 14336 T-states.
+    ld   b, 50                  ; coarse delay: ~50 * 22 = 1100 T
+.top_delay:
+    ld   a, r                   ; 9 T (dummy work)
+    djnz .top_delay             ; 13 T per iter
+
+    ld   bc, 500                ; fine delay: ~500 * 26 = 13000 T
+.fine_delay:
+    dec  bc                     ; 6 T
+    ld   a, b                   ; 4 T
+    or   c                      ; 4 T
+    jr   nz, .fine_delay        ; 12/7 T
+
+    ; --- Begin beam-racing: disable interrupts ---
+    di
+
+    ; Save the real stack pointer
+    ld   (.smc_restore_sp + 1), sp  ; 20 T  self-mod save
+
+    ; We start on Screen A (Screen 0) — already displaying it.
+    ; The ULA is now drawing the first character row.
+
+    ; --- Process each character row ---
+    ; For each row:
+    ;   1. Beam-race 6 inner scanlines on Screen A (rewrite attrs)
+    ;   2. At the boundary, switch to Screen B for 2 free lines
+    ;   3. Switch back to Screen A for the next row
+    ;
+    ; The boundary switch happens between the last inner scanline
+    ; of one row and the first inner scanline of the next.
+
+    ld   ix, inner_colour_table ; pointer to inner band colours
+
+    ; === Character Row 0 ===
+    ; First row is special: line 1 starts on Screen A (no boundary
+    ; switch before the first row). We race all 6 inner lines.
+    ; Line 1 uses the initial attr set before the frame.
+
+    ; Write attr for inner line 2 (band 0 of inner)
+    ld   hl, ATTRS0             ; row 0 attribute address
+    ld   a, (ix + 0)            ; 19 T  inner band colour
+    call write_attr_row         ; 352 T  fill 32 bytes
+    ; Wait for scanline to pass (~90 T padding for 2 scanlines)
+    call scanline_wait
+
+    ; Inner line 3 (band 1)
+    ld   hl, ATTRS0
+    ld   a, (ix + 1)
+    call write_attr_row
+    call scanline_wait
+
+    ; Inner line 4 (band 2)
+    ld   hl, ATTRS0
+    ld   a, (ix + 2)
+    call write_attr_row
+    call scanline_wait
+
+    ; Inner line 5 (band 3)
+    ld   hl, ATTRS0
+    ld   a, (ix + 3)
+    call write_attr_row
+    call scanline_wait
+
+    ; Inner line 6 (band 4)
+    ld   hl, ATTRS0
+    ld   a, (ix + 4)
+    call write_attr_row
+    call scanline_wait
+
+    ; Inner line 7 (band 5)
+    ld   hl, ATTRS0
+    ld   a, (ix + 5)
+    call write_attr_row
+    call scanline_wait
+
+    ; --- BOUNDARY: switch to Screen B for lines 8/1 ---
+    ; Line 8 of row 0 and line 1 of row 1 are handled by Screen B.
+    ; On Screen B, row 0 has one attr and row 1 has another — the
+    ; natural attribute boundary gives us 2 free colour bands.
+    ld   a, PAGE_SCR1_BANK7     ; 7 T  switch to Screen 1
+    ld   bc, PORT_7FFD          ; 10 T
+    out  (c), a                 ; 12 T  = 29 T for screen switch
+
+    ; Wait 2 scanlines (~448 T) for the boundary lines to pass
+    call boundary_wait
+
+    ; Switch back to Screen A
+    ld   a, PAGE_SCR0_BANK7     ; 7 T  switch to Screen 0
+    ld   bc, PORT_7FFD          ; 10 T
+    out  (c), a                 ; 12 T
+
+    ; Advance to row 1 inner colours
+    ld   de, INNER_BANDS
+    add  ix, de
+
+    ; === Character Rows 1-6 (loop) ===
+    ; These rows have the full pattern: 6 inner + boundary switch.
+    ld   iy, 6                  ; remaining rows counter (iy as counter)
+
+.row_loop:
+    ; Calculate attribute address for current row.
+    ; We track it manually: row N attrs = ATTRS0 + N * 32.
+    ; Rows 1-6 processed in sequence.
+    push iy                     ; save counter
+
+    ; We need the attr row address. Derive from IX position:
+    ; row index = (IX - inner_colour_table) / INNER_BANDS
+    ; But simpler: keep HL as running attr pointer.
+
+    ; Actually, let's use a self-modifying attr base.
+.smc_attr_base:
+    ld   hl, ATTRS0 + 32        ; starts at row 1; patched each iteration
+
+    ; Inner band 0
+    ld   a, (ix + 0)
+    call write_attr_row
+    call scanline_wait
+
+    ; Inner band 1
+.smc_attr_b1:
+    ld   hl, ATTRS0 + 32
+    ld   a, (ix + 1)
+    call write_attr_row
+    call scanline_wait
+
+    ; Inner band 2
+.smc_attr_b2:
+    ld   hl, ATTRS0 + 32
+    ld   a, (ix + 2)
+    call write_attr_row
+    call scanline_wait
+
+    ; Inner band 3
+.smc_attr_b3:
+    ld   hl, ATTRS0 + 32
+    ld   a, (ix + 3)
+    call write_attr_row
+    call scanline_wait
+
+    ; Inner band 4
+.smc_attr_b4:
+    ld   hl, ATTRS0 + 32
+    ld   a, (ix + 4)
+    call write_attr_row
+    call scanline_wait
+
+    ; Inner band 5
+.smc_attr_b5:
+    ld   hl, ATTRS0 + 32
+    ld   a, (ix + 5)
+    call write_attr_row
+    call scanline_wait
+
+    ; --- BOUNDARY: switch to Screen B ---
+    ld   a, PAGE_SCR1_BANK7
+    ld   bc, PORT_7FFD
+    out  (c), a
+    call boundary_wait
+    ld   a, PAGE_SCR0_BANK7
+    ld   bc, PORT_7FFD
+    out  (c), a
+
+    ; Advance inner colour pointer
+    ld   de, INNER_BANDS
+    add  ix, de
+
+    ; Advance attribute base address (+32 for next row)
+    ; Self-modify all the ld hl,ATTRS0+N*32 instructions
+    ld   hl, (.smc_attr_base + 1) ; read current attr base
+    ld   de, ATTR_WIDTH
+    add  hl, de                 ; next row
+    ld   (.smc_attr_base + 1), hl  ; patch all bases
+    ld   (.smc_attr_b1 + 1), hl
+    ld   (.smc_attr_b2 + 1), hl
+    ld   (.smc_attr_b3 + 1), hl
+    ld   (.smc_attr_b4 + 1), hl
+    ld   (.smc_attr_b5 + 1), hl
+
+    pop  iy                     ; restore counter
+    dec  iy
+    push af
+    push bc
+    ld   b, iyh
+    ld   c, iyl
+    ld   a, b
+    or   c
+    pop  bc
+    pop  af
+    jp   nz, .row_loop
+
+    ; === Character Row 7 (last row) ===
+    ; Last row: 6 inner bands, but no boundary switch after
+    ; (nothing follows on screen, or we just let it end).
+    ld   hl, ATTRS0 + 7 * 32
+    ld   a, (ix + 0)
+    call write_attr_row
+    call scanline_wait
+    ld   hl, ATTRS0 + 7 * 32
+    ld   a, (ix + 1)
+    call write_attr_row
+    call scanline_wait
+    ld   hl, ATTRS0 + 7 * 32
+    ld   a, (ix + 2)
+    call write_attr_row
+    call scanline_wait
+    ld   hl, ATTRS0 + 7 * 32
+    ld   a, (ix + 3)
+    call write_attr_row
+    call scanline_wait
+    ld   hl, ATTRS0 + 7 * 32
+    ld   a, (ix + 4)
+    call write_attr_row
+    call scanline_wait
+    ld   hl, ATTRS0 + 7 * 32
+    ld   a, (ix + 5)
+    call write_attr_row
+
+    ; --- Restore SP and re-enable interrupts ---
+.smc_restore_sp:
+    ld   sp, $0000              ; self-modified: real SP restored
+    ei
+
+    ; --- Update Screen B boundary attributes for animation ---
+    call update_boundary_colours
+
+    ; --- Animate: rotate the inner colour table ---
+    call rotate_inner_colours
+
+    ; --- Reset attr base for next frame ---
+    ld   hl, ATTRS0 + 32
+    ld   (.smc_attr_base + 1), hl
+    ld   (.smc_attr_b1 + 1), hl
+    ld   (.smc_attr_b2 + 1), hl
+    ld   (.smc_attr_b3 + 1), hl
+    ld   (.smc_attr_b4 + 1), hl
+    ld   (.smc_attr_b5 + 1), hl
+
+    jp   main_loop
+
+; ===================================================================
+; write_attr_row — Write register A to 32 consecutive bytes at HL
+; Unrolled for speed. HL must point to attribute row start.
+; Cost: 32 * 11 = 352 T-states (just over 1.5 scanlines).
+; ===================================================================
+write_attr_row:
+    ld   (hl), a : inc  l      ; byte 1     7+4 = 11 T
+    ld   (hl), a : inc  l      ; byte 2
+    ld   (hl), a : inc  l      ; byte 3
+    ld   (hl), a : inc  l      ; byte 4
+    ld   (hl), a : inc  l      ; byte 5
+    ld   (hl), a : inc  l      ; byte 6
+    ld   (hl), a : inc  l      ; byte 7
+    ld   (hl), a : inc  l      ; byte 8
+    ld   (hl), a : inc  l      ; byte 9
+    ld   (hl), a : inc  l      ; byte 10
+    ld   (hl), a : inc  l      ; byte 11
+    ld   (hl), a : inc  l      ; byte 12
+    ld   (hl), a : inc  l      ; byte 13
+    ld   (hl), a : inc  l      ; byte 14
+    ld   (hl), a : inc  l      ; byte 15
+    ld   (hl), a : inc  l      ; byte 16
+    ld   (hl), a : inc  l      ; byte 17
+    ld   (hl), a : inc  l      ; byte 18
+    ld   (hl), a : inc  l      ; byte 19
+    ld   (hl), a : inc  l      ; byte 20
+    ld   (hl), a : inc  l      ; byte 21
+    ld   (hl), a : inc  l      ; byte 22
+    ld   (hl), a : inc  l      ; byte 23
+    ld   (hl), a : inc  l      ; byte 24
+    ld   (hl), a : inc  l      ; byte 25
+    ld   (hl), a : inc  l      ; byte 26
+    ld   (hl), a : inc  l      ; byte 27
+    ld   (hl), a : inc  l      ; byte 28
+    ld   (hl), a : inc  l      ; byte 29
+    ld   (hl), a : inc  l      ; byte 30
+    ld   (hl), a : inc  l      ; byte 31
+    ld   (hl), a               ; byte 32
+    ret                         ; 10 T
+
+; ===================================================================
+; scanline_wait — Delay for ~1 scanline between attribute rewrites
+; Each attribute rewrite takes ~362 T (352 + call/ret overhead).
+; We need to wait until the ULA has read the new attrs and moved on.
+; 1 scanline = 224 T. We need ~80-100 T of padding.
+; ===================================================================
+scanline_wait:
+    ; ~80 T of padding (20 NOPs = 80 T, plus call/ret = 27 T)
+    ; Total with call overhead: ~107 T. Tunable for machine model.
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop                   ; 8 T
+    ret                         ; 10 T  (call=17 + body=56 + ret=10 = 83 T)
+
+; ===================================================================
+; boundary_wait — Wait ~2 scanlines for the Screen B boundary
+; 2 scanlines = 448 T. Account for OUT overhead (~60 T each side).
+; Need ~320 T of pure waiting.
+; ===================================================================
+boundary_wait:
+    ; 32 T-state chunks: 10 iterations of "dec b : jr nz" won't work
+    ; without setup. Use NOPs for simplicity and deterministic timing.
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop : nop : nop       ; 16 T
+    nop : nop                   ; 8 T  = 312 T + call/ret 27 T = 339 T
+    ret
+
+; ===================================================================
+; setup_screen1_attrs — Set Screen 1 attributes for boundary lines
+; Each row on Screen 1 gets a colour that will be visible during the
+; 2-scanline boundary switch. Row N provides the colour for the
+; last scanline of char row N, and the first scanline of row N+1
+; naturally comes from row N+1's attribute.
+; Bank 7 must be paged in at $C000 (already done at startup).
+; ===================================================================
+setup_screen1_attrs:
+    ld   hl, boundary_colour_table
+    ld   de, ATTRS1             ; $D800 = Screen 1 attributes
+
+    ld   b, NUM_CHAR_ROWS       ; 8 rows
+.row_loop:
+    ld   a, (hl)                ; get boundary colour for this row
+    push hl
+    push bc
+
+    ; Fill 32 bytes of this attribute row
+    ld   h, d
+    ld   l, e                   ; HL = current attr row in Screen 1
+    ld   b, 32
+.fill_loop:
+    ld   (hl), a
+    inc  hl
+    djnz .fill_loop
+
+    ; Advance DE to next row (+32)
+    ld   hl, 32
+    add  hl, de
+    ex   de, hl                 ; DE = next row
+
+    pop  bc
+    pop  hl
+    inc  hl                     ; next boundary colour
+    djnz .row_loop
+    ret
+
+; ===================================================================
+; update_boundary_colours — Refresh Screen 1 attributes each frame
+; Writes current boundary_colour_table values to Screen 1's attrs.
+; Called with interrupts enabled, bank 7 already paged in.
+; ===================================================================
+update_boundary_colours:
+    ; Page bank 7 in (should already be, but ensure it)
+    ld   a, PAGE_SCR0_BANK7
+    ld   bc, PORT_7FFD
+    out  (c), a
+
+    ld   hl, boundary_colour_table
+    ld   de, ATTRS1
+
+    ld   b, NUM_CHAR_ROWS
+.row_loop:
+    ld   a, (hl)
+    push hl
+    push bc
+
+    ld   h, d
+    ld   l, e
+    ld   b, 32
+.fill_loop:
+    ld   (hl), a
+    inc  hl
+    djnz .fill_loop
+
+    ld   hl, 32
+    add  hl, de
+    ex   de, hl
+
+    pop  bc
+    pop  hl
+    inc  hl
+    djnz .row_loop
+
+    ; Rotate boundary colours for animation
+    ld   hl, boundary_colour_table
+    ld   a, (hl)
+    ld   de, boundary_colour_table
+    ld   hl, boundary_colour_table + 1
+    ld   bc, NUM_CHAR_ROWS - 1
+    ldir
+    ld   (de), a
+
+    ret
+
+; ===================================================================
+; build_inner_colours — Generate rainbow colours for beam-raced bands
+; 6 bands per char row x 8 rows = 48 entries.
+; ===================================================================
+build_inner_colours:
+    ld   hl, inner_colour_table
+    ld   de, inner_rainbow
+    ld   b, NUM_CHAR_ROWS * INNER_BANDS  ; 48 entries
+.loop:
+    ld   a, (de)
+    ld   (hl), a
+    inc  hl
+    inc  de
+    djnz .loop
+    ret
+
+; ===================================================================
+; build_boundary_colours — Generate colours for Screen B boundaries
+; One colour per character row = 8 entries.
+; ===================================================================
+build_boundary_colours:
+    ld   hl, boundary_colour_table
+    ld   de, boundary_rainbow
+    ld   b, NUM_CHAR_ROWS       ; 8 entries
+.loop:
+    ld   a, (de)
+    ld   (hl), a
+    inc  hl
+    inc  de
+    djnz .loop
+    ret
+
+; ===================================================================
+; rotate_inner_colours — Rotate the inner colour table by one entry
+; Creates a smooth scrolling rainbow animation.
+; ===================================================================
+rotate_inner_colours:
+    ld   hl, inner_colour_table
+    ld   a, (hl)                ; save first entry
+
+    ld   de, inner_colour_table
+    ld   hl, inner_colour_table + 1
+    ld   bc, NUM_CHAR_ROWS * INNER_BANDS - 1  ; 47 bytes
+    ldir
+
+    ld   (de), a                ; wrap first to end
+    ret
+
+; ===================================================================
+; Data — Rainbow colour patterns
+; ===================================================================
+
+; Inner beam-raced colours: 6 bands per row, 8 rows = 48 entries.
+; Attribute format: 01pppiii = bright=1, paper=ppp, ink=iii
+; Using bright colours on black paper for vivid rainbow.
+inner_rainbow:
+    ; Row 0 bands (6 inner scanlines)
+    DB $41, $41, $45, $45, $44, $44  ; blue, blue, cyan, cyan, green, green
+    ; Row 1
+    DB $44, $44, $46, $46, $42, $42  ; green, green, yellow, yellow, red, red
+    ; Row 2
+    DB $42, $42, $43, $43, $47, $47  ; red, red, magenta, mag, white, white
+    ; Row 3
+    DB $47, $47, $45, $45, $41, $41  ; white, white, cyan, cyan, blue, blue
+    ; Row 4
+    DB $46, $46, $44, $44, $43, $43  ; yellow, yellow, green, green, mag, mag
+    ; Row 5
+    DB $43, $43, $42, $42, $46, $46  ; mag, mag, red, red, yellow, yellow
+    ; Row 6
+    DB $45, $45, $47, $47, $41, $41  ; cyan, cyan, white, white, blue, blue
+    ; Row 7
+    DB $41, $41, $43, $43, $44, $44  ; blue, blue, magenta, mag, green, green
+
+; Boundary colours: 1 per row = 8 entries.
+; These are the "free" colours shown during the Screen B switch.
+; They should complement the inner colours for smooth gradients.
+boundary_rainbow:
+    DB $45, $46, $43, $45, $42, $46, $47, $43
+    ; cyan, yellow, magenta, cyan, red, yellow, white, magenta
+
+; Working tables (modified each frame for animation)
+inner_colour_table:
+    DS NUM_CHAR_ROWS * INNER_BANDS, 0  ; 48 bytes
+boundary_colour_table:
+    DS NUM_CHAR_ROWS, 0                ; 8 bytes
