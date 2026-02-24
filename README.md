@@ -2,7 +2,7 @@
 
 **Z80 Demoscene Techniques for Modern Makers**
 
-**TL;DR:** 23 chapters, ~128K words, 28 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v0.7/book-a4-v0.7.pdf)
+**TL;DR:** 23 chapters + 9 appendices, ~180K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v0.7/book-a4-v0.7.pdf)
 
 This book lives on the **ZX Spectrum**. Most techniques -- DOWN_HL, attribute tricks, ULA timing, 128K bank juggling -- only make sense on this machine. That's where the demoscene is, and that's where the hard problems are.
 
@@ -20,7 +20,7 @@ Chapter 1 (T-state budgets) is the foundation -- read it first. Everything after
 
 | Language | Version | PDF | Words |
 |----------|---------|-----|-------|
-| English | **v0.7** | [book-a4-v0.7.pdf](https://github.com/oisee/antique-toy/releases/download/v0.7/book-a4-v0.7.pdf) | ~128K |
+| English | **v0.8** | [book-a4-v0.8.pdf](https://github.com/oisee/antique-toy/releases/download/v0.8/book-a4-v0.8.pdf) | ~180K |
 | Spanish | v0.6 | [book-a4_ES-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_ES-v0.6.pdf) | ~165K |
 | Russian | v0.6 | [book-a4_RU-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_RU-v0.6.pdf) | ~140K |
 | Ukrainian | v0.6 | [book-a4_UK-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_UK-v0.6.pdf) | ~142K |
@@ -29,7 +29,7 @@ English is the primary edition and always ahead. Translations catch up periodica
 
 ## Contents
 
-23 chapters, ~128K words (English), 28 compilable assembly examples.
+23 chapters + 9 appendices, ~180K words (English), 29 compilable assembly examples.
 
 Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. **eZ80** = Agon Light 2.
 
@@ -71,6 +71,7 @@ Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. 
 | F: Z80 Variants | Done | Z80N (Next), R800 (MSX turboR), eZ80 summary, Soviet clones, comparison table |
 | G: AY-3-8910 Register Reference | Done | Full register map, note table, TurboSound, envelope shapes |
 | H: Storage APIs | Done | TR-DOS (Beta Disk 128) and esxDOS (DivMMC) — ports, ROM API, code examples |
+| I: Bytebeat & AY-Beat | Done | Classic bytebeat, AY-beat engine, formula cookbook, music theory (scales, arpeggios, L-grammars), procedural sound |
 
 ## Building the book
 
@@ -119,7 +120,7 @@ make demo       # build the "Antique Toy" demo
 | 10 | `dotscroll.a80` | POP-trick bouncing dotfield |
 | 11 | `ay_test.a80` | AY-3-8910 tone generation |
 | 12 | `music_sync.a80` | Timeline sync + digital drums |
-| 13 | `intro256.a80` | 256-byte intro skeleton |
+| 13 | `intro256.a80`, `aybeat.a80` | 256-byte intro skeleton, AY-beat generative music |
 | 14 | `decompress.a80` | LZ77 decompressor |
 | 15 | `bank_inspect.a80` | 128K memory bank inspector |
 | 16 | `sprite_demo.a80` | Sprite rendering methods |
