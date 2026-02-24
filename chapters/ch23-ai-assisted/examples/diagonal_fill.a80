@@ -1,0 +1,148 @@
+; diagonal_fill.a80 -- Diagonal Attribute Fill: AI vs Human
+; From Chapter 23: AI-Assisted Z80 Development
+;
+; Fills the ZX Spectrum attribute area ($5800-$5AFF) with diagonal
+; colour stripes. Demonstrates the AI feedback loop from section 23.2:
+;
+;   Version 1 (naive): AI first attempt -- correct but uses PUSH/POP
+;     in the inner loop, wasting 22 T-states per byte.
+;
+;   Version 2 (refined): Human-optimised -- separate row/col counters
+;     in registers, no stack operations in inner loop.
+;
+; The main entry calls the refined version in a loop so the colours
+; animate (the offset increments each frame).
+;
+; Assembles with: sjasmplus --nologo
+
+    ORG $8000
+
+; ============================================================
+; Constants
+; ============================================================
+ATTR_BASE   EQU $5800           ; attribute memory start
+ATTR_ROWS   EQU 24              ; character rows
+ATTR_COLS   EQU 32              ; character columns
+
+; ============================================================
+; Entry point -- animate the diagonal fill
+; ============================================================
+entry:
+    di
+    ld   sp, $FFFF              ; 10T
+    im   1                      ; 8T
+    ei                          ; 4T
+
+    xor  a                      ; 4T
+    ld   (anim_offset), a       ; 13T
+
+animate_loop:
+    halt                        ; sync to 50 Hz
+
+    ; Call the refined version with current animation offset
+    ld   a, (anim_offset)       ; 13T
+    call fill_diagonal_v2       ; refined version
+
+    ; Advance animation offset
+    ld   a, (anim_offset)       ; 13T
+    inc  a                      ; 4T
+    ld   (anim_offset), a       ; 13T
+
+    jr   animate_loop           ; 12T
+
+anim_offset:
+    DB 0
+
+; ============================================================
+; VERSION 1: AI naive attempt (from section 23.2)
+;
+; Uses PUSH AF / POP AF in the inner loop to preserve the
+; row index across the column calculation. Works correctly
+; but wastes 11+10 = 21 T-states per attribute byte on
+; stack operations.
+;
+; Inner loop cost per byte:
+;   push af     11T
+;   add a,c      4T
+;   and 7        7T
+;   or $40       7T
+;   ld (hl),a    7T
+;   inc hl       6T
+;   pop af      10T
+;   dec c        4T
+;   jr nz       12T (taken)
+;               ----
+;   Total:      68T per byte
+;
+; In:  A = animation offset (added to diagonal index)
+; ============================================================
+fill_diagonal_v1:
+    ld   hl, ATTR_BASE          ; 10T
+    ld   b, ATTR_ROWS           ; 7T   24 rows
+
+.row_loop:
+    ld   c, ATTR_COLS           ; 7T   32 columns
+    push af                     ; 11T  save offset+row
+    ld   a, ATTR_ROWS           ; 7T
+    sub  b                      ; 4T   A = row index (0-23)
+
+.col_loop:
+    push af                     ; 11T  --- PUSH per byte ---
+    add  a, c                   ; 4T   diagonal = row + col
+    and  7                      ; 7T   wrap to 0-7 (INK colour)
+    or   $40                    ; 7T   set BRIGHT
+    ld   (hl), a                ; 7T   write attribute
+    inc  hl                     ; 6T
+    pop  af                     ; 10T  --- POP per byte ---
+    dec  c                      ; 4T
+    jr   nz, .col_loop          ; 12T  (taken)
+
+    pop  af                     ; 10T  restore offset
+    djnz .row_loop              ; 13/8T
+    ret
+
+; ============================================================
+; VERSION 2: Human-refined (from section 23.2)
+;
+; Eliminates PUSH/POP by keeping row index in D and column
+; index in E, both in registers throughout the inner loop.
+; No stack operations per byte.
+;
+; Inner loop cost per byte:
+;   ld a,d       4T
+;   add a,e      4T
+;   and 7        7T
+;   or $40       7T
+;   ld (hl),a    7T
+;   inc hl       6T
+;   inc e        4T
+;   djnz        13T (taken)
+;               ----
+;   Total:      52T per byte  (24% faster than V1)
+;
+; In:  A = animation offset (added to row index)
+; ============================================================
+fill_diagonal_v2:
+    ld   hl, ATTR_BASE          ; 10T
+    ld   d, a                   ; 4T   D = row + anim offset
+    ld   c, ATTR_ROWS           ; 7T   C = row counter (24)
+
+.row_loop:
+    ld   e, 0                   ; 7T   E = column index (0-31)
+    ld   b, ATTR_COLS           ; 7T   B = column counter (32)
+
+.col_loop:
+    ld   a, d                   ; 4T   row + offset
+    add  a, e                   ; 4T   + column = diagonal index
+    and  7                      ; 7T   wrap to 0-7
+    or   $40                    ; 7T   BRIGHT + INK colour
+    ld   (hl), a                ; 7T   write attribute byte
+    inc  hl                     ; 6T   next attribute address
+    inc  e                      ; 4T   next column
+    djnz .col_loop              ; 13T  (taken) / 8T (last)
+                                ; --- 52T per byte (taken path)
+
+    inc  d                      ; 4T   advance row index
+    dec  c                      ; 4T   decrement row counter
+    jr   nz, .row_loop          ; 12T  loop until 24 rows done
+    ret

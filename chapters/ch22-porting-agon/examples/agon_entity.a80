@@ -1,0 +1,239 @@
+; agon_entity.a80 -- Entity System: Spectrum vs Agon Comparison
+; From Chapter 22: Porting -- Agon Light 2
+;
+; Demonstrates the entity update loop ported from ZX Spectrum to
+; Agon Light 2. Since sjasmplus targets standard Z80, this file
+; compiles as Z80 code with extensive annotations showing what
+; changes on the eZ80/Agon platform:
+;
+;   - 24-bit addresses (LD IX,entities is 3 bytes, not 2)
+;   - No bank switching (512 KB flat address space)
+;   - VDP commands replace direct screen writes
+;   - Hardware sprites instead of software rendering
+;
+; The logic is identical on both platforms -- only the I/O and
+; memory architecture differ. This is the key lesson of Ch22.
+;
+; Assembles with: sjasmplus --nologo
+; (Standard Z80 -- eZ80 ADL differences noted in comments)
+
+    ORG $8000
+
+; ============================================================
+; Constants (identical on both platforms)
+; ============================================================
+ENT_FLAGS       EQU 0       ; bit 0 = active
+ENT_TYPE        EQU 1       ; entity type
+ENT_X           EQU 2       ; pixel X position
+ENT_Y           EQU 3       ; pixel Y position
+ENT_VX          EQU 4       ; X velocity (signed byte)
+ENT_VY          EQU 5       ; Y velocity (signed byte)
+ENT_FRAME       EQU 6       ; animation frame
+ENT_HP          EQU 7       ; hit points
+ENT_SIZE        EQU 8       ; bytes per entity
+MAX_ENTITIES    EQU 16
+
+; Agon VDP command bytes (for reference -- not used directly
+; in Z80 mode, but shown here for porting context)
+VDP_SPRITE_SEL  EQU $04     ; VDP: select sprite N
+VDP_SPRITE_MOVE EQU $13     ; VDP: move sprite to X,Y
+VDP_SPRITE_SHOW EQU $05     ; VDP: show/hide sprite
+
+; Simulated VDP port for this Z80 example
+; On real Agon: UART0 at $C0 (data), $C5 (status)
+VDP_DATA_PORT   EQU $C0
+
+; ============================================================
+; Entry point
+; ============================================================
+entry:
+    di
+    ld   sp, $BFFF              ; 10T
+    im   1                      ; 8T
+
+    ; Clear entity array
+    ld   hl, entities           ; 10T
+    ; AGON NOTE: In ADL mode this loads a 24-bit address.
+    ;   LD HL,entities  --> 3-byte immediate, not 2-byte.
+    ;   On Spectrum: entities is in $8000-$BFFF (bank 2).
+    ;   On Agon: entities can be anywhere in 512 KB.
+    ld   de, entities + 1       ; 10T
+    ld   bc, MAX_ENTITIES * ENT_SIZE - 1
+    ld   (hl), 0                ; 10T
+    ldir                        ; 21T/byte
+
+    ; Spawn player at slot 0
+    ld   ix, entities           ; 14T
+    ld   (ix+ENT_FLAGS), 1      ; 19T  active
+    ld   (ix+ENT_TYPE), 1       ; 19T  player
+    ld   (ix+ENT_X), 128        ; 19T
+    ld   (ix+ENT_Y), 96         ; 19T
+
+    ; Spawn 3 enemies in slots 1-3
+    ld   de, ENT_SIZE           ; 10T
+    add  ix, de                 ; 15T
+    ld   b, 3                   ; 7T
+    ld   c, 40                  ; starting X
+
+.spawn_loop:
+    push bc                     ; 11T
+    ld   (ix+ENT_FLAGS), 1      ; 19T
+    ld   (ix+ENT_TYPE), 2       ; 19T  enemy
+    ld   (ix+ENT_X), c          ; 19T
+    ld   (ix+ENT_Y), 48         ; 19T
+    ld   (ix+ENT_VX), 1         ; 19T  patrol speed
+    ld   de, ENT_SIZE           ; 10T
+    add  ix, de                 ; 15T
+    pop  bc                     ; 10T
+    ld   a, c                   ; 4T
+    add  a, 64                  ; 7T
+    ld   c, a                   ; 4T
+    djnz .spawn_loop            ; 13/8T
+
+    ei                          ; 4T
+
+; ============================================================
+; Main loop (structure identical on both platforms)
+;
+; SPECTRUM:  HALT waits for ULA vsync interrupt (50 Hz)
+; AGON:     HALT waits for VDP vsync via MOS (50/60 Hz)
+;           Or call MOS API: RST $08 / DB mos_sysvars to
+;           read the vsync counter and spin-wait.
+; ============================================================
+main_loop:
+    halt                        ; sync to frame
+
+    call update_entities
+
+    ; --- RENDERING DIVERGENCE ---
+    ; SPECTRUM: call render_sprites_software
+    ;   Software sprite rendering: erase old positions,
+    ;   draw OR+AND masked sprites into framebuffer at $4000.
+    ;   Cost: ~1000 T-states per 16x16 sprite.
+    ;
+    ; AGON: call send_vdp_sprite_positions
+    ;   Send VDP commands to move hardware sprites.
+    ;   Cost: ~50 T-states per sprite (just serial bytes).
+    ;   The VDP handles all rendering on the ESP32.
+    call render_sprites_stub
+
+    jr   main_loop              ; 12T
+
+; ============================================================
+; update_entities -- Walk entity array via IX
+;
+; THIS CODE IS IDENTICAL ON SPECTRUM AND AGON.
+; The entity system is pure CPU logic with no I/O --
+; it transfers directly. This is the "what ports easily"
+; lesson from section 22.3.
+;
+; On eZ80 in ADL mode:
+;   - IX is 24 bits wide (but +d offsets still 8-bit signed)
+;   - ADD IX,DE adds 24-bit DE to 24-bit IX
+;   - DJNZ still uses 8-bit B counter
+;   - All timing is faster (18.432 MHz vs 3.5 MHz)
+; ============================================================
+update_entities:
+    ld   ix, entities           ; 14T (Z80) / 6cc (eZ80 ADL)
+    ld   b, MAX_ENTITIES        ; 7T
+
+.loop:
+    push bc                     ; 11T
+    ld   a, (ix+ENT_FLAGS)      ; 19T
+    bit  0, a                   ; 8T   active?
+    jr   z, .skip               ; 12/7T
+
+    ld   a, (ix+ENT_TYPE)       ; 19T
+    cp   1                      ; 7T
+    jr   z, .is_player          ; 12/7T
+    cp   2                      ; 7T
+    jr   z, .is_enemy           ; 12/7T
+    jr   .skip                  ; 12T
+
+.is_player:
+    ; Player update: in a real game, reads input here.
+    ; On SPECTRUM: IN A,(C) reads keyboard ports.
+    ; On AGON: call MOS API to read keyboard buffer.
+    jr   .skip
+
+.is_enemy:
+    ; Patrol: move X, bounce at edges
+    ld   a, (ix+ENT_X)         ; 19T
+    add  a, (ix+ENT_VX)        ; 19T
+    ld   (ix+ENT_X), a         ; 19T
+
+    cp   240                    ; 7T
+    jr   c, .no_bounce_r        ; 12/7T
+    ld   (ix+ENT_VX), -1       ; 19T  reverse left
+    jr   .skip
+.no_bounce_r:
+    cp   8                      ; 7T
+    jr   nc, .skip              ; 12/7T
+    ld   (ix+ENT_VX), 1        ; 19T  reverse right
+
+.skip:
+    ld   de, ENT_SIZE           ; 10T
+    add  ix, de                 ; 15T  next entity
+    pop  bc                     ; 10T
+    djnz .loop                  ; 13/8T
+    ret                         ; 10T
+
+; ============================================================
+; render_sprites_stub -- Platform-specific rendering
+;
+; SPECTRUM VERSION (what ch16-ch17 taught):
+;   For each visible entity:
+;     1. Erase old sprite (restore background)
+;     2. Calculate screen address from X,Y
+;     3. Draw OR+AND masked sprite from pre-shifted table
+;     4. Cost: ~800-1200 T per 16x16 sprite
+;
+; AGON VERSION (VDP commands):
+;   For each visible entity:
+;     1. Send VDP command: select sprite N
+;     2. Send VDP command: move sprite to (X, Y)
+;     3. Cost: ~10 bytes over UART, negligible CPU time
+;     4. The ESP32 VDP composites sprites onto display
+;
+; Below is a stub that writes a byte per entity to a port,
+; simulating the Agon VDP command pattern.
+; ============================================================
+render_sprites_stub:
+    ld   ix, entities           ; 14T
+    ld   b, MAX_ENTITIES        ; 7T
+    ld   c, 0                   ; sprite index counter
+
+.render_loop:
+    push bc                     ; 11T
+    ld   a, (ix+ENT_FLAGS)      ; 19T
+    bit  0, a                   ; 8T
+    jr   z, .skip_render        ; 12/7T
+
+    ; --- Simulated VDP sprite move command ---
+    ; On real Agon, you would send:
+    ;   DB 23, 27, VDP_SPRITE_SEL, sprite_id
+    ;   DB 23, 27, VDP_SPRITE_MOVE, x_lo, x_hi, y_lo, y_hi
+    ; Here we just write X and Y to a port as a stub.
+    ld   a, (ix+ENT_X)         ; 19T
+    out  (VDP_DATA_PORT), a     ; 11T  send X to VDP (stub)
+    ld   a, (ix+ENT_Y)         ; 19T
+    out  (VDP_DATA_PORT), a     ; 11T  send Y to VDP (stub)
+
+.skip_render:
+    ld   de, ENT_SIZE           ; 10T
+    add  ix, de                 ; 15T
+    pop  bc                     ; 10T
+    inc  c                      ; 4T   next sprite index
+    djnz .render_loop           ; 13/8T
+    ret
+
+; ============================================================
+; Entity array
+;
+; SPECTRUM: fits in bank 2 ($8000-$BFFF), 128 bytes.
+; AGON:    anywhere in 512 KB. No banking needed.
+;          Could be at $040000 if you wanted -- just set
+;          the address in LD IX,entities.
+; ============================================================
+entities:
+    DS MAX_ENTITIES * ENT_SIZE

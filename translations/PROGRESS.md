@@ -4,6 +4,8 @@
 
 All 4 language editions built and released as v0.6.
 
+**Note:** The English edition is always the primary and ahead of translations. Translations are updated periodically (possibly every few releases) rather than after every EN edit. The manifest system tracks staleness automatically.
+
 | Language | Chapters | Appendices | Glossary | Words | PDF/EPUB | Release |
 |----------|----------|------------|----------|-------|----------|---------|
 | EN | 23/23 | 4/4 | done | ~128K | built | v0.6 |
