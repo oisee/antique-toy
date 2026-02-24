@@ -2,6 +2,8 @@
 
 **Z80 Demoscene Techniques for Modern Makers**
 
+**TL;DR:** 23 chapters, ~128K words, 28 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v0.7/book-a4-v0.7.pdf)
+
 A book about Z80 optimization for those who already know the processor and want to understand *why* certain techniques work the way they do. Not a beginner tutorial, not a platform manual -- a cookbook of hard-won tricks from the demoscene, with cycle counts and working code.
 
 The book covers ZX Spectrum 128K as the primary platform, with eZ80/Agon Light 2 as a modern counterpoint. Agon is the most powerful and actually purchasable (~$50 on Olimex) descendant of Z80 -- architecturally closer to BBC Micro than to Spectrum, showing how the same instruction set can drive a completely different machine.
@@ -12,16 +14,16 @@ Chapter 1 (T-state budgets) is the foundation -- read it first. Everything after
 
 ## Download
 
-**[v0.6 release](https://github.com/oisee/antique-toy/releases/tag/v0.6)** -- PDF (A4, A5) and EPUB in four languages:
+**[Latest release](https://github.com/oisee/antique-toy/releases/latest)** -- PDF (A4, A5) and EPUB in four languages:
 
-| Language | PDF | Words |
-|----------|-----|-------|
-| English | [book-a4-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4-v0.6.pdf) | ~128K |
-| Spanish | [book-a4_ES-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_ES-v0.6.pdf) | ~165K |
-| Russian | [book-a4_RU-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_RU-v0.6.pdf) | ~140K |
-| Ukrainian | [book-a4_UK-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_UK-v0.6.pdf) | ~142K |
+| Language | Version | PDF | Words |
+|----------|---------|-----|-------|
+| English | **v0.7** | [book-a4-v0.7.pdf](https://github.com/oisee/antique-toy/releases/download/v0.7/book-a4-v0.7.pdf) | ~128K |
+| Spanish | v0.6 | [book-a4_ES-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_ES-v0.6.pdf) | ~165K |
+| Russian | v0.6 | [book-a4_RU-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_RU-v0.6.pdf) | ~140K |
+| Ukrainian | v0.6 | [book-a4_UK-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_UK-v0.6.pdf) | ~142K |
 
-The English edition is the primary and always ahead. Translations catch up periodically, possibly every few releases. Use `python3 translations/manifest.py check all` to see what's stale.
+English is the primary edition and always ahead. Translations catch up periodically, every few releases.
 
 ## Contents
 
