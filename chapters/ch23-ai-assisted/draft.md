@@ -44,17 +44,17 @@ prompt --> code --> assemble --> error? --> fix --> assemble --> run --> wrong? 
 <!-- figure: ch23_ai_feedback_loop -->
 ```mermaid id:ch23_the_loop_2
 graph LR
-    A["Prompt\n(describe what you want)"] --> B["Generate Code\n(AI writes Z80 asm)"]
-    B --> C["Assemble\n(sjasmplus / mza)"]
+    A["Prompt<br>(describe what you want)"] --> B["Generate Code<br>(AI writes Z80 asm)"]
+    B --> C["Assemble<br>(sjasmplus / mza)"]
     C --> D{"Errors?"}
-    D -- Yes --> E["Paste errors\nback to AI"]
+    D -- Yes --> E["Paste errors<br>back to AI"]
     E --> B
     D -- No --> F["Run in Emulator"]
-    F --> G{"Output\ncorrect?"}
-    G -- No --> H["Describe what's wrong\n(or paste DeZog state)"]
+    F --> G{"Output<br>correct?"}
+    G -- No --> H["Describe what's wrong<br>(or paste DeZog state)"]
     H --> B
     G -- Yes --> I{"Optimise?"}
-    I -- Yes --> J["Profile with DeZog\n(measure T-states)"]
+    I -- Yes --> J["Profile with DeZog<br>(measure T-states)"]
     J --> A
     I -- No --> K["Done ✓"]
 

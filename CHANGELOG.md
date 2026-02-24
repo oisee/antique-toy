@@ -1,5 +1,48 @@
 # What's New
 
+## v12 (2026-02-24)
+
+**Comprehensive review pass.** Full technical audit of all 23 chapters with systematic fixes:
+
+**12 HIGH severity fixes:**
+- Ch.02: RET cc T-state values corrected (5/11T → 11/5T taken/not-taken) across 6 comments + timing table
+- Ch.04: Patrik Rak and Raxoft identified as same person throughout
+- Ch.07: `SET n,(DE)` / `RES n,(DE)` rewritten — instructions don't exist on Z80, replaced with (HL) approach
+- Ch.10: False claim that `LD (addr),SP` doesn't exist removed (ED 73, 20T)
+- Ch.11: AY mixer value corrected ($28 → $18 for noise C)
+- Ch.15: Contended memory table corrected — only $4000-$7FFF contended on 48K, not all RAM
+- Ch.16: XOR sprite inner loop timing corrected (98T → 134T), JR NZ annotations fixed throughout
+- Ch.18: `spawn_bullet` bug fixed — D register zeroed before `ADD IX,DE`
+- Ch.19: AABB worst-case recounted (156T → ~270T), `tile_at` recounted (40T → ~182T)
+- Ch.23: DOWN_HL argument rewritten — was claiming correct code was buggy
+
+**19 MEDIUM severity fixes:** LDIR formula standardised to (N-1)×21+16, PUSH operation order corrected, byte counts fixed, Agon 60Hz corrected, IM2 IY save added, invalid `ld hl,a` replaced, and more.
+
+**AI smell cleanup:** Removed chain-of-thought leaks ("Wait -- that is wrong"), cut philosophical padding sections, eliminated word-level tics (remarkably, deceptively simple, paradigm shift, borders on magic, etc.), trimmed defensive balancing and motivational pep talks across 9 chapters.
+
+**Two new tools:**
+- `tools/autotag.py` — semi-automatic code block classifier and tagger (--preview, --apply, --stats)
+- `tools/audit_tstates.py` — T-state audit comparing inline annotations with computed values (--scan-chapters, --asm-check)
+
+**Code block pipeline:**
+- 79 bare code blocks classified and tagged with language (z80/mermaid/text)
+- 279 code blocks tagged with `id:chNN_slug` identifiers
+- 271 .z80 + 8 .mmd canonical listings extracted to `listings/`
+- Final audit: 0 WRONG, 0 PARTIAL T-state annotations
+- All 29 assembly units compile with sjasmplus
+
+## v11 (2026-02-24)
+
+- Art-top/Gogin attribution fix across affected chapters.
+- MCC sidebar content added.
+- ZXDN research integrated.
+
+## v10 (2026-02-24)
+
+- External listings system (`tools/manage_listings.py`): extract, inject, verify, stats commands.
+- Unified versioning via `version.json` + `build_book.py`.
+- UNDER CONSTRUCTION banner for work-in-progress chapters.
+
 ## v0.8 (2026-02-24)
 
 **Chapters expanded.** Three thin chapters significantly deepened:

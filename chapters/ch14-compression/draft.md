@@ -76,15 +76,15 @@ Introspec's genius was to map these tradeoffs on a Pareto frontier --- a curve w
 <!-- figure: ch14_compression_tradeoff -->
 ```mermaid id:ch14_the_tradeoff_triangle
 graph LR
-    SRC["Source Data\n(raw bytes)"] --> EXO["Exomizer\n48.3% ratio\n~250 T/byte\n170B decompressor"]
-    SRC --> APL["ApLib\n49.2% ratio\n~105 T/byte\n199B decompressor"]
-    SRC --> PLT["Pletter 5\n51.5% ratio\n~69 T/byte\n~120B decompressor"]
-    SRC --> ZX0["ZX0\n~52% ratio\n~100 T/byte\n~70B decompressor"]
-    SRC --> LZ4["LZ4\n58.6% ratio\n~34 T/byte\n~100B decompressor"]
+    SRC["Source Data<br>(raw bytes)"] --> EXO["Exomizer<br>48.3% ratio<br>~250 T/byte<br>170B decompressor"]
+    SRC --> APL["ApLib<br>49.2% ratio<br>~105 T/byte<br>199B decompressor"]
+    SRC --> PLT["Pletter 5<br>51.5% ratio<br>~69 T/byte<br>~120B decompressor"]
+    SRC --> ZX0["ZX0<br>~52% ratio<br>~100 T/byte<br>~70B decompressor"]
+    SRC --> LZ4["LZ4<br>58.6% ratio<br>~34 T/byte<br>~100B decompressor"]
 
-    EXO --> T1["Best ratio\nSlowest decompression"]
-    LZ4 --> T2["Worst ratio\nFastest decompression"]
-    ZX0 --> T3["Smallest decompressor\nGood all-around"]
+    EXO --> T1["Best ratio<br>Slowest decompression"]
+    LZ4 --> T2["Worst ratio<br>Fastest decompression"]
+    ZX0 --> T3["Smallest decompressor<br>Good all-around"]
 
     style EXO fill:#fdd,stroke:#333
     style LZ4 fill:#ddf,stroke:#333

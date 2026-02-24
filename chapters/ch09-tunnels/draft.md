@@ -40,16 +40,16 @@ The tunnel shape is implicit, not explicit. There is no distance-from-centre cal
 <!-- figure: ch09_tunnel_plasma_computation -->
 ```mermaid id:ch09_plasma_the_colour_engine
 graph TD
-    A["For each attribute cell (row, col)"] --> B["Look up sin(col × freq1 + phase1)\nfrom 256-byte sine table"]
+    A["For each attribute cell (row, col)"] --> B["Look up sin(col × freq1 + phase1)<br>from 256-byte sine table"]
     B --> C["Look up sin(row × freq2 + phase2)"]
     C --> D["Look up sin(col+row + phase3)"]
     D --> E["Sum the three sine values"]
-    E --> F["Index into colour map\n(sum → attribute byte)"]
+    E --> F["Index into colour map<br>(sum → attribute byte)"]
     F --> G["Write attribute to buffer"]
-    G --> H{More cells\nin quadrant?}
+    G --> H{More cells<br>in quadrant?}
     H -- Yes --> A
-    H -- No --> I["4-fold symmetry copy:\ntop-left → top-right,\nbottom-left, bottom-right"]
-    I --> J["Increment phase1, phase2, phase3\n→ next frame"]
+    H -- No --> I["4-fold symmetry copy:<br>top-left → top-right,<br>bottom-left, bottom-right"]
+    I --> J["Increment phase1, phase2, phase3<br>→ next frame"]
     J --> A
 
     style F fill:#f9f,stroke:#333

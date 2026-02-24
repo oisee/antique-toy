@@ -1,13 +1,13 @@
 graph TD
-    START["Check collision\nbetween Entity A and Entity B"] --> X1{"A.left < B.right?\n(A.x < B.x + B.width)"}
-    X1 -- No --> MISS["No collision\n(clear carry, return)"]
-    X1 -- Yes --> X2{"A.right > B.left?\n(A.x + A.width > B.x)"}
+    START["Check collision<br>between Entity A and Entity B"] --> X1{"A.left < B.right?<br>(A.x < B.x + B.width)"}
+    X1 -- No --> MISS["No collision<br>(clear carry, return)"]
+    X1 -- Yes --> X2{"A.right > B.left?<br>(A.x + A.width > B.x)"}
     X2 -- No --> MISS
-    X2 -- Yes --> Y1{"A.top < B.bottom?\n(A.y < B.y + B.height)"}
+    X2 -- Yes --> Y1{"A.top < B.bottom?<br>(A.y < B.y + B.height)"}
     Y1 -- No --> MISS
-    Y1 -- Yes --> Y2{"A.bottom > B.top?\n(A.y + A.height > B.y)"}
+    Y1 -- Yes --> Y2{"A.bottom > B.top?<br>(A.y + A.height > B.y)"}
     Y2 -- No --> MISS
-    Y2 -- Yes --> HIT["COLLISION!\n(set carry, return)"]
+    Y2 -- Yes --> HIT["COLLISION!<br>(set carry, return)"]
 
     style MISS fill:#dfd,stroke:#393
     style HIT fill:#fdd,stroke:#933

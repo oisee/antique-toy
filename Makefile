@@ -157,8 +157,7 @@ book-epub:
 
 release: clean book
 	@mkdir -p release
-	cp $(BUILD_DIR)/Coding_the_Impossible_*.pdf $(BUILD_DIR)/Coding_the_Impossible_*.epub release/ 2>/dev/null || true
-	cp $(BUILD_DIR)/book-a4-*.pdf $(BUILD_DIR)/book-a5-*.pdf $(BUILD_DIR)/book-*.epub release/ 2>/dev/null || true
+	cp $(BUILD_DIR)/book-a4-*.pdf $(BUILD_DIR)/book-a5-*.pdf $(BUILD_DIR)/book-*.epub release/
 	@echo "Release files copied to release/"
 
 version-bump:

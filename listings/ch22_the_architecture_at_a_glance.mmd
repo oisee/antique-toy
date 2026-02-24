@@ -1,19 +1,19 @@
 graph TD
     subgraph ZX["ZX Spectrum: Draw Sprite (~1200T CPU)"]
         direction TB
-        ZA["Calculate screen address\nfrom (x, y) coordinates"] --> ZB["Select pre-shifted variant\n(x mod 8 → shift table)"]
-        ZB --> ZC["For each pixel row:\nAND mask with screen byte\nOR sprite data\nwrite back to framebuffer"]
-        ZC --> ZD["Advance to next screen row\n(DOWN_HL: handle interleave)"]
-        ZD --> ZE{"16 rows\ndone?"}
+        ZA["Calculate screen address<br>from (x, y) coordinates"] --> ZB["Select pre-shifted variant<br>(x mod 8 → shift table)"]
+        ZB --> ZC["For each pixel row:<br>AND mask with screen byte<br>OR sprite data<br>write back to framebuffer"]
+        ZC --> ZD["Advance to next screen row<br>(DOWN_HL: handle interleave)"]
+        ZD --> ZE{"16 rows<br>done?"}
         ZE -- No --> ZC
-        ZE -- Yes --> ZF["Done — pixels in\nvideo RAM at $4000"]
+        ZE -- Yes --> ZF["Done — pixels in<br>video RAM at $4000"]
     end
 
     subgraph AGON["Agon Light 2: Draw Sprite (~50T CPU)"]
         direction TB
-        AA["Send VDU 23,27,4,N\n(select sprite N)"] --> AB["Send VDU 23,27,13,x,y\n(set position)"]
-        AB --> AC["Send VDU 23,27,15\n(update display)"]
-        AC --> AD["Done — VDP renders\nsprite in hardware"]
+        AA["Send VDU 23,27,4,N<br>(select sprite N)"] --> AB["Send VDU 23,27,13,x,y<br>(set position)"]
+        AB --> AC["Send VDU 23,27,15<br>(update display)"]
+        AC --> AD["Done — VDP renders<br>sprite in hardware"]
     end
 
     style ZC fill:#fdd,stroke:#933

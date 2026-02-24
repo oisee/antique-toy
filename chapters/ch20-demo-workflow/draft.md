@@ -331,14 +331,14 @@ For the reader who has followed this book from Chapter 1 and wants to make a dem
 <!-- figure: ch20_demo_workflow_pipeline -->
 ```mermaid id:ch20_your_first_demo_a_practical
 graph TD
-    IDEA["Idea\n(visual concept, mood, music)"] --> PROTO["Prototype\n(verify/ HTML/JS, or\nquick Z80 test)"]
-    PROTO --> IMPL["Z80 Implementation\n(sjasmplus, effect code)"]
-    IMPL --> TIME{"Fits in\nframe budget?"}
-    TIME -- No --> OPT["Optimise\n(unroll, precompute,\nreduce scope)"]
+    IDEA["Idea<br>(visual concept, mood, music)"] --> PROTO["Prototype<br>(verify/ HTML/JS, or<br>quick Z80 test)"]
+    PROTO --> IMPL["Z80 Implementation<br>(sjasmplus, effect code)"]
+    IMPL --> TIME{"Fits in<br>frame budget?"}
+    TIME -- No --> OPT["Optimise<br>(unroll, precompute,<br>reduce scope)"]
     OPT --> IMPL
-    TIME -- Yes --> POLISH["Polish\n(transitions, sync to music,\ncolour palette)"]
-    POLISH --> PARTY["Party Version\n(submit to compo)"]
-    PARTY --> FINAL["Final Version\n(fix bugs, add credits,\ntest on hardware)"]
+    TIME -- Yes --> POLISH["Polish<br>(transitions, sync to music,<br>colour palette)"]
+    POLISH --> PARTY["Party Version<br>(submit to compo)"]
+    PARTY --> FINAL["Final Version<br>(fix bugs, add credits,<br>test on hardware)"]
 
     IMPL -.-> |"border-colour timing"| TIME
     POLISH -.-> |"scene table reorder"| POLISH
