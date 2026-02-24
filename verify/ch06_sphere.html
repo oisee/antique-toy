@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Sphere -- verify Z80 (ch06)</title>
+<style>
+body { background: #1a1a1a; color: #bbb; font-family: monospace; text-align: center; margin: 0; padding: 10px; }
+h2 { color: #ddd; margin: 10px 0 5px; font-size: 16px; }
+canvas { border: 4px solid #444; display: block; margin: 10px auto; image-rendering: pixelated; }
+.info { margin: 8px auto; font-size: 13px; max-width: 900px; line-height: 1.6; }
+.info span { color: #8f8; }
+#controls { margin: 10px auto; max-width: 900px; }
+#controls table { margin: 0 auto; border-collapse: collapse; text-align: left; }
+#controls td { padding: 3px 8px; vertical-align: middle; }
+button { margin: 0 4px; padding: 4px 12px; font-family: monospace; background: #333; color: #ccc;
+    border: 1px solid #555; cursor: pointer; }
+button:hover { background: #444; }
+button.active { background: #264; border-color: #4a8; color: #8f8; }
+select, input[type=range] { font-family: monospace; background: #333; color: #ccc; border: 1px solid #555; }
+select { padding: 3px 6px; }
+input[type=range] { width: 120px; vertical-align: middle; }
+.z80-panel { margin: 12px auto; max-width: 900px; background: #111; border: 1px solid #333;
+    padding: 10px 14px; text-align: left; font-size: 12px; line-height: 1.7; }
+.z80-panel h3 { color: #8cf; margin: 0 0 6px; font-size: 13px; }
+.z80-panel code { color: #fc6; }
+.z80-panel .comment { color: #6a6; }
+</style>
+</head><body>
+<h2>Texture-mapped sphere -- JS prototype (verifies Z80 ch06 approach)</h2>
+<p style="color:#888; font-size:12px; margin:4px 0 10px;">
+    Dark's Illusion (ENLiGHT'96) technique: skip tables encode spherical projection,<br>
+    runtime code generation emits ADD A,A / ADD A,(HL) / INC L sequences.
+</p>
+<canvas id="screen"></canvas>
+<div class="info">
+    <span id="fps">0 fps</span> |
+    rotation: <span id="rotAngle">0</span> |
+    radius: <span id="radiusInfo">24</span>px |
+    bytes/frame: <span id="bytesInfo">0</span> |
+    T-states/frame: <span id="tstatesInfo">0</span> |
+    texture: <span id="texName">checkerboard</span>
+</div>
+<div id="controls">
+<table>
+<tr>
+    <td>Rotation speed:</td>
+    <td><input type="range" id="rotSpeed" min="0" max="8" step="0.5" value="2"></td>
+    <td>Radius:</td>
+    <td><input type="range" id="radius" min="8" max="48" step="1" value="24">
+        <span id="radiusLabel">24</span></td>
+</tr>
+<tr>
+    <td>Texture:</td>
+    <td>
+        <select id="texSelect">
+            <option value="checker">Checkerboard 8x8</option>
+            <option value="checker4">Checkerboard 4x4</option>
+            <option value="globe">Globe (meridians)</option>
+            <option value="stripe">Vertical stripes</option>
+            <option value="xor">XOR pattern</option>
+        </select>
+    </td>
+    <td colspan="2">
+        <button onclick="paused=!paused">Pause/Resume</button>
+        <button onclick="rotation=0">Reset</button>
+    </td>
+</tr>
+</table>
+</div>
+
+<div class="z80-panel">
+<h3>Z80 cost model: runtime code generation for sphere rendering</h3>
+<pre>
+<span class="comment">; Dark's technique from Illusion (ENLiGHT'96, reverse-engineered by Introspec on Hype, 2017):</span>
+<span class="comment">; 1. Source texture: 1 byte per pixel ($00 or $01), page-aligned (256 bytes/row)</span>
+<span class="comment">; 2. Skip tables encode spherical projection as INC L counts between samples</span>
+<span class="comment">; 3. Code generator emits unrolled Z80 for each scanline of the sphere</span>
+
+<span class="comment">; Per-pixel cost (minimum):</span>
+<code>    add  a,a          </code><span class="comment">;  4 T  -- shift accumulator left</span>
+<code>    add  a,(hl)       </code><span class="comment">;  7 T  -- add source pixel (0 or 1) into bit 0</span>
+<code>    inc  l            </code><span class="comment">;  4 T  -- advance source pointer (page-aligned!)</span>
+<span class="comment">; Subtotal: 15 T per pixel, 120 T for 8 pixels (one output byte)</span>
+
+<span class="comment">; Per-byte output:</span>
+<code>    xor  a            </code><span class="comment">;  4 T  -- clear accumulator</span>
+<code>    ld   (de),a       </code><span class="comment">;  7 T  -- write screen byte</span>
+<code>    inc  e            </code><span class="comment">;  4 T  -- advance screen pointer</span>
+
+<span class="comment">; Formula (Introspec): <span id="z80_formula">101 + 32x</span> T-states per output byte</span>
+<span class="comment">; where x = average extra INC L per pixel (sphere curvature compression)</span>
+<span class="comment">;</span>
+<span class="comment">; Current frame stats:</span>
+<span class="comment">;   Total output bytes:   <span id="z80_bytes">0</span></span>
+<span class="comment">;   Total INC L emitted:  <span id="z80_incls">0</span>  (extra beyond mandatory 1 per pixel)</span>
+<span class="comment">;   Avg extra INC L/pixel: <span id="z80_avg_x">0.00</span></span>
+<span class="comment">;   Est. T-states (render): <span id="z80_tstates">0</span></span>
+<span class="comment">;   At 3.5 MHz (70,000 T/frame): <span id="z80_frames">0.0</span> frames to render sphere</span>
+</pre>
+</div>
+
+<script>
+// =====================================================================
+// ZX Spectrum screen emulator (self-contained, no external dependency)
+// 256x192 pixels, 32x24 attribute grid, authentic memory layout
+// =====================================================================
+
+const ZX_COLORS = [
+    '#000000', '#0000CD', '#CD0000', '#CD00CD',
+    '#00CD00', '#00CDCD', '#CDCD00', '#CDCDCD',
+    '#000000', '#0000FF', '#FF0000', '#FF00FF',
+    '#00FF00', '#00FFFF', '#FFFF00', '#FFFFFF',
+];
+
+class ZXScreen {
+    constructor(canvas, scale) {
+        this.canvas = canvas;
+        this.scale = scale;
+        canvas.width = 256 * scale;
+        canvas.height = 192 * scale;
+        this.ctx = canvas.getContext('2d');
+        this.ctx.imageSmoothingEnabled = false;
+        this.pixels = new Uint8Array(6912);
+        this.frameCount = 0;
+        this.imgData = this.ctx.createImageData(256, 192);
+    }
+
+    screenAddr(x, y) {
+        const h = 0x40 | ((y & 0xC0) >> 3) | (y & 0x07);
+        const l = ((y & 0x38) << 2) | (x >> 3);
+        return ((h - 0x40) << 8) | l;
+    }
+
+    poke(addr, val) { this.pixels[addr] = val & 0xFF; }
+
+    setPixel(x, y) {
+        if (x < 0 || x > 255 || y < 0 || y > 191) return;
+        const addr = this.screenAddr(x, y);
+        this.pixels[addr] |= (0x80 >> (x & 7));
+    }
+
+    setAttr(col, row, attr) { this.pixels[6144 + row * 32 + col] = attr & 0xFF; }
+
+    static makeAttr(ink, paper, bright, flash) {
+        return (flash ? 0x80 : 0) | (bright ? 0x40 : 0) | ((paper & 7) << 3) | (ink & 7);
+    }
+
+    clearScreen() { this.pixels.fill(0); }
+
+    fillAttrs(attr) { for (let i = 6144; i < 6912; i++) this.pixels[i] = attr; }
+
+    render() {
+        const data = this.imgData.data;
+        for (let y = 0; y < 192; y++) {
+            const row = y >> 3;
+            for (let col = 0; col < 32; col++) {
+                const pixelByte = this.pixels[this.screenAddr(col * 8, y)];
+                const attr = this.pixels[6144 + row * 32 + col];
+                const bright = (attr & 0x40) ? 8 : 0;
+                const ink = (attr & 7) + bright;
+                const paper = ((attr >> 3) & 7) + bright;
+                for (let bit = 0; bit < 8; bit++) {
+                    const x = col * 8 + bit;
+                    const set = (pixelByte & (0x80 >> bit)) !== 0;
+                    const c = set ? ZX_COLORS[ink] : ZX_COLORS[paper];
+                    const idx = (y * 256 + x) * 4;
+                    data[idx]     = parseInt(c.substr(1, 2), 16);
+                    data[idx + 1] = parseInt(c.substr(3, 2), 16);
+                    data[idx + 2] = parseInt(c.substr(5, 2), 16);
+                    data[idx + 3] = 255;
+                }
+            }
+        }
+        this.ctx.putImageData(this.imgData, 0, 0);
+        if (this.scale > 1) {
+            this.ctx.save();
+            this.ctx.imageSmoothingEnabled = false;
+            this.ctx.drawImage(this.canvas, 0, 0, 256, 192,
+                               0, 0, 256 * this.scale, 192 * this.scale);
+            this.ctx.restore();
+        }
+        this.frameCount++;
+    }
+}
+
+// =====================================================================
+// Sphere rendering engine -- mirrors the Z80 algorithm from sphere.a80
+// =====================================================================
+
+const SCALE = 3;
+const canvas = document.getElementById('screen');
+const zx = new ZXScreen(canvas, SCALE);
+
+// --- Texture generation ---
+// Source texture: 256 columns x maxDiam rows, one byte per pixel (0 or 1).
+// Page-aligned in Z80 terms: each row occupies exactly 256 bytes.
+// This mirrors the real data layout from Illusion.
+
+function genTexture(type, diam) {
+    const tex = new Uint8Array(256 * diam);
+    for (let row = 0; row < diam; row++) {
+        for (let col = 0; col < 256; col++) {
+            let v = 0;
+            switch (type) {
+                case 'checker':
+                    v = ((col >> 3) ^ (row >> 3)) & 1;
+                    break;
+                case 'checker4':
+                    v = ((col >> 2) ^ (row >> 2)) & 1;
+                    break;
+                case 'globe':
+                    // Meridian lines every 16 columns, parallels every 8 rows
+                    v = ((col & 15) === 0 || (row & 7) === 0) ? 1 : 0;
+                    break;
+                case 'stripe':
+                    v = ((col >> 3) & 1);
+                    break;
+                case 'xor':
+                    v = ((col ^ row) >> 3) & 1;
+                    break;
+                default:
+                    v = ((col >> 3) ^ (row >> 3)) & 1;
+            }
+            tex[row * 256 + col] = v;
+        }
+    }
+    return tex;
+}
+
+// --- Integer square root (matches isqrt16 from sphere.a80) ---
+function isqrt(n) {
+    if (n <= 0) return 0;
+    let r = 0;
+    let bit = 1 << 14; // start with highest power of 4 <= n
+    while (bit > n) bit >>= 2;
+    while (bit !== 0) {
+        if (n >= r + bit) {
+            n -= r + bit;
+            r = (r >> 1) + bit;
+        } else {
+            r >>= 1;
+        }
+        bit >>= 2;
+    }
+    return r;
+}
+
+// --- Build sqrt lookup table (matches build_sqrt_table) ---
+function buildSqrtLut(R) {
+    const diam = R * 2;
+    const lut = new Uint8Array(diam);
+    for (let i = 0; i < diam; i++) {
+        const y = i - R; // signed distance from equator
+        const val = R * R - y * y;
+        lut[i] = val > 0 ? isqrt(val) : 0;
+    }
+    return lut;
+}
+
+// --- Build skip tables (matches build_skip_tables from sphere.a80) ---
+// Returns { lineWidths: [], skipData: [] } where skipData[line] is an
+// array of skip distances (one per visible pixel on that line).
+//
+// The Z80 version uses a simplified model: centre pixels get skip=1,
+// edge pixels (first and last quarter) get skip=2. We implement the
+// same model here for exact verification, PLUS a "true projection"
+// mode that computes actual arcsin-based skips.
+
+function buildSkipTables(R, sqrtLut, rotationAngle, trueProjection) {
+    const diam = R * 2;
+    const lineWidths = [];
+    const skipData = [];
+
+    for (let i = 0; i < diam; i++) {
+        const radiusAtY = sqrtLut[i];
+        if (radiusAtY === 0) {
+            lineWidths.push(0);
+            skipData.push([]);
+            continue;
+        }
+
+        const pixWidth = radiusAtY * 2;
+        let byteWidth = pixWidth >> 3;
+        if (byteWidth === 0) byteWidth = 1;
+        const totalPix = byteWidth * 8;
+
+        lineWidths.push(byteWidth);
+
+        const skips = [];
+
+        if (trueProjection) {
+            // True spherical projection: arcsin-based mapping
+            // For each screen pixel within the arc, compute longitude
+            // and determine the skip distance in source texture columns.
+            for (let p = 0; p < totalPix; p++) {
+                // Map screen pixel to position within [-radiusAtY, +radiusAtY]
+                const screenX = -radiusAtY + (pixWidth * p / totalPix) + (pixWidth / (2 * totalPix));
+                const nextX = -radiusAtY + (pixWidth * (p + 1) / totalPix) + (pixWidth / (2 * totalPix));
+
+                // Longitude via arcsin (clamped)
+                const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+                const lon0 = Math.asin(clamp(screenX / radiusAtY, -1, 1));
+                const lon1 = Math.asin(clamp(nextX / radiusAtY, -1, 1));
+
+                // Map longitude to source texture column (0..255)
+                const col0 = ((lon0 / Math.PI + 0.5) * 256 + rotationAngle) & 0xFF;
+                const col1 = ((lon1 / Math.PI + 0.5) * 256 + rotationAngle) & 0xFF;
+
+                // Skip = difference in source columns (wrapping within page)
+                let skip = (col1 - col0) & 0xFF;
+                if (skip === 0) skip = 1;
+                if (skip > 8) skip = 8; // cap for sanity
+                skips.push(skip);
+            }
+        } else {
+            // Simplified model (matches sphere.a80):
+            // Centre pixels: skip=1, edge pixels (first/last quarter): skip=2
+            const edgeThreshold = totalPix >> 2;
+            for (let p = 0; p < totalPix; p++) {
+                if (p < edgeThreshold || p >= totalPix - edgeThreshold) {
+                    skips.push(2); // edge: compression
+                } else {
+                    skips.push(1); // centre: uniform
+                }
+            }
+        }
+
+        skipData.push(skips);
+    }
+
+    return { lineWidths, skipData };
+}
+
+// --- Render sphere (mirrors the generated code execution) ---
+// This simulates what the Z80 generated code does:
+//   For each scanline: set HL to texture row, set DE to screen address
+//   For each output byte: XOR A, then 8x (ADD A,A + ADD A,(HL) + N x INC L),
+//   then LD (DE),A + INC E.
+//
+// Returns stats for the Z80 panel.
+
+function renderSphere(zxInst, R, sqrtLut, skipTables, texture, rotationAngle) {
+    const diam = R * 2;
+    const centreX = 128;
+    const centreY = 96;
+    const startY = centreY - R;
+
+    const { lineWidths, skipData } = skipTables;
+
+    let totalBytes = 0;
+    let totalExtraIncL = 0;
+    let totalPixels = 0;
+
+    for (let i = 0; i < diam; i++) {
+        const byteWidth = lineWidths[i];
+        if (byteWidth === 0) continue;
+
+        const screenY = startY + i;
+        if (screenY < 0 || screenY >= 192) continue;
+
+        // Centre the line horizontally (matches gen code: x_start = 16 - bytes/2)
+        const xStartByte = 16 - (byteWidth >> 1);
+        const screenX = xStartByte * 8;
+
+        // Texture row pointer: HL high byte = texture page, L = starting column
+        // The Z80 version sets L = rotation angle at line start
+        let texCol = rotationAngle & 0xFF;
+
+        // Texture row index (simple mapping: scanline index within sphere)
+        const texRow = i % diam;
+
+        let skipIdx = 0;
+        const skips = skipData[i];
+
+        for (let b = 0; b < byteWidth; b++) {
+            // XOR A (clear accumulator) -- 4 T
+            let accum = 0;
+
+            for (let bit = 0; bit < 8; bit++) {
+                // ADD A,A (shift left) -- 4 T
+                accum = (accum << 1) & 0xFF;
+
+                // ADD A,(HL) (sample source pixel) -- 7 T
+                const srcPixel = texture[texRow * 256 + (texCol & 0xFF)];
+                accum = (accum + (srcPixel & 1)) & 0xFF;
+
+                // INC L x skip (advance source pointer) -- 4 T each
+                const skip = (skipIdx < skips.length) ? skips[skipIdx] : 1;
+                texCol = (texCol + skip) & 0xFF;
+                totalExtraIncL += (skip - 1); // extra beyond mandatory 1
+                skipIdx++;
+                totalPixels++;
+            }
+
+            // LD (DE),A -- write to screen
+            const addr = zxInst.screenAddr(screenX + b * 8, screenY);
+            zxInst.poke(addr, accum);
+            totalBytes++;
+        }
+    }
+
+    return { totalBytes, totalExtraIncL, totalPixels };
+}
+
+// --- Draw sphere outline circle (midpoint circle algorithm) ---
+// This helps visualize the sphere boundary. On Z80, this would be
+// the Bresenham/midpoint circle from Dark's SE articles.
+
+function drawSphereOutline(zxInst, cx, cy, R) {
+    let x = 0;
+    let y = R;
+    let d = 1 - R; // decision variable
+
+    while (x <= y) {
+        // Draw 8 symmetric points
+        zxInst.setPixel(cx + x, cy + y);
+        zxInst.setPixel(cx - x, cy + y);
+        zxInst.setPixel(cx + x, cy - y);
+        zxInst.setPixel(cx - x, cy - y);
+        zxInst.setPixel(cx + y, cy + x);
+        zxInst.setPixel(cx - y, cy + x);
+        zxInst.setPixel(cx + y, cy - x);
+        zxInst.setPixel(cx - y, cy - x);
+
+        if (d < 0) {
+            d += 2 * x + 3;
+        } else {
+            d += 2 * (x - y) + 5;
+            y--;
+        }
+        x++;
+    }
+}
+
+// --- Draw latitude lines on the sphere for visual effect ---
+function drawLatitudeLines(zxInst, cx, cy, R, sqrtLut) {
+    const diam = R * 2;
+    // Draw a few latitude lines by drawing arcs at fixed y positions
+    for (let latStep = 4; latStep < diam; latStep += 8) {
+        const radiusAtY = sqrtLut[latStep];
+        if (radiusAtY <= 1) continue;
+        const screenY = cy - R + latStep;
+        // Draw the horizontal arc
+        for (let x = -radiusAtY; x <= radiusAtY; x++) {
+            zxInst.setPixel(cx + x, screenY);
+        }
+    }
+}
+
+// =====================================================================
+// Animation state
+// =====================================================================
+
+let rotation = 0;
+let paused = false;
+let lastTime = performance.now();
+let frameCounter = 0;
+let currentR = 24;
+let currentTexType = 'checker';
+let texture = genTexture(currentTexType, currentR * 2);
+
+document.getElementById('texSelect').onchange = function() {
+    currentTexType = this.value;
+    document.getElementById('texName').textContent = this.value;
+    texture = genTexture(currentTexType, currentR * 2);
+};
+
+document.getElementById('radius').oninput = function() {
+    currentR = parseInt(this.value);
+    document.getElementById('radiusLabel').textContent = currentR;
+    document.getElementById('radiusInfo').textContent = currentR;
+    texture = genTexture(currentTexType, currentR * 2);
+};
+
+// =====================================================================
+// Main loop
+// =====================================================================
+
+function frame() {
+    if (!paused) {
+        const rotSpeed = parseFloat(document.getElementById('rotSpeed').value);
+
+        rotation = (rotation + rotSpeed) % 256;
+
+        const R = currentR;
+        const diam = R * 2;
+
+        // Step 1: build sqrt lookup (matches build_sqrt_table)
+        const sqrtLut = buildSqrtLut(R);
+
+        // Step 2: build skip tables (matches build_skip_tables)
+        // Use true spherical projection for visual accuracy
+        const skipTables = buildSkipTables(R, sqrtLut, Math.floor(rotation), true);
+
+        // Step 3: clear screen
+        zx.clearScreen();
+
+        // Set attributes: bright white on black (matches sphere.a80: $47)
+        zx.fillAttrs(ZXScreen.makeAttr(7, 0, 1, 0));
+
+        // Step 4: render the textured sphere
+        const stats = renderSphere(zx, R, sqrtLut, skipTables, texture, Math.floor(rotation));
+
+        // Step 5: draw sphere outline (midpoint circle)
+        drawSphereOutline(zx, 128, 96, R);
+
+        // Optional: latitude lines for visual depth cue
+        drawLatitudeLines(zx, 128, 96, R, sqrtLut);
+
+        // Render to canvas
+        zx.render();
+
+        // --- Update info displays ---
+        document.getElementById('rotAngle').textContent = Math.floor(rotation);
+        document.getElementById('bytesInfo').textContent = stats.totalBytes;
+
+        // T-state estimation using Introspec's formula: 101 + 32x per byte
+        const avgX = stats.totalPixels > 0
+            ? stats.totalExtraIncL / stats.totalPixels
+            : 0;
+        const tstatesPerByte = 101 + 32 * avgX;
+        const totalTstates = Math.round(tstatesPerByte * stats.totalBytes);
+
+        document.getElementById('tstatesInfo').textContent = totalTstates.toLocaleString();
+
+        // Update Z80 panel
+        document.getElementById('z80_bytes').textContent = stats.totalBytes;
+        document.getElementById('z80_incls').textContent = stats.totalExtraIncL;
+        document.getElementById('z80_avg_x').textContent = avgX.toFixed(2);
+        document.getElementById('z80_tstates').textContent = totalTstates.toLocaleString();
+
+        const framesNeeded = totalTstates / 70000;
+        document.getElementById('z80_frames').textContent = framesNeeded.toFixed(2);
+    }
+
+    // FPS counter
+    frameCounter++;
+    const now = performance.now();
+    if (now - lastTime > 1000) {
+        document.getElementById('fps').textContent = frameCounter + ' fps';
+        frameCounter = 0;
+        lastTime = now;
+    }
+
+    requestAnimationFrame(frame);
+}
+
+frame();
+</script>
+</body></html>

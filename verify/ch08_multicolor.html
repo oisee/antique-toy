@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Multicolour (Beam Racing) — verify Z80 (ch08)</title>
+<style>
+body { background: #1a1a1a; color: #bbb; font-family: monospace; text-align: center; margin: 0; padding: 10px; }
+h2 { color: #ddd; margin: 10px 0 5px; font-size: 16px; }
+canvas { border: 4px solid #444; display: block; margin: 10px auto; image-rendering: pixelated; }
+.info { margin: 8px auto; font-size: 13px; max-width: 1100px; line-height: 1.6; }
+.info span { color: #8f8; }
+#controls { margin: 10px auto; max-width: 1100px; }
+#controls table { margin: 0 auto; border-collapse: collapse; text-align: left; }
+#controls td { padding: 3px 8px; vertical-align: middle; }
+button { margin: 0 4px; padding: 4px 12px; font-family: monospace; background: #333; color: #ccc;
+    border: 1px solid #555; cursor: pointer; }
+button:hover { background: #444; }
+button.active { background: #264; border-color: #4a8; color: #8f8; }
+select, input[type=range] { font-family: monospace; background: #333; color: #ccc; border: 1px solid #555; }
+select { padding: 3px 6px; }
+input[type=range] { width: 120px; vertical-align: middle; }
+.z80-panel { margin: 12px auto; max-width: 1100px; background: #111; border: 1px solid #333;
+    padding: 10px 14px; text-align: left; font-size: 12px; line-height: 1.7; }
+.z80-panel h3 { color: #8cf; margin: 0 0 6px; font-size: 13px; }
+.z80-panel code { color: #fc6; }
+.z80-panel .comment { color: #6a6; }
+.split-label { font-size: 13px; color: #8f8; margin-top: 2px; }
+.desc { margin: 8px auto; max-width: 1100px; font-size: 13px; line-height: 1.6; text-align: left; }
+.desc strong { color: #ddd; }
+</style>
+</head><body>
+<h2>Multicolour effect -- JS prototype (verifies Z80 ch08 beam-racing approach)</h2>
+
+<div class="desc">
+<strong>The problem:</strong> The ZX Spectrum ULA assigns one attribute (ink + paper) per 8x8 pixel cell.
+This gives only 2 colours per cell -- the cause of the infamous "attribute clash."<br>
+<strong>The trick:</strong> The ULA re-reads attributes for every scanline (it does NOT cache them).
+By rewriting attribute bytes between scanline reads ("beam racing"), we force the ULA to see
+different colours on different pixel rows within the same cell. Result: 8x1 or 8x2 colour resolution
+instead of 8x8. The LEFT side below shows normal 8x8 attributes; the RIGHT side shows what
+the beam-racing multicolour engine achieves.
+</div>
+
+<canvas id="screen"></canvas>
+
+<div class="info">
+    <span id="fps">0 fps</span> |
+    scroll offset: <span id="scrollOffset">0</span> |
+    resolution: <span id="resMode">8x2</span> |
+    pattern: <span id="patternName">rainbow bars</span>
+</div>
+
+<div id="controls">
+<table>
+<tr>
+    <td>Pattern:</td>
+    <td>
+        <select id="patternSelect">
+            <option value="rainbow">Rainbow bars</option>
+            <option value="gradient">Smooth gradient</option>
+            <option value="plasma">Plasma waves</option>
+            <option value="flag">Colour flag</option>
+        </select>
+    </td>
+    <td>Resolution:</td>
+    <td>
+        <select id="resSelect">
+            <option value="1">8x1 (per scanline)</option>
+            <option value="2" selected>8x2 (per 2 scanlines)</option>
+            <option value="4">8x4 (per 4 scanlines)</option>
+        </select>
+    </td>
+</tr>
+<tr>
+    <td>Scroll speed:</td>
+    <td><input type="range" id="scrollSpeed" min="0" max="5" step="0.25" value="1"></td>
+    <td>Pixel pattern:</td>
+    <td>
+        <select id="pixelPattern">
+            <option value="F0">$F0 (half/half)</option>
+            <option value="FF">$FF (solid ink)</option>
+            <option value="AA">$AA (checker)</option>
+            <option value="E7">$E7 (thin gap)</option>
+        </select>
+    </td>
+</tr>
+<tr>
+    <td>Grid overlay:</td>
+    <td>
+        <button id="btnGrid" class="active" onclick="toggleGrid()">ON</button>
+    </td>
+    <td colspan="2">
+        <button onclick="paused=!paused">Pause/Resume</button>
+        <button onclick="scrollPhase=0">Reset</button>
+    </td>
+</tr>
+</table>
+</div>
+
+<div class="z80-panel">
+<h3>Z80 beam-racing insight: rewriting attributes between ULA reads</h3>
+<pre>
+<span class="comment">; The ULA reads 32 attribute bytes per scanline. It does NOT cache them.</span>
+<span class="comment">; Between reads (224 T-states apart), we overwrite the attribute row.</span>
+<span class="comment">; The ULA sees different colours for different pixel rows in the same cell.</span>
+
+<span class="comment">; Typical multicolour inner loop (8x2 resolution, 4 bands per char row):</span>
+<code>.band_loop:</code>
+<code>    ld   a, (ix+0)      </code><span class="comment">; 19T  load attribute for this band</span>
+<code>    inc  ix              </code><span class="comment">; 10T  next band</span>
+<code>    push hl              </code><span class="comment">; 11T  save attr row address</span>
+<code>    call write_attr_row  </code><span class="comment">; 352T fill 32 bytes with A (unrolled)</span>
+<code>    pop  hl              </code><span class="comment">; 10T  restore row start</span>
+<code>    nop (x10)            </code><span class="comment">; 40T  pad to 2-scanline boundary (448T)</span>
+<code>    dec  c               </code>
+<code>    jr   nz, .band_loop  </code><span class="comment">; next band</span>
+
+<span class="comment">; Budget: 2 scanlines = 448 T. write_attr_row = 352 T. Overhead ~96 T.</span>
+<span class="comment">; At 8x1 resolution (every scanline), budget is only 224 T -- need LDPUSH!</span>
+<span class="comment">;</span>
+<span class="comment">; LDPUSH technique (DenisGrachev, 2019): LD DE,nn / PUSH DE = 21T per 2 bytes.</span>
+<span class="comment">; Code IS the display buffer. Patch LD operands to change what is drawn.</span>
+<span class="comment">; SP hijacked as write cursor. DI mandatory -- interrupt would corrupt screen.</span>
+</pre>
+</div>
+
+<script>
+// =====================================================================
+// ZX Spectrum palette (normal + bright = 16, with black shared = 15 unique)
+// =====================================================================
+const ZX_COLORS_RGB = [
+    // normal (index 0-7)
+    [0x00, 0x00, 0x00],  // 0 black
+    [0x00, 0x00, 0xCD],  // 1 blue
+    [0xCD, 0x00, 0x00],  // 2 red
+    [0xCD, 0x00, 0xCD],  // 3 magenta
+    [0x00, 0xCD, 0x00],  // 4 green
+    [0x00, 0xCD, 0xCD],  // 5 cyan
+    [0xCD, 0xCD, 0x00],  // 6 yellow
+    [0xCD, 0xCD, 0xCD],  // 7 white
+    // bright (index 8-15)
+    [0x00, 0x00, 0x00],  // 8 bright black (same)
+    [0x00, 0x00, 0xFF],  // 9 bright blue
+    [0xFF, 0x00, 0x00],  // 10 bright red
+    [0xFF, 0x00, 0xFF],  // 11 bright magenta
+    [0x00, 0xFF, 0x00],  // 12 bright green
+    [0x00, 0xFF, 0xFF],  // 13 bright cyan
+    [0xFF, 0xFF, 0x00],  // 14 bright yellow
+    [0xFF, 0xFF, 0xFF],  // 15 bright white
+];
+
+// Attribute byte: F B PPP III
+function makeAttr(ink, paper, bright, flash) {
+    return ((flash || 0) ? 0x80 : 0) | ((bright || 0) ? 0x40 : 0) | ((paper & 7) << 3) | (ink & 7);
+}
+
+function attrInk(a)   { return (a & 7) + ((a & 0x40) ? 8 : 0); }
+function attrPaper(a)  { return ((a >> 3) & 7) + ((a & 0x40) ? 8 : 0); }
+
+// =====================================================================
+// Canvas setup -- split view: two 256x192 panels side by side
+// =====================================================================
+const SCALE = 2;
+const W = 256, H = 192;
+const GAP = 16;  // pixel gap between panels (in scaled coords)
+const canvas = document.getElementById('screen');
+const totalW = W * SCALE * 2 + GAP;
+const totalH = H * SCALE + 40; // extra space for labels
+canvas.width = totalW;
+canvas.height = totalH;
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// Two ImageData buffers at native resolution
+const imgLeft = ctx.createImageData(W, H);
+const imgRight = ctx.createImageData(W, H);
+
+// Offscreen canvas for scaling
+const offL = document.createElement('canvas');
+offL.width = W; offL.height = H;
+const offLCtx = offL.getContext('2d');
+offLCtx.imageSmoothingEnabled = false;
+
+const offR = document.createElement('canvas');
+offR.width = W; offR.height = H;
+const offRCtx = offR.getContext('2d');
+offRCtx.imageSmoothingEnabled = false;
+
+// =====================================================================
+// Colour pattern generators
+// Generate a per-scanline colour map: 192 entries, each is an attribute byte
+// =====================================================================
+
+function genRainbow(offset) {
+    // Cycling rainbow: bright colours rotating through all 7 hues
+    const colours = [
+        makeAttr(2, 0, 1), // bright red on black
+        makeAttr(6, 2, 1), // bright yellow on red
+        makeAttr(6, 0, 1), // bright yellow on black
+        makeAttr(4, 0, 1), // bright green on black
+        makeAttr(5, 4, 1), // bright cyan on green
+        makeAttr(5, 0, 1), // bright cyan on black
+        makeAttr(1, 0, 1), // bright blue on black
+        makeAttr(3, 1, 1), // bright magenta on blue
+        makeAttr(3, 0, 1), // bright magenta on black
+        makeAttr(2, 3, 1), // bright red on magenta
+        makeAttr(7, 0, 1), // bright white on black
+        makeAttr(0, 7, 1), // black on bright white
+    ];
+    const map = new Uint8Array(H);
+    for (let y = 0; y < H; y++) {
+        const idx = Math.floor((y + offset) / 6) % colours.length;
+        map[y] = colours[idx];
+    }
+    return map;
+}
+
+function genGradient(offset) {
+    // Smooth gradient cycling through colours
+    // Use ink-on-black, cycling through the 7 non-black colours with bright
+    const hues = [1, 5, 4, 6, 2, 3, 7]; // blue, cyan, green, yellow, red, magenta, white
+    const map = new Uint8Array(H);
+    for (let y = 0; y < H; y++) {
+        const pos = (y + offset) % (hues.length * 8);
+        const hueIdx = Math.floor(pos / 8) % hues.length;
+        const subPos = pos % 8;
+        // Alternate bright/normal within each hue band for smoother look
+        const bright = subPos < 4 ? 0 : 1;
+        const ink = hues[hueIdx];
+        const paper = hues[(hueIdx + 1) % hues.length];
+        if (subPos < 2) {
+            map[y] = makeAttr(ink, 0, 0);
+        } else if (subPos < 4) {
+            map[y] = makeAttr(ink, 0, 1);
+        } else if (subPos < 6) {
+            map[y] = makeAttr(paper, ink, 1);
+        } else {
+            map[y] = makeAttr(paper, 0, 1);
+        }
+    }
+    return map;
+}
+
+function genPlasma(offset) {
+    // Sinusoidal plasma waves combining two frequencies
+    const hues = [1, 5, 4, 6, 2, 3, 7, 3, 2, 6, 4, 5]; // symmetric cycle
+    const map = new Uint8Array(H);
+    for (let y = 0; y < H; y++) {
+        const v1 = Math.sin((y + offset) * 0.08);
+        const v2 = Math.sin((y * 0.12) + offset * 0.05);
+        const combined = (v1 + v2 + 2) / 4; // normalise to 0..1
+        const hueIdx = Math.floor(combined * hues.length) % hues.length;
+        const ink = hues[hueIdx];
+        const bright = combined > 0.5 ? 1 : 0;
+        map[y] = makeAttr(ink, 0, bright);
+    }
+    return map;
+}
+
+function genFlag(offset) {
+    // Vertical colour bands like a flag, scrolling down
+    // Three horizontal stripes, each ~64 lines, with sub-bands
+    const map = new Uint8Array(H);
+    for (let y = 0; y < H; y++) {
+        const pos = (y + offset) % H;
+        let ink, paper, bright;
+        if (pos < 48) {
+            // Red stripe with orange sub-bands
+            ink = 2; paper = 0; bright = (pos % 8 < 4) ? 0 : 1;
+        } else if (pos < 56) {
+            // Transition red -> white
+            ink = 7; paper = 2; bright = 1;
+        } else if (pos < 104) {
+            // White/cyan stripe
+            ink = 7; paper = 5; bright = (pos % 6 < 3) ? 0 : 1;
+        } else if (pos < 112) {
+            // Transition white -> blue
+            ink = 1; paper = 7; bright = 1;
+        } else if (pos < 160) {
+            // Blue stripe with deep blue sub-bands
+            ink = 1; paper = 0; bright = (pos % 8 < 4) ? 0 : 1;
+        } else if (pos < 168) {
+            // Transition blue -> green
+            ink = 4; paper = 1; bright = 1;
+        } else {
+            // Green stripe
+            ink = 4; paper = 0; bright = (pos % 8 < 4) ? 0 : 1;
+        }
+        map[y] = makeAttr(ink, paper, bright);
+    }
+    return map;
+}
+
+const PATTERN_GENERATORS = {
+    rainbow: genRainbow,
+    gradient: genGradient,
+    plasma: genPlasma,
+    flag: genFlag,
+};
+
+// =====================================================================
+// Rendering functions
+// =====================================================================
+
+// Get the pixel pattern byte from the dropdown
+function getPixelByte() {
+    return parseInt(document.getElementById('pixelPattern').value, 16);
+}
+
+// Render LEFT panel: normal 8x8 attribute mode
+// Each 8x8 cell gets one attribute (sampled from the top scanline of that cell)
+function renderNormal(imgData, colourMap, pixelByte) {
+    const d = imgData.data;
+    for (let y = 0; y < H; y++) {
+        const charRow = Math.floor(y / 8) * 8; // top scanline of this char row
+        const attr = colourMap[charRow];        // one attr for entire 8x8 cell
+        const ink = attrInk(attr);
+        const paper = attrPaper(attr);
+        const inkRGB = ZX_COLORS_RGB[ink];
+        const papRGB = ZX_COLORS_RGB[paper];
+
+        for (let x = 0; x < W; x++) {
+            const bit = (pixelByte >> (7 - (x & 7))) & 1;
+            const rgb = bit ? inkRGB : papRGB;
+            const idx = (y * W + x) * 4;
+            d[idx]     = rgb[0];
+            d[idx + 1] = rgb[1];
+            d[idx + 2] = rgb[2];
+            d[idx + 3] = 255;
+        }
+    }
+}
+
+// Render RIGHT panel: multicolour mode
+// Attribute changes per N scanlines (N = resolution: 1, 2, or 4)
+function renderMulticolour(imgData, colourMap, pixelByte, resolution) {
+    const d = imgData.data;
+    for (let y = 0; y < H; y++) {
+        // Quantise to resolution boundary within the character row
+        const bandY = Math.floor(y / resolution) * resolution;
+        const attr = colourMap[bandY];
+        const ink = attrInk(attr);
+        const paper = attrPaper(attr);
+        const inkRGB = ZX_COLORS_RGB[ink];
+        const papRGB = ZX_COLORS_RGB[paper];
+
+        for (let x = 0; x < W; x++) {
+            const bit = (pixelByte >> (7 - (x & 7))) & 1;
+            const rgb = bit ? inkRGB : papRGB;
+            const idx = (y * W + x) * 4;
+            d[idx]     = rgb[0];
+            d[idx + 1] = rgb[1];
+            d[idx + 2] = rgb[2];
+            d[idx + 3] = 255;
+        }
+    }
+}
+
+// Draw 8x8 grid overlay on the LEFT panel to visualise the attribute constraint
+function drawGridOverlay(ctxTarget, offsetX, offsetY) {
+    ctxTarget.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctxTarget.lineWidth = 1;
+
+    // Vertical lines every 8 pixels (scaled)
+    for (let x = 0; x <= W; x += 8) {
+        const sx = offsetX + x * SCALE;
+        ctxTarget.beginPath();
+        ctxTarget.moveTo(sx + 0.5, offsetY);
+        ctxTarget.lineTo(sx + 0.5, offsetY + H * SCALE);
+        ctxTarget.stroke();
+    }
+    // Horizontal lines every 8 pixels (scaled)
+    for (let y = 0; y <= H; y += 8) {
+        const sy = offsetY + y * SCALE;
+        ctxTarget.beginPath();
+        ctxTarget.moveTo(offsetX, sy + 0.5);
+        ctxTarget.lineTo(offsetX + W * SCALE, sy + 0.5);
+        ctxTarget.stroke();
+    }
+}
+
+// Draw horizontal band lines on the RIGHT panel to show multicolour resolution
+function drawBandOverlay(ctxTarget, offsetX, offsetY, resolution) {
+    if (resolution <= 1) return; // no visible bands at 8x1
+    ctxTarget.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctxTarget.lineWidth = 1;
+
+    for (let y = 0; y <= H; y += resolution) {
+        const sy = offsetY + y * SCALE;
+        ctxTarget.beginPath();
+        ctxTarget.moveTo(offsetX, sy + 0.5);
+        ctxTarget.lineTo(offsetX + W * SCALE, sy + 0.5);
+        ctxTarget.stroke();
+    }
+}
+
+// =====================================================================
+// Animation state
+// =====================================================================
+let scrollPhase = 0;
+let paused = false;
+let showGrid = true;
+
+function toggleGrid() {
+    showGrid = !showGrid;
+    document.getElementById('btnGrid').classList.toggle('active', showGrid);
+    document.getElementById('btnGrid').textContent = showGrid ? 'ON' : 'OFF';
+}
+
+// =====================================================================
+// Main loop
+// =====================================================================
+let lastTime = performance.now(), frameCounter = 0;
+
+function frame() {
+    if (!paused) {
+        const speed = parseFloat(document.getElementById('scrollSpeed').value);
+        const patternName = document.getElementById('patternSelect').value;
+        const resolution = parseInt(document.getElementById('resSelect').value);
+        const pixelByte = getPixelByte();
+
+        scrollPhase += speed;
+        const offset = Math.floor(scrollPhase);
+
+        // Generate per-scanline colour map
+        const generator = PATTERN_GENERATORS[patternName] || genRainbow;
+        const colourMap = generator(offset);
+
+        // Render both panels
+        renderNormal(imgLeft, colourMap, pixelByte);
+        renderMulticolour(imgRight, colourMap, pixelByte, resolution);
+
+        // Draw to canvas
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, totalW, totalH);
+
+        // Left panel
+        offLCtx.putImageData(imgLeft, 0, 0);
+        ctx.drawImage(offL, 0, 0, W, H, 0, 0, W * SCALE, H * SCALE);
+
+        // Right panel
+        offRCtx.putImageData(imgRight, 0, 0);
+        ctx.drawImage(offR, 0, 0, W, H, W * SCALE + GAP, 0, W * SCALE, H * SCALE);
+
+        // Grid overlay on left panel
+        if (showGrid) {
+            drawGridOverlay(ctx, 0, 0);
+        }
+
+        // Band lines on right panel
+        drawBandOverlay(ctx, W * SCALE + GAP, 0, resolution);
+
+        // Labels
+        ctx.font = '13px monospace';
+        ctx.fillStyle = '#8f8';
+        ctx.textAlign = 'center';
+        ctx.fillText('NORMAL 8x8 ATTRIBUTES', W * SCALE / 2, H * SCALE + 16);
+        ctx.fillStyle = '#666';
+        ctx.fillText('(one colour per cell -- attribute clash)', W * SCALE / 2, H * SCALE + 32);
+
+        ctx.fillStyle = '#8f8';
+        ctx.fillText('MULTICOLOUR 8x' + resolution, W * SCALE + GAP + W * SCALE / 2, H * SCALE + 16);
+        ctx.fillStyle = '#666';
+        const method = resolution === 1 ? 'LDPUSH beam racing' : 'beam racing';
+        ctx.fillText('(' + method + ' -- attribute rewrite per ' + resolution + ' scanline' + (resolution > 1 ? 's' : '') + ')', W * SCALE + GAP + W * SCALE / 2, H * SCALE + 32);
+
+        // Simulated beam position indicator on the right panel
+        // A thin bright line showing where the "ULA beam" currently is
+        const beamY = (offset * 3) % H;
+        const beamScreenY = beamY * SCALE;
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(W * SCALE + GAP - 6, beamScreenY);
+        ctx.lineTo(W * SCALE + GAP + W * SCALE + 6, beamScreenY);
+        ctx.stroke();
+
+        // Beam label
+        ctx.fillStyle = '#ff0';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText('ULA beam', W * SCALE + GAP - 8, beamScreenY + 3);
+        ctx.textAlign = 'center';
+
+        // Update info
+        document.getElementById('scrollOffset').textContent = offset;
+        document.getElementById('resMode').textContent = '8x' + resolution;
+        document.getElementById('patternName').textContent = patternName;
+    }
+
+    // FPS counter
+    frameCounter++;
+    const now = performance.now();
+    if (now - lastTime > 1000) {
+        document.getElementById('fps').textContent = frameCounter + ' fps';
+        frameCounter = 0;
+        lastTime = now;
+    }
+
+    requestAnimationFrame(frame);
+}
+
+frame();
+</script>
+</body></html>

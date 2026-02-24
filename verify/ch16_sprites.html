@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>OR+AND Masked Sprites — verify Z80 (ch16)</title>
+<style>
+body { background: #1a1a1a; color: #bbb; font-family: monospace; text-align: center; margin: 0; padding: 10px; }
+h2 { color: #ddd; margin: 10px 0 5px; font-size: 16px; }
+h3 { color: #8cf; margin: 12px 0 6px; font-size: 14px; }
+.info { margin: 8px auto; font-size: 13px; max-width: 1200px; line-height: 1.6; }
+.info span { color: #8f8; }
+.panels { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin: 10px auto; max-width: 1400px; }
+.panel { text-align: center; }
+.panel-label { font-size: 13px; color: #8cf; margin-bottom: 4px; }
+.panel-sublabel { font-size: 11px; color: #6a6; margin-top: 2px; }
+canvas { border: 2px solid #444; display: block; margin: 0 auto; image-rendering: pixelated; }
+#controls { margin: 10px auto; max-width: 1200px; }
+#controls table { margin: 0 auto; border-collapse: collapse; text-align: left; }
+#controls td { padding: 3px 8px; vertical-align: middle; }
+button { margin: 0 4px; padding: 4px 12px; font-family: monospace; background: #333; color: #ccc;
+    border: 1px solid #555; cursor: pointer; }
+button:hover { background: #444; }
+button.active { background: #264; border-color: #4a8; color: #8f8; }
+select, input[type=range] { font-family: monospace; background: #333; color: #ccc; border: 1px solid #555; }
+select { padding: 3px 6px; }
+input[type=range] { width: 120px; vertical-align: middle; }
+.z80-panel { margin: 12px auto; max-width: 1200px; background: #111; border: 1px solid #333;
+    padding: 10px 14px; text-align: left; font-size: 12px; line-height: 1.7; }
+.z80-panel h3 { color: #8cf; margin: 0 0 6px; font-size: 13px; }
+.z80-panel code { color: #fc6; }
+.z80-panel .comment { color: #6a6; }
+.bit-viz { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin: 10px auto; max-width: 1200px; }
+.bit-grid { display: inline-block; }
+.bit-grid table { border-collapse: collapse; }
+.bit-grid td { width: 16px; height: 16px; border: 1px solid #333; text-align: center; font-size: 9px; }
+.bit-grid .bit-one { background: #ddd; color: #000; }
+.bit-grid .bit-zero { background: #222; color: #555; }
+.bit-grid .bit-mask-clear { background: #500; color: #f88; }
+.bit-grid .bit-sprite-set { background: #050; color: #8f8; }
+.bit-grid .bit-result-sprite { background: #fff; color: #000; }
+.bit-grid .bit-result-bg { background: #888; color: #000; }
+.bit-grid .bit-result-bleed { background: #ff0; color: #000; }
+.legend { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 8px; font-size: 11px; }
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-swatch { width: 14px; height: 14px; border: 1px solid #555; display: inline-block; }
+.comparison-row { display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; margin: 16px auto; }
+.comparison-col { text-align: center; }
+</style>
+</head><body>
+<h2>OR+AND Masked Sprite Rendering -- JS prototype (verifies Z80 ch16 approach)</h2>
+
+<div class="info">
+    <span id="fps">0 fps</span> |
+    sprite pos: (<span id="posX">0</span>, <span id="posY">0</span>) |
+    mode: <span id="modeLabel">animated</span>
+</div>
+
+<div id="controls">
+<table>
+<tr>
+    <td>Sprite:</td>
+    <td>
+        <select id="spriteSelect">
+            <option value="arrow">Arrow (from ch16)</option>
+            <option value="ship">Spaceship</option>
+            <option value="ghost">Ghost</option>
+            <option value="heart">Heart</option>
+        </select>
+    </td>
+    <td>Background:</td>
+    <td>
+        <select id="bgSelect">
+            <option value="checker">Checkerboard</option>
+            <option value="dither">Dither 50%</option>
+            <option value="stripes">Vertical stripes</option>
+            <option value="noise">Random noise</option>
+        </select>
+    </td>
+    <td>Speed:</td>
+    <td><input type="range" id="speed" min="0" max="5" step="0.5" value="1"></td>
+    <td>
+        <button onclick="paused=!paused">Pause/Resume</button>
+        <button onclick="resetAnim()">Reset</button>
+    </td>
+</tr>
+</table>
+</div>
+
+<!-- Section 1: Zoomed bit-level visualization of the compositing process -->
+<h3>Bit-Level Compositing: AND mask, then OR sprite data (one row shown)</h3>
+<div class="info" style="font-size: 12px; color: #aaa;">
+    Row <span id="vizRow">3</span> of sprite. Each square = one pixel/bit. Watch how the mask punches a hole, then the sprite fills it.
+</div>
+<div class="bit-viz" id="bitViz"></div>
+<div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:#ddd"></div> BG=1</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#222"></div> BG=0</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#500"></div> Cleared by AND mask</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#050"></div> Set by OR data</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#fff"></div> Result: sprite pixel</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#888"></div> Result: background preserved</div>
+</div>
+
+<!-- Section 2: Three side-by-side zoomed panels -->
+<h3>Zoomed Panels: Background / Sprite+Mask / Composited Result</h3>
+<div class="panels">
+    <div class="panel">
+        <div class="panel-label">Background Pattern</div>
+        <canvas id="panelBg" width="256" height="256"></canvas>
+        <div class="panel-sublabel">checkerboard / dither pattern</div>
+    </div>
+    <div class="panel">
+        <div class="panel-label">AND Mask + OR Sprite Data</div>
+        <canvas id="panelSprite" width="256" height="256"></canvas>
+        <div class="panel-sublabel">red=opaque (mask 0), white=sprite pixel (gfx 1)</div>
+    </div>
+    <div class="panel">
+        <div class="panel-label">Result: (BG AND mask) OR sprite</div>
+        <canvas id="panelResult" width="256" height="256"></canvas>
+        <div class="panel-sublabel">background preserved outside sprite</div>
+    </div>
+</div>
+
+<!-- Section 3: Comparison -- masked vs unmasked -->
+<h3>Why Masking Matters: OR-only vs AND+OR</h3>
+<div class="comparison-row">
+    <div class="comparison-col">
+        <div class="panel-label" style="color: #f88;">BAD: OR only (no mask)</div>
+        <canvas id="panelBadOr" width="256" height="256"></canvas>
+        <div class="panel-sublabel">sprite bleeds into background</div>
+    </div>
+    <div class="comparison-col">
+        <div class="panel-label" style="color: #8f8;">GOOD: AND mask + OR data</div>
+        <canvas id="panelGoodMask" width="256" height="256"></canvas>
+        <div class="panel-sublabel">clean sprite on any background</div>
+    </div>
+</div>
+
+<!-- Section 4: Animated full-screen demo -->
+<h3>Animated Demo: Sprite Moving Across Background</h3>
+<div class="panels">
+    <div class="panel">
+        <canvas id="animCanvas" width="512" height="384"></canvas>
+        <div class="panel-sublabel">32x24 char area, each ZX pixel = 2px. Sprite bounces off edges.</div>
+    </div>
+</div>
+
+<!-- Z80 code panel -->
+<div class="z80-panel">
+<h3>Z80 implementation: OR+AND masked sprite (from sprite_demo.a80)</h3>
+<pre>
+<span class="comment">; The key insight: mask has 1s for transparent, 0s for opaque pixels.</span>
+<span class="comment">; AND with mask clears a sprite-shaped hole. OR with data fills it.</span>
+
+<span class="comment">; DRAW_MASKED_8x8</span>
+<span class="comment">; Input:  HL = screen address, DE = sprite data (mask, gfx pairs)</span>
+<span class="comment">; Format: each row is 2 bytes: mask_byte, graphic_byte</span>
+
+<code>draw_masked_8x8:</code>
+<code>    ld   b, 8             </code><span class="comment">;  7T  8 rows to draw</span>
+
+<code>.row:</code>
+<code>    ld   a, (de)          </code><span class="comment">;  7T  load mask byte</span>
+<code>    and  (hl)             </code><span class="comment">;  7T  clear sprite-shaped hole in background</span>
+<code>    ld   c, a             </code><span class="comment">;  4T  save masked background</span>
+<code>    inc  de               </code><span class="comment">;  6T  advance to graphic byte</span>
+<code>    ld   a, (de)          </code><span class="comment">;  7T  load sprite graphic</span>
+<code>    or   c                </code><span class="comment">;  4T  stamp sprite into hole</span>
+<code>    ld   (hl), a          </code><span class="comment">;  7T  write result to screen</span>
+<code>    inc  de               </code><span class="comment">;  6T  next row's mask</span>
+<code>    call down_hl          </code><span class="comment">; 17+T advance one scanline</span>
+<code>    djnz .row             </code><span class="comment">; 13/8T</span>
+<code>    ret</code>
+
+<span class="comment">; Per-row cost: ~55 T-states (excluding down_hl)</span>
+<span class="comment">; Full 8x8 sprite: ~550 T-states = 0.16 ms at 3.5 MHz</span>
+<span class="comment">;</span>
+<span class="comment">; Arrow sprite data from sprite_demo.a80:</span>
+<span class="comment">;   DB $E7,$10  ; row 0: ...X....  mask=<span id="z80_mask">$E7</span> gfx=<span id="z80_gfx">$10</span></span>
+<span class="comment">;   DB $E3,$18  ; row 1: ...XX...</span>
+<span class="comment">;   DB $E1,$1C  ; row 2: ...XXX..</span>
+<span class="comment">;   DB $01,$FE  ; row 3: XXXXXXX.</span>
+<span class="comment">;   DB $01,$FE  ; row 4: XXXXXXX.</span>
+<span class="comment">;   DB $E1,$1C  ; row 5: ...XXX..</span>
+<span class="comment">;   DB $E3,$18  ; row 6: ...XX...</span>
+<span class="comment">;   DB $E7,$10  ; row 7: ...X....</span>
+</pre>
+</div>
+
+<script>
+// ============================================================
+// Sprite definitions: each is { gfx: [8 bytes], mask: [8 bytes] }
+// Mask: 1 = transparent (background shows), 0 = opaque (sprite pixel)
+// ============================================================
+
+const SPRITES = {
+    // Arrow pointing right (from sprite_demo.a80)
+    arrow: {
+        gfx:  [0x10, 0x18, 0x1C, 0xFE, 0xFE, 0x1C, 0x18, 0x10],
+        mask: [0xE7, 0xE3, 0xE1, 0x01, 0x01, 0xE1, 0xE3, 0xE7],
+        name: 'Arrow (ch16)'
+    },
+    // Spaceship
+    ship: {
+        gfx:  [0x18, 0x3C, 0x7E, 0xFF, 0xDB, 0xFF, 0x66, 0x24],
+        mask: [0xE7, 0xC3, 0x81, 0x00, 0x00, 0x00, 0x99, 0xDB],
+        name: 'Spaceship'
+    },
+    // Ghost
+    ghost: {
+        gfx:  [0x3C, 0x7E, 0xDB, 0xFF, 0xFF, 0xFF, 0xDB, 0x5A],
+        mask: [0xC3, 0x81, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        name: 'Ghost'
+    },
+    // Heart
+    heart: {
+        gfx:  [0x00, 0x66, 0xFF, 0xFF, 0xFF, 0x7E, 0x3C, 0x18],
+        mask: [0xFF, 0x99, 0x00, 0x00, 0x00, 0x81, 0xC3, 0xE7],
+        name: 'Heart'
+    }
+};
+
+// ============================================================
+// Background pattern generators (8-bit values for a 32x24 char grid)
+// Returns a 256x192 1-bit buffer (packed bytes: 32 bytes per row)
+// ============================================================
+
+function genBackground(type) {
+    const buf = new Uint8Array(32 * 192);
+    for (let y = 0; y < 192; y++) {
+        for (let col = 0; col < 32; col++) {
+            let byte = 0;
+            for (let bit = 0; bit < 8; bit++) {
+                const x = col * 8 + bit;
+                let set = false;
+                switch (type) {
+                    case 'checker':
+                        // 2x2 pixel checkerboard
+                        set = ((x >> 1) ^ (y >> 1)) & 1;
+                        break;
+                    case 'dither':
+                        // 50% dither (alternating pixels)
+                        set = (x + y) & 1;
+                        break;
+                    case 'stripes':
+                        // Vertical stripes, 4px wide
+                        set = (x >> 2) & 1;
+                        break;
+                    case 'noise':
+                        set = Math.random() > 0.5;
+                        break;
+                }
+                if (set) byte |= (0x80 >> bit);
+            }
+            buf[y * 32 + col] = byte;
+        }
+    }
+    return buf;
+}
+
+// Get a single pixel from background buffer
+function bgPixel(bg, x, y) {
+    if (x < 0 || x >= 256 || y < 0 || y >= 192) return 0;
+    const col = x >> 3;
+    const bit = 7 - (x & 7);
+    return (bg[y * 32 + col] >> bit) & 1;
+}
+
+// Get a byte from background buffer
+function bgByte(bg, col, y) {
+    if (col < 0 || col >= 32 || y < 0 || y >= 192) return 0;
+    return bg[y * 32 + col];
+}
+
+// ============================================================
+// Current state
+// ============================================================
+
+let currentSprite = SPRITES.arrow;
+let currentBgType = 'checker';
+let background = genBackground(currentBgType);
+let paused = false;
+
+// Animation state
+let sprX = 32, sprY = 32;
+let sprDX = 1, sprDY = 1;
+let vizRow = 3; // which sprite row to show in bit visualization
+
+// ============================================================
+// UI handlers
+// ============================================================
+
+document.getElementById('spriteSelect').onchange = function() {
+    currentSprite = SPRITES[this.value];
+    drawStaticPanels();
+};
+
+document.getElementById('bgSelect').onchange = function() {
+    currentBgType = this.value;
+    background = genBackground(currentBgType);
+    animBgCache = null; // force rebuild of animation cache
+    drawStaticPanels();
+};
+
+function resetAnim() {
+    sprX = 32; sprY = 32;
+    sprDX = 1; sprDY = 1;
+    paused = false;
+}
+
+// ============================================================
+// Bit-level visualization (Section 1)
+// ============================================================
+
+function drawBitViz() {
+    const container = document.getElementById('bitViz');
+    const row = vizRow;
+
+    // Get background byte at sprite position (byte-aligned column)
+    const bgCol = sprX >> 3;
+    const bgRow = sprY + row;
+    const bgByt = bgByte(background, bgCol, bgRow);
+    const maskByt = currentSprite.mask[row];
+    const gfxByt = currentSprite.gfx[row];
+
+    // Compute intermediate and result
+    const afterAnd = bgByt & maskByt;
+    const result = afterAnd | gfxByt;
+
+    let html = '<table style="margin: 0 auto; border-collapse: collapse;">';
+
+    // Header row
+    html += '<tr>';
+    html += '<td style="padding: 4px 8px; text-align: right; color: #8cf; font-size: 12px;">Background:</td>';
+    for (let bit = 7; bit >= 0; bit--) {
+        const v = (bgByt >> bit) & 1;
+        html += '<td class="' + (v ? 'bit-one' : 'bit-zero') + '">' + v + '</td>';
+    }
+    html += '<td style="padding: 0 12px; color: #666; font-size: 11px;">$' + bgByt.toString(16).toUpperCase().padStart(2, '0') + '</td>';
+    html += '</tr>';
+
+    // AND mask row
+    html += '<tr>';
+    html += '<td style="padding: 4px 8px; text-align: right; color: #fc6; font-size: 12px;">AND mask:</td>';
+    for (let bit = 7; bit >= 0; bit--) {
+        const v = (maskByt >> bit) & 1;
+        html += '<td class="' + (v ? 'bit-one' : 'bit-mask-clear') + '">' + v + '</td>';
+    }
+    html += '<td style="padding: 0 12px; color: #666; font-size: 11px;">$' + maskByt.toString(16).toUpperCase().padStart(2, '0') + '  (0 = clears pixel)</td>';
+    html += '</tr>';
+
+    // After AND row
+    html += '<tr>';
+    html += '<td style="padding: 4px 8px; text-align: right; color: #aaa; font-size: 12px;">BG AND mask:</td>';
+    for (let bit = 7; bit >= 0; bit--) {
+        const bgV = (bgByt >> bit) & 1;
+        const maskV = (maskByt >> bit) & 1;
+        const v = (afterAnd >> bit) & 1;
+        const cls = (!maskV && bgV) ? 'bit-mask-clear' : (v ? 'bit-one' : 'bit-zero');
+        html += '<td class="' + cls + '">' + v + '</td>';
+    }
+    html += '<td style="padding: 0 12px; color: #666; font-size: 11px;">$' + afterAnd.toString(16).toUpperCase().padStart(2, '0') + '  (hole punched)</td>';
+    html += '</tr>';
+
+    // Separator
+    html += '<tr><td colspan="10" style="height: 6px;"></td></tr>';
+
+    // OR sprite data row
+    html += '<tr>';
+    html += '<td style="padding: 4px 8px; text-align: right; color: #fc6; font-size: 12px;">OR sprite:</td>';
+    for (let bit = 7; bit >= 0; bit--) {
+        const v = (gfxByt >> bit) & 1;
+        html += '<td class="' + (v ? 'bit-sprite-set' : 'bit-zero') + '">' + v + '</td>';
+    }
+    html += '<td style="padding: 0 12px; color: #666; font-size: 11px;">$' + gfxByt.toString(16).toUpperCase().padStart(2, '0') + '  (1 = sprite pixel)</td>';
+    html += '</tr>';
+
+    // Separator
+    html += '<tr><td colspan="10" style="height: 6px;"></td></tr>';
+
+    // Result row
+    html += '<tr>';
+    html += '<td style="padding: 4px 8px; text-align: right; color: #8f8; font-size: 12px; font-weight: bold;">Result:</td>';
+    for (let bit = 7; bit >= 0; bit--) {
+        const v = (result >> bit) & 1;
+        const gfxV = (gfxByt >> bit) & 1;
+        const maskV = (maskByt >> bit) & 1;
+        let cls;
+        if (gfxV) {
+            cls = 'bit-result-sprite'; // sprite pixel (white)
+        } else if (maskV) {
+            cls = v ? 'bit-result-bg' : 'bit-zero'; // background preserved
+        } else {
+            cls = 'bit-zero'; // cleared by mask, no sprite data
+        }
+        html += '<td class="' + cls + '">' + v + '</td>';
+    }
+    html += '<td style="padding: 0 12px; color: #666; font-size: 11px;">$' + result.toString(16).toUpperCase().padStart(2, '0') + '  (clean composite)</td>';
+    html += '</tr>';
+
+    html += '</table>';
+    container.innerHTML = html;
+
+    document.getElementById('vizRow').textContent = row;
+}
+
+// ============================================================
+// Zoomed panel rendering (Sections 2 and 3)
+// ============================================================
+
+const PANEL_SIZE = 256; // canvas size in device pixels
+const ZOOM = 16;        // each ZX pixel = 16x16 in zoomed panels
+const VIEW_W = 16;      // show 16x16 pixel area around sprite
+const VIEW_H = 16;
+
+const COL_BG_ON  = '#CDCDCD'; // ZX white (normal)
+const COL_BG_OFF = '#0000CD'; // ZX blue (normal)
+const COL_MASK_0 = '#CC0000'; // mask bit = 0 (opaque) shown in red
+const COL_MASK_1 = '#333333'; // mask bit = 1 (transparent) shown dark
+const COL_GFX_1  = '#FFFFFF'; // sprite pixel on
+const COL_GFX_0  = '#111111'; // sprite pixel off
+const COL_GRID   = '#333333';
+
+function drawZoomedPanel(canvasId, renderFn) {
+    const canvas = document.getElementById(canvasId);
+    canvas.width = VIEW_W * ZOOM;
+    canvas.height = VIEW_H * ZOOM;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+
+    for (let py = 0; py < VIEW_H; py++) {
+        for (let px = 0; px < VIEW_W; px++) {
+            const color = renderFn(px, py);
+            ctx.fillStyle = color;
+            ctx.fillRect(px * ZOOM, py * ZOOM, ZOOM, ZOOM);
+        }
+    }
+
+    // Grid lines
+    ctx.strokeStyle = COL_GRID;
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= VIEW_W; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * ZOOM + 0.5, 0);
+        ctx.lineTo(i * ZOOM + 0.5, VIEW_H * ZOOM);
+        ctx.stroke();
+    }
+    for (let i = 0; i <= VIEW_H; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, i * ZOOM + 0.5);
+        ctx.lineTo(VIEW_W * ZOOM, i * ZOOM + 0.5);
+        ctx.stroke();
+    }
+
+    // Sprite boundary box (8x8 in the center area)
+    const sprOfsX = 4; // sprite starts at pixel 4 in the view
+    const sprOfsY = 4;
+    ctx.strokeStyle = '#ff0';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 2]);
+    ctx.strokeRect(sprOfsX * ZOOM, sprOfsY * ZOOM, 8 * ZOOM, 8 * ZOOM);
+    ctx.setLineDash([]);
+}
+
+function drawStaticPanels() {
+    const spr = currentSprite;
+    const sprOfsX = 4; // sprite drawn at offset (4,4) within 16x16 view
+    const sprOfsY = 4;
+
+    // Use a local background for the zoomed panels (centered around sprite)
+    const localBgByte = function(viewX, viewY) {
+        // Map view coords to world coords
+        const wx = (sprX & ~7) - (sprOfsX) + viewX; // rough mapping
+        const wy = sprY - sprOfsY + viewY;
+        return bgPixel(background, wx, wy);
+    };
+
+    // Panel 1: Background only
+    drawZoomedPanel('panelBg', function(px, py) {
+        return localBgByte(px, py) ? COL_BG_ON : COL_BG_OFF;
+    });
+
+    // Panel 2: Sprite data + mask (split view: top = AND mask, bottom = OR gfx)
+    // 16 pixels tall: rows 0-7 = AND mask, rows 8-15 = OR sprite data
+    const SPR_PANEL_W = 8;
+    const SPR_PANEL_H = 18; // 8 mask + 2 gap + 8 gfx
+    const SPR_ZOOM = 16;
+    const panelSprCanvas = document.getElementById('panelSprite');
+    panelSprCanvas.width = SPR_PANEL_W * SPR_ZOOM + 120; // extra space for labels
+    panelSprCanvas.height = SPR_PANEL_H * SPR_ZOOM;
+    const ctx2 = panelSprCanvas.getContext('2d');
+    ctx2.imageSmoothingEnabled = false;
+    ctx2.fillStyle = '#111';
+    ctx2.fillRect(0, 0, panelSprCanvas.width, panelSprCanvas.height);
+
+    const labelX = SPR_PANEL_W * SPR_ZOOM + 8;
+
+    // Draw AND mask (top 8 rows)
+    for (let sy = 0; sy < 8; sy++) {
+        for (let sx = 0; sx < 8; sx++) {
+            const bit = 7 - sx;
+            const maskBit = (spr.mask[sy] >> bit) & 1;
+            ctx2.fillStyle = maskBit ? '#444' : '#C00'; // 1=transparent(dark), 0=opaque(red)
+            ctx2.fillRect(sx * SPR_ZOOM, sy * SPR_ZOOM, SPR_ZOOM, SPR_ZOOM);
+            // Show bit value
+            ctx2.fillStyle = maskBit ? '#888' : '#FCC';
+            ctx2.font = '10px monospace';
+            ctx2.textAlign = 'center';
+            ctx2.fillText(maskBit ? '1' : '0', sx * SPR_ZOOM + SPR_ZOOM/2, sy * SPR_ZOOM + SPR_ZOOM/2 + 4);
+        }
+        // Row label
+        ctx2.fillStyle = '#888';
+        ctx2.font = '10px monospace';
+        ctx2.textAlign = 'left';
+        ctx2.fillText('$' + spr.mask[sy].toString(16).toUpperCase().padStart(2, '0'), labelX, sy * SPR_ZOOM + SPR_ZOOM/2 + 4);
+    }
+    // Label "AND MASK"
+    ctx2.fillStyle = '#F88';
+    ctx2.font = 'bold 11px monospace';
+    ctx2.textAlign = 'left';
+    ctx2.fillText('AND MASK', labelX + 30, 4 * SPR_ZOOM + 4);
+
+    // Gap
+    const gfxOffsetY = 10 * SPR_ZOOM; // after 8 rows + 2 gap rows
+
+    // Draw OR sprite data (bottom 8 rows)
+    for (let sy = 0; sy < 8; sy++) {
+        for (let sx = 0; sx < 8; sx++) {
+            const bit = 7 - sx;
+            const gfxBit = (spr.gfx[sy] >> bit) & 1;
+            ctx2.fillStyle = gfxBit ? '#FFF' : '#222'; // 1=sprite pixel(white), 0=off(dark)
+            ctx2.fillRect(sx * SPR_ZOOM, gfxOffsetY + sy * SPR_ZOOM, SPR_ZOOM, SPR_ZOOM);
+            // Show bit value
+            ctx2.fillStyle = gfxBit ? '#000' : '#555';
+            ctx2.font = '10px monospace';
+            ctx2.textAlign = 'center';
+            ctx2.fillText(gfxBit ? '1' : '0', sx * SPR_ZOOM + SPR_ZOOM/2, gfxOffsetY + sy * SPR_ZOOM + SPR_ZOOM/2 + 4);
+        }
+        // Row label
+        ctx2.fillStyle = '#888';
+        ctx2.font = '10px monospace';
+        ctx2.textAlign = 'left';
+        ctx2.fillText('$' + spr.gfx[sy].toString(16).toUpperCase().padStart(2, '0'), labelX, gfxOffsetY + sy * SPR_ZOOM + SPR_ZOOM/2 + 4);
+    }
+    // Label "OR DATA"
+    ctx2.fillStyle = '#8F8';
+    ctx2.font = 'bold 11px monospace';
+    ctx2.textAlign = 'left';
+    ctx2.fillText('OR DATA', labelX + 30, gfxOffsetY + 4 * SPR_ZOOM + 4);
+
+    // Grid lines for mask section
+    ctx2.strokeStyle = COL_GRID;
+    ctx2.lineWidth = 1;
+    for (let i = 0; i <= 8; i++) {
+        ctx2.beginPath(); ctx2.moveTo(i * SPR_ZOOM + 0.5, 0); ctx2.lineTo(i * SPR_ZOOM + 0.5, 8 * SPR_ZOOM); ctx2.stroke();
+    }
+    for (let i = 0; i <= 8; i++) {
+        ctx2.beginPath(); ctx2.moveTo(0, i * SPR_ZOOM + 0.5); ctx2.lineTo(8 * SPR_ZOOM, i * SPR_ZOOM + 0.5); ctx2.stroke();
+    }
+    // Grid for gfx section
+    for (let i = 0; i <= 8; i++) {
+        ctx2.beginPath(); ctx2.moveTo(i * SPR_ZOOM + 0.5, gfxOffsetY); ctx2.lineTo(i * SPR_ZOOM + 0.5, gfxOffsetY + 8 * SPR_ZOOM); ctx2.stroke();
+    }
+    for (let i = 0; i <= 8; i++) {
+        ctx2.beginPath(); ctx2.moveTo(0, gfxOffsetY + i * SPR_ZOOM + 0.5); ctx2.lineTo(8 * SPR_ZOOM, gfxOffsetY + i * SPR_ZOOM + 0.5); ctx2.stroke();
+    }
+
+    // Divider label between mask and gfx
+    ctx2.fillStyle = '#666';
+    ctx2.font = '11px monospace';
+    ctx2.textAlign = 'center';
+    ctx2.fillText('-- then --', SPR_PANEL_W * SPR_ZOOM / 2, 9 * SPR_ZOOM + 4);
+
+    // Panel 3: Composited result (BG AND mask) OR sprite
+    drawZoomedPanel('panelResult', function(px, py) {
+        const bgVal = localBgByte(px, py);
+        const inSprite = (px >= sprOfsX && px < sprOfsX + 8 && py >= sprOfsY && py < sprOfsY + 8);
+        if (inSprite) {
+            const sx = px - sprOfsX;
+            const sy = py - sprOfsY;
+            const bit = 7 - sx;
+            const maskBit = (spr.mask[sy] >> bit) & 1;
+            const gfxBit = (spr.gfx[sy] >> bit) & 1;
+            const resultBit = (bgVal & maskBit) | gfxBit;
+            return resultBit ? COL_BG_ON : COL_BG_OFF;
+        }
+        return bgVal ? COL_BG_ON : COL_BG_OFF;
+    });
+
+    // Panel: BAD (OR only, no mask)
+    drawZoomedPanel('panelBadOr', function(px, py) {
+        const bgVal = localBgByte(px, py);
+        const inSprite = (px >= sprOfsX && px < sprOfsX + 8 && py >= sprOfsY && py < sprOfsY + 8);
+        if (inSprite) {
+            const sx = px - sprOfsX;
+            const sy = py - sprOfsY;
+            const bit = 7 - sx;
+            const gfxBit = (spr.gfx[sy] >> bit) & 1;
+            // OR only: background bleeds through
+            const resultBit = bgVal | gfxBit;
+            return resultBit ? COL_BG_ON : COL_BG_OFF;
+        }
+        return bgVal ? COL_BG_ON : COL_BG_OFF;
+    });
+
+    // Panel: GOOD (AND+OR)
+    drawZoomedPanel('panelGoodMask', function(px, py) {
+        const bgVal = localBgByte(px, py);
+        const inSprite = (px >= sprOfsX && px < sprOfsX + 8 && py >= sprOfsY && py < sprOfsY + 8);
+        if (inSprite) {
+            const sx = px - sprOfsX;
+            const sy = py - sprOfsY;
+            const bit = 7 - sx;
+            const maskBit = (spr.mask[sy] >> bit) & 1;
+            const gfxBit = (spr.gfx[sy] >> bit) & 1;
+            const resultBit = (bgVal & maskBit) | gfxBit;
+            return resultBit ? COL_BG_ON : COL_BG_OFF;
+        }
+        return bgVal ? COL_BG_ON : COL_BG_OFF;
+    });
+}
+
+// ============================================================
+// Animated full-screen demo (Section 4)
+// Uses ImageData for fast rendering, like the real ZX Spectrum:
+// background is drawn once, sprite compositing on top each frame.
+// ============================================================
+
+const ANIM_SCALE = 2; // each ZX pixel = 2 device pixels
+const ANIM_W = 256;
+const ANIM_H = 192;
+
+// Pre-render background into an ImageData for fast blitting
+let animImgData = null;
+let animBgCache = null; // cached background ImageData (no sprite)
+let animCtx = null;
+
+function initAnimCanvas() {
+    const canvas = document.getElementById('animCanvas');
+    canvas.width = ANIM_W * ANIM_SCALE;
+    canvas.height = ANIM_H * ANIM_SCALE;
+    animCtx = canvas.getContext('2d');
+    animCtx.imageSmoothingEnabled = false;
+    animImgData = animCtx.createImageData(ANIM_W, ANIM_H);
+    animBgCache = null; // force rebuild
+}
+
+// Parse hex color to [r,g,b]
+const COL_ON_RGB  = [0xCD, 0xCD, 0xCD]; // COL_BG_ON  = '#CDCDCD'
+const COL_OFF_RGB = [0x00, 0x00, 0xCD]; // COL_BG_OFF = '#0000CD'
+
+function buildBgCache() {
+    // Render background into animImgData as a cache
+    animBgCache = new Uint8ClampedArray(ANIM_W * ANIM_H * 4);
+    for (let y = 0; y < ANIM_H; y++) {
+        for (let col = 0; col < 32; col++) {
+            const byte = bgByte(background, col, y);
+            for (let bit = 0; bit < 8; bit++) {
+                const px = col * 8 + bit;
+                const set = (byte >> (7 - bit)) & 1;
+                const rgb = set ? COL_ON_RGB : COL_OFF_RGB;
+                const idx = (y * ANIM_W + px) * 4;
+                animBgCache[idx]     = rgb[0];
+                animBgCache[idx + 1] = rgb[1];
+                animBgCache[idx + 2] = rgb[2];
+                animBgCache[idx + 3] = 255;
+            }
+        }
+    }
+}
+
+function drawAnimFrame() {
+    if (!animCtx) initAnimCanvas();
+    if (!animBgCache) buildBgCache();
+
+    const data = animImgData.data;
+    const spr = currentSprite;
+    const sprByteCol = sprX >> 3;
+    const sprByteX = sprByteCol * 8; // byte-aligned X for compositing
+
+    // Copy cached background
+    data.set(animBgCache);
+
+    // Composite sprite using AND+OR masking (byte-aligned, like real ZX)
+    for (let row = 0; row < 8; row++) {
+        const sy = sprY + row;
+        if (sy < 0 || sy >= ANIM_H) continue;
+
+        const maskByt = spr.mask[row];
+        const gfxByt = spr.gfx[row];
+        const bgByt = bgByte(background, sprByteCol, sy);
+        const resultByt = (bgByt & maskByt) | gfxByt;
+
+        for (let bit = 0; bit < 8; bit++) {
+            const px = sprByteX + bit;
+            if (px >= ANIM_W) continue;
+            const resultBit = (resultByt >> (7 - bit)) & 1;
+            const rgb = resultBit ? COL_ON_RGB : COL_OFF_RGB;
+            const idx = (sy * ANIM_W + px) * 4;
+            data[idx]     = rgb[0];
+            data[idx + 1] = rgb[1];
+            data[idx + 2] = rgb[2];
+        }
+    }
+
+    // Blit 1:1, then scale up
+    animCtx.putImageData(animImgData, 0, 0);
+    animCtx.drawImage(animCtx.canvas, 0, 0, ANIM_W, ANIM_H,
+                      0, 0, ANIM_W * ANIM_SCALE, ANIM_H * ANIM_SCALE);
+
+    // Draw sprite outline box (on scaled canvas)
+    animCtx.strokeStyle = '#ff0';
+    animCtx.lineWidth = 1;
+    animCtx.setLineDash([3, 3]);
+    animCtx.strokeRect(
+        sprByteX * ANIM_SCALE + 0.5,
+        sprY * ANIM_SCALE + 0.5,
+        8 * ANIM_SCALE,
+        8 * ANIM_SCALE
+    );
+    animCtx.setLineDash([]);
+}
+
+// ============================================================
+// Animation update
+// ============================================================
+
+function updatePosition() {
+    const speed = parseFloat(document.getElementById('speed').value);
+    const step = Math.max(1, Math.round(speed));
+
+    sprX += sprDX * step;
+    sprY += sprDY * step;
+
+    // Bounce off edges (byte-aligned for X)
+    if (sprX >= 248) { sprX = 247; sprDX = -1; }
+    if (sprX < 0)    { sprX = 0;   sprDX = 1;  }
+    if (sprY >= 184) { sprY = 183; sprDY = -1; }
+    if (sprY < 0)    { sprY = 0;   sprDY = 1;  }
+}
+
+// ============================================================
+// Main loop
+// ============================================================
+
+let lastTime = performance.now(), frameCounter = 0;
+
+function frame() {
+    if (!paused) {
+        updatePosition();
+        drawBitViz();
+        drawStaticPanels();
+        drawAnimFrame();
+
+        document.getElementById('posX').textContent = sprX;
+        document.getElementById('posY').textContent = sprY;
+    }
+
+    // FPS counter
+    frameCounter++;
+    const now = performance.now();
+    if (now - lastTime > 1000) {
+        document.getElementById('fps').textContent = frameCounter + ' fps';
+        frameCounter = 0;
+        lastTime = now;
+    }
+
+    requestAnimationFrame(frame);
+}
+
+// Initial setup
+initAnimCanvas();
+buildBgCache();
+drawStaticPanels();
+drawBitViz();
+drawAnimFrame();
+
+frame();
+</script>
+</body></html>

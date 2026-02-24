@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Horizontal Pixel Scrolling — verify Z80 (ch17)</title>
+<style>
+body { background: #1a1a1a; color: #bbb; font-family: monospace; text-align: center; margin: 0; padding: 10px; }
+h2 { color: #ddd; margin: 10px 0 5px; font-size: 16px; }
+canvas { border: 4px solid #444; display: block; margin: 10px auto; image-rendering: pixelated; }
+.info { margin: 8px auto; font-size: 13px; max-width: 960px; line-height: 1.6; }
+.info span { color: #8f8; }
+#controls { margin: 10px auto; max-width: 960px; }
+#controls table { margin: 0 auto; border-collapse: collapse; text-align: left; }
+#controls td { padding: 3px 8px; vertical-align: middle; }
+button { margin: 0 4px; padding: 4px 12px; font-family: monospace; background: #333; color: #ccc;
+    border: 1px solid #555; cursor: pointer; }
+button:hover { background: #444; }
+button.active { background: #264; border-color: #4a8; color: #8f8; }
+select, input[type=range] { font-family: monospace; background: #333; color: #ccc; border: 1px solid #555; }
+select { padding: 3px 6px; }
+input[type=range] { width: 120px; vertical-align: middle; }
+.z80-panel { margin: 12px auto; max-width: 960px; background: #111; border: 1px solid #333;
+    padding: 10px 14px; text-align: left; font-size: 12px; line-height: 1.7; }
+.z80-panel h3 { color: #8cf; margin: 0 0 6px; font-size: 13px; }
+.z80-panel code { color: #fc6; }
+.z80-panel .comment { color: #6a6; }
+.section-label { color: #8cf; font-size: 13px; margin: 12px 0 4px; }
+#zoom-row { margin: 10px auto; }
+</style>
+</head><body>
+<h2>Horizontal Pixel Scrolling -- JS prototype (verifies Z80 ch17 approach)</h2>
+
+<canvas id="screen"></canvas>
+<div class="info">
+    <span id="fps">0 fps</span> |
+    pixel offset: <span id="pixelOffset">0</span>/7 |
+    frame: <span id="frameNum">0</span> |
+    scroll speed: <span id="speedInfo">1 px/frame</span> |
+    mode: <span id="modeInfo">full pixel scroll</span>
+</div>
+
+<div class="section-label">Byte-level shift visualisation (8 bytes = 64 pixels of one scanline)</div>
+<canvas id="zoom-row"></canvas>
+<div class="info">
+    Zoomed view of bytes 24-31 (right edge). <span>Green outline</span> = byte boundaries.
+    <span style="color:#f88">Red column</span> = new pixel entering from right.
+    <span style="color:#88f">Blue grid</span> = 8x8 attribute cell boundaries.
+</div>
+
+<div id="controls">
+<table>
+<tr>
+    <td>Scroll speed:</td>
+    <td><input type="range" id="speed" min="0" max="4" step="1" value="1">
+        <span id="speedLabel">1 px/frame</span></td>
+    <td>Content:</td>
+    <td>
+        <select id="contentSelect">
+            <option value="landscape">Landscape</option>
+            <option value="text">Text scroller</option>
+            <option value="checkers">Checkerboard</option>
+        </select>
+    </td>
+</tr>
+<tr>
+    <td>Scroll method:</td>
+    <td colspan="3">
+        <button id="btnFull" class="active" onclick="setMethod('full')">Full pixel scroll (RL chain x32)</button>
+        <button id="btnCombined" onclick="setMethod('combined')">Combined (char + edge shift)</button>
+        <button id="btnAttrOnly" onclick="setMethod('attronly')">Attribute only (8px jumps)</button>
+    </td>
+</tr>
+<tr>
+    <td>Show attr grid:</td>
+    <td><button id="btnGrid" class="active" onclick="toggleGrid()">ON</button></td>
+    <td colspan="2">
+        <button onclick="paused=!paused">Pause/Resume</button>
+        <button onclick="resetAnim()">Reset</button>
+    </td>
+</tr>
+</table>
+</div>
+
+<div class="z80-panel">
+<h3>Z80 optimisation insight: the RL chain and the colour column problem</h3>
+<pre>
+<span class="comment">; Horizontal pixel scrolling: shift 32 bytes per scanline using RL chain.</span>
+<span class="comment">; Process right-to-left so carry propagates the exiting bit across bytes.</span>
+
+<code>    or   a              </code><span class="comment">; 4 T   clear carry (no pixel entering from right)</span>
+<code>    rl   (hl)           </code><span class="comment">; 15 T  byte 31: shift left, bit 7 -> carry, 0 -> bit 0</span>
+<code>    dec  hl              </code><span class="comment">; 6 T</span>
+<code>    rl   (hl)           </code><span class="comment">; 15 T  byte 30: carry -> bit 0, bit 7 -> carry</span>
+<code>    dec  hl              </code><span class="comment">; 6 T</span>
+<code>    ...                  </code><span class="comment">; repeat for all 32 bytes</span>
+<code>    rl   (hl)           </code><span class="comment">; 15 T  byte 0: carry -> bit 0, bit 7 lost (scrolled off)</span>
+
+<span class="comment">; Cost: 670 T per row x 192 rows = 128,640 T = 179% of frame. IMPOSSIBLE at 50fps!</span>
+<span class="comment">;</span>
+<span class="comment">; THE COLOUR COLUMN PROBLEM:</span>
+<span class="comment">; Pixels shift smoothly (1px/frame). But attributes are 8x8 cells.</span>
+<span class="comment">; The attribute for a cell covers ALL 8 pixels. So when new content</span>
+<span class="comment">; scrolls into a cell, the colour "snaps" 8 pixels ahead of the pixel data.</span>
+<span class="comment">; This creates a visible "colour column" at the scroll edge -- the rightmost</span>
+<span class="comment">; attribute column already has the NEW colour while only 1-7 new pixels</span>
+<span class="comment">; have actually arrived. This is "colour clash in motion".</span>
+<span class="comment">;</span>
+<span class="comment">; Frame state: pixel_offset=<span id="z80_offset">0</span>/7  method=<span id="z80_method">full</span></span>
+<span class="comment">; Estimated T-states this frame: <span id="z80_cost">128,640</span></span>
+</pre>
+</div>
+
+<script src="zx_screen.js"></script>
+<script>
+// --- ZXScreen instance ---
+const mainCanvas = document.getElementById('screen');
+const zx = new ZXScreen(mainCanvas, 3);
+
+// --- Zoom row canvas ---
+const zoomCanvas = document.getElementById('zoom-row');
+const ZOOM_BYTES = 8;  // show 8 bytes (64 pixels) at the right edge
+const ZOOM_PX = 10;    // each pixel is 10x10 in the zoom view
+zoomCanvas.width = ZOOM_BYTES * 8 * ZOOM_PX + 2;   // 642
+zoomCanvas.height = 8 * ZOOM_PX + 2;                // 82 (show 8 scanlines)
+const zoomCtx = zoomCanvas.getContext('2d');
+
+// --- ZX Spectrum colour palette ---
+const ZX_COLS = [
+    '#000000', '#0000CD', '#CD0000', '#CD00CD',
+    '#00CD00', '#00CDCD', '#CDCD00', '#CDCDCD',
+    '#000000', '#0000FF', '#FF0000', '#FF00FF',
+    '#00FF00', '#00FFFF', '#FFFF00', '#FFFFFF',
+];
+
+// --- State ---
+let paused = false;
+let scrollMethod = 'full';
+let showGrid = true;
+let frameNum = 0;
+
+// Scroll state
+let totalPixelScroll = 0;    // total pixels scrolled (monotonically increasing)
+
+// The virtual screen buffer: wider than the visible 256px so we have content
+// to scroll into view. We window into this buffer based on totalPixelScroll.
+const VIRT_W = 2048;  // virtual width in pixels (256 byte columns)
+const VIRT_COLS = VIRT_W / 8;  // 256 bytes wide -- plenty of scrolling room
+
+// Pixel buffer: VIRT_COLS bytes x 192 rows
+let virtScreen = new Uint8Array(VIRT_COLS * 192);
+
+// Attribute buffer: VIRT_COLS x 24 rows
+let virtAttrs = new Uint8Array(VIRT_COLS * 24);
+
+// --- Content generation ---
+
+// Simple 8x8 font (subset of printable ASCII, from ROM-like bitmaps)
+const FONT = {};
+function defineFont() {
+    // Minimal hand-crafted 8x8 font for key characters
+    const chars = {
+        'A': [0x3C,0x66,0x66,0x7E,0x66,0x66,0x66,0x00],
+        'B': [0x7C,0x66,0x66,0x7C,0x66,0x66,0x7C,0x00],
+        'C': [0x3C,0x66,0x60,0x60,0x60,0x66,0x3C,0x00],
+        'D': [0x78,0x6C,0x66,0x66,0x66,0x6C,0x78,0x00],
+        'E': [0x7E,0x60,0x60,0x7C,0x60,0x60,0x7E,0x00],
+        'F': [0x7E,0x60,0x60,0x7C,0x60,0x60,0x60,0x00],
+        'G': [0x3C,0x66,0x60,0x6E,0x66,0x66,0x3E,0x00],
+        'H': [0x66,0x66,0x66,0x7E,0x66,0x66,0x66,0x00],
+        'I': [0x3C,0x18,0x18,0x18,0x18,0x18,0x3C,0x00],
+        'K': [0x66,0x6C,0x78,0x70,0x78,0x6C,0x66,0x00],
+        'L': [0x60,0x60,0x60,0x60,0x60,0x60,0x7E,0x00],
+        'M': [0x63,0x77,0x7F,0x6B,0x63,0x63,0x63,0x00],
+        'N': [0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00],
+        'O': [0x3C,0x66,0x66,0x66,0x66,0x66,0x3C,0x00],
+        'P': [0x7C,0x66,0x66,0x7C,0x60,0x60,0x60,0x00],
+        'R': [0x7C,0x66,0x66,0x7C,0x78,0x6C,0x66,0x00],
+        'S': [0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00],
+        'T': [0x7E,0x18,0x18,0x18,0x18,0x18,0x18,0x00],
+        'U': [0x66,0x66,0x66,0x66,0x66,0x66,0x3C,0x00],
+        'V': [0x66,0x66,0x66,0x66,0x66,0x3C,0x18,0x00],
+        'W': [0x63,0x63,0x63,0x6B,0x7F,0x77,0x63,0x00],
+        'X': [0x66,0x66,0x3C,0x18,0x3C,0x66,0x66,0x00],
+        'Y': [0x66,0x66,0x66,0x3C,0x18,0x18,0x18,0x00],
+        'Z': [0x7E,0x06,0x0C,0x18,0x30,0x60,0x7E,0x00],
+        '0': [0x3C,0x66,0x6E,0x76,0x66,0x66,0x3C,0x00],
+        '1': [0x18,0x38,0x18,0x18,0x18,0x18,0x7E,0x00],
+        '7': [0x7E,0x06,0x0C,0x18,0x18,0x18,0x18,0x00],
+        ' ': [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+        '-': [0x00,0x00,0x00,0x7E,0x00,0x00,0x00,0x00],
+        ':': [0x00,0x18,0x18,0x00,0x18,0x18,0x00,0x00],
+        '.': [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00],
+        '!': [0x18,0x18,0x18,0x18,0x18,0x00,0x18,0x00],
+        ',': [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x30],
+    };
+    for (const [ch, data] of Object.entries(chars)) {
+        FONT[ch] = data;
+    }
+}
+defineFont();
+
+function charBitmap(ch) {
+    return FONT[ch.toUpperCase()] || FONT[' '];
+}
+
+// Landscape colour palette for attribute columns
+// Colours: sky=cyan(5), cloud=white(7), hill=green(4), ground=yellow(6), detail=red(2)
+const LANDSCAPE_ATTR_COLS = [
+    // repeating pattern of attribute colours for landscape layers
+    // bright cyan, bright green, bright yellow, bright red, bright magenta...
+    {ink: 7, paper: 5, bright: 1},  // white on cyan (sky)
+    {ink: 7, paper: 1, bright: 1},  // white on blue (sky)
+    {ink: 4, paper: 0, bright: 1},  // green on black
+    {ink: 6, paper: 0, bright: 1},  // yellow on black
+    {ink: 2, paper: 0, bright: 1},  // red on black
+    {ink: 3, paper: 0, bright: 1},  // magenta on black
+    {ink: 5, paper: 0, bright: 1},  // cyan on black
+    {ink: 7, paper: 0, bright: 1},  // white on black
+];
+
+// Generate landscape pixel content for a given column of the virtual screen
+function genLandscapeColumn(col) {
+    // col is the byte-column index in virtual screen
+    const x = col * 8;
+
+    // Multiple sine-wave layers for landscape
+    for (let line = 0; line < 192; line++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+            const px = x + bit;
+            let pixel = 0;
+
+            // Sky: scattered stars
+            if (line < 40) {
+                if (((px * 7 + line * 13) % 97) < 2) pixel = 1;
+            }
+
+            // Mountains layer 1 (far): slow sine
+            const mt1 = 50 + Math.floor(20 * Math.sin(px * 0.015) + 10 * Math.sin(px * 0.037));
+            if (line >= mt1 && line < mt1 + 3) pixel = 1;
+            if (line === mt1) pixel = 1;
+
+            // Mountains layer 2 (mid): faster sine
+            const mt2 = 80 + Math.floor(15 * Math.sin(px * 0.025 + 1.5) + 8 * Math.sin(px * 0.067));
+            if (line >= mt2 && line < mt2 + 2) pixel = 1;
+            if (line === mt2) pixel = 1;
+
+            // Hills (near): filled below
+            const hill = 110 + Math.floor(12 * Math.sin(px * 0.04 + 0.7) + 6 * Math.cos(px * 0.09));
+            if (line >= hill) pixel = 1;
+
+            // Ground detail: dithered pattern below certain line
+            if (line >= 140) {
+                const ground = ((px + line) & 1);
+                pixel = pixel | ground;
+            }
+
+            // Tree silhouettes at intervals
+            const treeX = px % 60;
+            const treeBase = 110 + Math.floor(12 * Math.sin(Math.floor(px / 60) * 60 * 0.04 + 0.7));
+            if (treeX >= 25 && treeX <= 35) {
+                const trunkTop = treeBase - 25;
+                // Trunk
+                if (treeX >= 29 && treeX <= 31 && line >= trunkTop && line < treeBase) pixel = 1;
+                // Canopy (circle-ish)
+                const cx = 30, cy = trunkTop - 5;
+                const dx = treeX - cx, dy = line - (treeBase - 30);
+                if (dx * dx + dy * dy < 36 && line < treeBase - 10) pixel = 1;
+            }
+
+            if (pixel) byte |= (0x80 >> bit);
+        }
+        virtScreen[line * VIRT_COLS + col] = byte;
+    }
+
+    // Generate attribute for this column
+    const attrCol = col;
+    for (let row = 0; row < 24; row++) {
+        const lineY = row * 8 + 4; // sample mid-cell
+        let attrIdx;
+        if (lineY < 50) attrIdx = 0;       // sky: white on cyan
+        else if (lineY < 80) attrIdx = 1;   // far mountains: white on blue
+        else if (lineY < 110) attrIdx = 2;  // mid hills: green on black
+        else if (lineY < 140) attrIdx = 3;  // near hills: yellow on black
+        else attrIdx = 4;                    // ground: red on black
+
+        // Add variety based on column
+        const scheme = LANDSCAPE_ATTR_COLS[(attrIdx + Math.floor(col / 4)) % LANDSCAPE_ATTR_COLS.length];
+        virtAttrs[row * VIRT_COLS + attrCol] = ZXScreen.makeAttr(scheme.ink, scheme.paper, scheme.bright);
+    }
+}
+
+function genTextColumn(col) {
+    const msg = "   HORIZONTAL PIXEL SCROLL -- CHAPTER 17: SCROLLING -- RL CHAIN TECHNIQUE -- 32 BYTES PER SCANLINE   ";
+    const charIdx = col % msg.length;
+    const ch = msg[charIdx];
+    const bmp = charBitmap(ch);
+
+    // Place text on character row 12 (middle of screen), plus row 4 and row 20
+    for (let line = 0; line < 192; line++) {
+        const charRow = Math.floor(line / 8);
+        const scanline = line & 7;
+        let byte = 0;
+
+        if (charRow === 12 || charRow === 4 || charRow === 20) {
+            byte = bmp[scanline];
+        }
+
+        virtScreen[line * VIRT_COLS + col] = byte;
+    }
+
+    // Attributes: bright white on blue for text rows, white on black elsewhere
+    for (let row = 0; row < 24; row++) {
+        let attr;
+        if (row === 12) attr = ZXScreen.makeAttr(7, 1, 1);       // bright white on blue
+        else if (row === 4) attr = ZXScreen.makeAttr(6, 2, 1);    // bright yellow on red
+        else if (row === 20) attr = ZXScreen.makeAttr(4, 0, 1);   // bright green on black
+        else attr = ZXScreen.makeAttr(7, 0, 0);                   // white on black
+        virtAttrs[row * VIRT_COLS + col] = attr;
+    }
+}
+
+function genCheckerColumn(col) {
+    for (let line = 0; line < 192; line++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+            const px = col * 8 + bit;
+            // 4-pixel wide checkerboard
+            const cx = Math.floor(px / 4);
+            const cy = Math.floor(line / 4);
+            if ((cx + cy) & 1) byte |= (0x80 >> bit);
+        }
+        virtScreen[line * VIRT_COLS + col] = byte;
+    }
+
+    for (let row = 0; row < 24; row++) {
+        const colScheme = (Math.floor(col / 2) + row) % 7;
+        const ink = colScheme + 1;
+        const paper = ((colScheme + 3) % 7) + 1;
+        virtAttrs[row * VIRT_COLS + col] = ZXScreen.makeAttr(ink, 0, 1);
+    }
+}
+
+function generateContent(type) {
+    virtScreen.fill(0);
+    virtAttrs.fill(ZXScreen.makeAttr(7, 0, 0));
+
+    for (let col = 0; col < VIRT_COLS; col++) {
+        switch (type) {
+            case 'landscape': genLandscapeColumn(col); break;
+            case 'text': genTextColumn(col); break;
+            case 'checkers': genCheckerColumn(col); break;
+        }
+    }
+}
+
+// --- Scroll logic ---
+//
+// All three methods use the virtual buffer as READ-ONLY source data.
+// The difference is entirely in how they render from it:
+//
+// Full pixel scroll:  smooth 1px shift of ALL 32 bytes (the RL chain).
+//                     Visually identical to combined, but costs 128,640 T.
+//                     Colour column visible: attribute snaps ahead at right edge.
+//
+// Combined:           smooth 1px shift, but only 2 edge bytes are shifted
+//                     per frame. Every 8 frames, character-level LDIR scroll.
+//                     Colour column visible at right edge.
+//                     Average cost: ~10,000 T per frame.
+//
+// Attribute only:     8px jumps. No pixel shifting at all. ~17,000 T every
+//                     8th frame, 0 between. Jerky but very cheap.
+//
+// The "colour column" effect: when new content pixel-scrolls into the
+// rightmost attribute cell, the attribute (colour) for that cell must be
+// set to the NEW content's colour immediately, even though only 1-7 of
+// the 8 pixels have actually arrived. The colour "snaps" 8 pixels ahead
+// of the pixel data. This is colour clash in motion.
+
+// Read a shifted byte from the virtual buffer at sub-pixel precision.
+// byteCol is the character column in the virtual buffer, shift is 0-7 pixels.
+function readShiftedByte(line, byteCol, shift) {
+    if (shift === 0) {
+        return virtScreen[line * VIRT_COLS + (byteCol % VIRT_COLS)];
+    }
+    const a = virtScreen[line * VIRT_COLS + (byteCol % VIRT_COLS)];
+    const b = virtScreen[line * VIRT_COLS + ((byteCol + 1) % VIRT_COLS)];
+    return ((a << shift) | (b >> (8 - shift))) & 0xFF;
+}
+
+// --- Rendering ---
+
+function renderFrame() {
+    zx.clearScreen();
+
+    // Calculate the base byte column and pixel shift for the current scroll position
+    const baseCol = Math.floor(totalPixelScroll / 8);
+    const shift = totalPixelScroll & 7;
+
+    if (scrollMethod === 'full' || scrollMethod === 'combined') {
+        // Both full and combined produce the same smooth pixel-level output.
+        // The difference is cost, not visual result (which we show in the Z80 panel).
+        // Render each visible byte by combining two source bytes at sub-pixel offset.
+        for (let line = 0; line < 192; line++) {
+            for (let b = 0; b < 32; b++) {
+                const addr = zx.screenAddr(b * 8, line);
+                zx.poke(addr, readShiftedByte(line, baseCol + b, shift));
+            }
+        }
+
+        // Attributes: the COLOUR COLUMN effect.
+        // For character columns 0-30, the attribute comes from the character-aligned
+        // position (rounded down). For column 31, when shift > 0, the attribute SNAPS
+        // to the NEXT column because new content is entering from the right.
+        // This is the key visual artefact: the colour changes 1-7 pixels before
+        // the pixel data has fully arrived.
+        for (let row = 0; row < 24; row++) {
+            for (let col = 0; col < 32; col++) {
+                // Which source attribute column covers this visible cell?
+                // When shift > 0, pixels have moved left, so the right edge
+                // of each cell shows bits from the NEXT source column.
+                // The attribute must be set for the dominant content.
+                //
+                // Real Spectrum behaviour: the programmer sets col 31 attr
+                // to the NEW colour immediately when the new character starts
+                // entering. This makes the colour "lead" the pixel data.
+                let attrSrcCol;
+                if (col === 31 && shift > 0) {
+                    // Colour column: snap to next attribute
+                    attrSrcCol = (baseCol + col + 1) % VIRT_COLS;
+                } else {
+                    attrSrcCol = (baseCol + col) % VIRT_COLS;
+                }
+                zx.setAttr(col, row, virtAttrs[row * VIRT_COLS + attrSrcCol]);
+            }
+        }
+    } else {
+        // Attribute-only: character-aligned, no sub-pixel shifting.
+        // Jumps by 8 pixels every 8 frames. Shift is ignored for pixels.
+        for (let line = 0; line < 192; line++) {
+            for (let b = 0; b < 32; b++) {
+                const srcCol = (baseCol + b) % VIRT_COLS;
+                const addr = zx.screenAddr(b * 8, line);
+                zx.poke(addr, virtScreen[line * VIRT_COLS + srcCol]);
+            }
+        }
+        for (let row = 0; row < 24; row++) {
+            for (let col = 0; col < 32; col++) {
+                const srcCol = (baseCol + col) % VIRT_COLS;
+                zx.setAttr(col, row, virtAttrs[row * VIRT_COLS + srcCol]);
+            }
+        }
+    }
+
+    zx.render();
+
+    // Draw attribute grid overlay if enabled
+    if (showGrid) {
+        drawAttrGrid();
+    }
+}
+
+function drawAttrGrid() {
+    const ctx = mainCanvas.getContext('2d');
+    const s = zx.scale;
+    ctx.strokeStyle = 'rgba(80, 80, 255, 0.25)';
+    ctx.lineWidth = 1;
+
+    // Vertical lines every 8 pixels (attribute columns)
+    for (let col = 0; col <= 32; col++) {
+        const x = col * 8 * s;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 192 * s);
+        ctx.stroke();
+    }
+    // Horizontal lines every 8 pixels (attribute rows)
+    for (let row = 0; row <= 24; row++) {
+        const y = row * 8 * s;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(256 * s, y);
+        ctx.stroke();
+    }
+
+    // Highlight the rightmost column (colour column zone)
+    if (scrollMethod !== 'attronly' && (totalPixelScroll & 7) > 0) {
+        ctx.fillStyle = 'rgba(255, 80, 80, 0.12)';
+        ctx.fillRect(31 * 8 * s, 0, 8 * s, 192 * s);
+
+        // Label
+        ctx.font = '11px monospace';
+        ctx.fillStyle = 'rgba(255, 120, 120, 0.9)';
+        ctx.fillText('COLOUR', 31 * 8 * s + 1, 12);
+        ctx.fillText('COLUMN', 31 * 8 * s + 1, 23);
+    }
+}
+
+// --- Zoom row visualisation ---
+
+function renderZoomRow() {
+    const ctx = zoomCtx;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, zoomCanvas.width, zoomCanvas.height);
+
+    // Show 8 bytes (columns 24-31) of 8 scanlines from character row 12
+    const charRow = 12;
+    const startByteCol = 24;  // show rightmost 8 byte-columns
+    const baseCol = Math.floor(totalPixelScroll / 8);
+    const shift = totalPixelScroll & 7;
+
+    for (let scanline = 0; scanline < 8; scanline++) {
+        const line = charRow * 8 + scanline;
+        for (let b = 0; b < ZOOM_BYTES; b++) {
+            const visCol = startByteCol + b;
+
+            // Get pixel data matching the main screen render
+            let byte;
+            if (scrollMethod === 'attronly') {
+                byte = virtScreen[line * VIRT_COLS + ((baseCol + visCol) % VIRT_COLS)];
+            } else {
+                byte = readShiftedByte(line, baseCol + visCol, shift);
+            }
+
+            // Get attribute colour for this cell
+            let attrSrcCol;
+            if (visCol === 31 && shift > 0 && scrollMethod !== 'attronly') {
+                attrSrcCol = (baseCol + visCol + 1) % VIRT_COLS;
+            } else {
+                attrSrcCol = (baseCol + visCol) % VIRT_COLS;
+            }
+            const attr = virtAttrs[charRow * VIRT_COLS + attrSrcCol];
+            const bright = (attr & 0x40) ? 8 : 0;
+            const inkIdx = (attr & 7) + bright;
+            const paperIdx = ((attr >> 3) & 7) + bright;
+            const inkCol = ZX_COLS[inkIdx];
+            const paperCol = ZX_COLS[paperIdx];
+
+            for (let bit = 0; bit < 8; bit++) {
+                const px = b * 8 + bit;
+                const isSet = (byte >> (7 - bit)) & 1;
+                const x = 1 + px * ZOOM_PX;
+                const y = 1 + scanline * ZOOM_PX;
+
+                ctx.fillStyle = isSet ? inkCol : paperCol;
+                ctx.fillRect(x, y, ZOOM_PX - 1, ZOOM_PX - 1);
+            }
+        }
+    }
+
+    // Draw byte boundaries (green)
+    ctx.strokeStyle = '#0a0';
+    ctx.lineWidth = 2;
+    for (let b = 0; b <= ZOOM_BYTES; b++) {
+        const x = 1 + b * 8 * ZOOM_PX;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, zoomCanvas.height);
+        ctx.stroke();
+    }
+
+    // Draw attribute cell boundaries (blue dashed)
+    ctx.strokeStyle = '#55f';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    for (let b = 0; b <= ZOOM_BYTES; b++) {
+        const x = 1 + b * 8 * ZOOM_PX;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, zoomCanvas.height);
+        ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Highlight the "new pixel" column entering from the right
+    const zoomShift = totalPixelScroll & 7;
+    if (zoomShift > 0 && scrollMethod !== 'attronly') {
+        // The new pixels are in the rightmost (shift) bits of the last byte
+        const startBit = 8 - zoomShift;
+        ctx.fillStyle = 'rgba(255, 80, 80, 0.3)';
+        const x = 1 + (ZOOM_BYTES - 1) * 8 * ZOOM_PX + startBit * ZOOM_PX;
+        ctx.fillRect(x, 1, zoomShift * ZOOM_PX, 8 * ZOOM_PX);
+
+        // Label
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#f88';
+        ctx.fillText('NEW', x + 2, 10);
+    }
+
+    // Byte labels at top
+    ctx.font = '9px monospace';
+    ctx.fillStyle = '#888';
+    for (let b = 0; b < ZOOM_BYTES; b++) {
+        ctx.fillText('byte ' + (startByteCol + b), 1 + b * 8 * ZOOM_PX + 8, zoomCanvas.height - 2);
+    }
+
+    // Highlight carry propagation direction
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#8f8';
+    ctx.fillText('<-- carry propagation (RL chain, right to left)', 10, zoomCanvas.height - 14);
+}
+
+// --- Controls ---
+
+function setMethod(method) {
+    scrollMethod = method;
+    document.getElementById('btnFull').classList.toggle('active', method === 'full');
+    document.getElementById('btnCombined').classList.toggle('active', method === 'combined');
+    document.getElementById('btnAttrOnly').classList.toggle('active', method === 'attronly');
+
+    const labels = {
+        full: 'full pixel scroll (RL chain x32 bytes)',
+        combined: 'combined (char scroll + edge pixel shift)',
+        attronly: 'attribute only (8px jumps)'
+    };
+    document.getElementById('modeInfo').textContent = labels[method];
+
+    resetAnim();
+}
+
+function toggleGrid() {
+    showGrid = !showGrid;
+    document.getElementById('btnGrid').classList.toggle('active', showGrid);
+    document.getElementById('btnGrid').textContent = showGrid ? 'ON' : 'OFF';
+}
+
+function resetAnim() {
+    totalPixelScroll = 0;
+    frameNum = 0;
+    paused = false;
+    generateContent(document.getElementById('contentSelect').value);
+}
+
+document.getElementById('contentSelect').onchange = function() {
+    resetAnim();
+};
+
+// Initial content generation
+generateContent('landscape');
+
+// --- Main loop ---
+let lastTime = performance.now(), frameCounter = 0;
+const TARGET_INTERVAL = 1000 / 50;  // 50fps = 20ms per frame
+let accumulator = 0;
+let lastFrameTime = performance.now();
+
+function frame(now) {
+    const dt = now - lastFrameTime;
+    lastFrameTime = now;
+    accumulator += dt;
+
+    // Cap accumulator to prevent spiral of death
+    if (accumulator > 100) accumulator = 100;
+
+    while (accumulator >= TARGET_INTERVAL) {
+        accumulator -= TARGET_INTERVAL;
+
+        if (!paused) {
+            const speed = parseInt(document.getElementById('speed').value);
+            document.getElementById('speedLabel').textContent = speed + ' px/frame';
+
+            // Just advance the scroll position. Rendering reads from
+            // the virtual buffer on-the-fly -- no destructive buffer ops.
+            totalPixelScroll += speed;
+
+            frameNum++;
+        }
+    }
+
+    // Render (always, even if paused -- for grid toggle etc.)
+    renderFrame();
+    renderZoomRow();
+
+    // Update info
+    const curShift = totalPixelScroll & 7;
+    document.getElementById('pixelOffset').textContent = curShift;
+    document.getElementById('frameNum').textContent = frameNum;
+    document.getElementById('speedInfo').textContent =
+        parseInt(document.getElementById('speed').value) + ' px/frame';
+
+    // Z80 panel updates
+    document.getElementById('z80_offset').textContent = curShift;
+    document.getElementById('z80_method').textContent = scrollMethod;
+
+    let cost;
+    if (scrollMethod === 'full') {
+        cost = '128,640 T (192 rows x 670 T) -- EXCEEDS frame budget!';
+    } else if (scrollMethod === 'combined') {
+        if (curShift === 0) {
+            cost = '~69,920 T (char scroll frame -- near budget limit!)';
+        } else {
+            cost = '~6,720 T (edge shift only -- plenty of room)';
+        }
+    } else {
+        if (curShift === 0) {
+            cost = '~17,323 T (attr scroll frame)';
+        } else {
+            cost = '0 T (no work this frame)';
+        }
+    }
+    document.getElementById('z80_cost').textContent = cost;
+
+    // FPS counter
+    frameCounter++;
+    if (now - lastTime > 1000) {
+        document.getElementById('fps').textContent = frameCounter + ' fps';
+        frameCounter = 0;
+        lastTime = now;
+    }
+
+    requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body></html>

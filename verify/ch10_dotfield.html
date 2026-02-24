@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Dotfield Scroller — verify Z80 (ch10)</title>
+<style>
+body { background: #1a1a1a; color: #bbb; font-family: monospace; text-align: center; margin: 0; padding: 10px; }
+h2 { color: #ddd; margin: 10px 0 5px; font-size: 16px; }
+canvas { border: 4px solid #444; display: block; margin: 10px auto; image-rendering: pixelated; }
+.info { margin: 8px auto; font-size: 13px; max-width: 900px; line-height: 1.6; }
+.info span { color: #8f8; }
+#controls { margin: 10px auto; max-width: 900px; }
+#controls table { margin: 0 auto; border-collapse: collapse; text-align: left; }
+#controls td { padding: 3px 8px; vertical-align: middle; }
+button { margin: 0 4px; padding: 4px 12px; font-family: monospace; background: #333; color: #ccc;
+    border: 1px solid #555; cursor: pointer; }
+button:hover { background: #444; }
+button.active { background: #264; border-color: #4a8; color: #8f8; }
+input[type=range] { font-family: monospace; background: #333; color: #ccc; border: 1px solid #555;
+    width: 120px; vertical-align: middle; }
+.z80-panel { margin: 12px auto; max-width: 900px; background: #111; border: 1px solid #333;
+    padding: 10px 14px; text-align: left; font-size: 12px; line-height: 1.7; }
+.z80-panel h3 { color: #8cf; margin: 0 0 6px; font-size: 13px; }
+.z80-panel code { color: #fc6; }
+.z80-panel .comment { color: #6a6; }
+</style>
+</head><body>
+<h2>Dotfield scroller effect -- JS prototype (verifies Z80 ch10 approach)</h2>
+<canvas id="screen" width="768" height="576"></canvas>
+<div class="info">
+    <span id="fps">0 fps</span> |
+    scroll: <span id="scrollPos">0</span> |
+    phase: <span id="bouncePhase">0</span> |
+    dots/frame: <span id="dotCount">0</span> |
+    visible chars: <span id="charCount">0</span>
+</div>
+<div id="controls">
+<table>
+<tr>
+    <td>Scroll speed:</td>
+    <td><input type="range" id="scrollSpeed" min="0.2" max="4.0" step="0.1" value="0.8"></td>
+    <td>Bounce speed:</td>
+    <td><input type="range" id="bounceSpeed" min="0.5" max="6.0" step="0.25" value="2.0"></td>
+</tr>
+<tr>
+    <td>Bounce amplitude:</td>
+    <td><input type="range" id="bounceAmp" min="4" max="48" step="1" value="24"></td>
+    <td>Dot spacing:</td>
+    <td><input type="range" id="dotSpacing" min="2" max="6" step="1" value="3"></td>
+</tr>
+<tr>
+    <td>Phase spread:</td>
+    <td><input type="range" id="phaseSpread" min="1" max="12" step="1" value="4"></td>
+    <td colspan="2">
+        <button onclick="paused=!paused">Pause/Resume</button>
+        <button onclick="resetAnim()">Reset</button>
+    </td>
+</tr>
+</table>
+</div>
+
+<div class="z80-panel">
+<h3>Z80 optimisation insight: POP-trick address table + unrolled SET renderer</h3>
+<pre>
+<span class="comment">; The dotfield scroller pre-builds a table of screen addresses for every</span>
+<span class="comment">; dot column. The sine bounce is baked into the Y coordinate of each address.</span>
+<span class="comment">; The inner loop then uses SP as a read pointer (POP trick) to stream</span>
+<span class="comment">; through addresses at maximum speed.</span>
+
+<span class="comment">; build_addr_table: for each of 64 dot columns, for each of 8 font rows:</span>
+<code>    ld   a, (bat_col)      </code><span class="comment">;  col * 4 + bounce_phase = sine index</span>
+<code>    add  a, a              </code>
+<code>    add  a, a              </code>
+<code>    add  a, (bounce_phase) </code><span class="comment">;  wraps at 256 naturally</span>
+<code>    ld   l, a              </code><span class="comment">;  page-aligned sine table lookup</span>
+<code>    ld   a, (hl)           </code><span class="comment">;  signed offset -24..+24</span>
+
+<span class="comment">; Unrolled inner loop — 8 pixels from one font byte, each a SET N,(HL):</span>
+<code>    ld   a, (bc)           </code><span class="comment">;  7T  read font byte</span>
+<code>    pop  hl                </code><span class="comment">; 10T  screen address from pre-built table</span>
+<code>    rla                    </code><span class="comment">;  4T  shift MSB into carry</span>
+<code>    jr   nc, .skip7        </code><span class="comment">; 12/7T  skip if pixel off</span>
+<code>    set  7, (hl)           </code><span class="comment">; 15T  PLOT the dot!</span>
+<code>.skip7:                    </code>
+<code>    pop  hl                </code><span class="comment">; 10T  next address...</span>
+<code>    rla                    </code>
+<code>    ...                    </code><span class="comment">;  (repeat for bits 6..0)</span>
+
+<span class="comment">; Per-pixel cost: opaque = 36T, transparent = 26T.</span>
+<span class="comment">; 8 chars x 8 pixels x 8 rows = 512 dots. At ~30T average = ~15,360T per frame.</span>
+<span class="comment">; That's less than 1 scanline-worth of time — incredibly fast!</span>
+
+<span class="comment">; Current frame: scroll=<span id="z80_scroll">$00</span>  phase=<span id="z80_phase">$00</span>  dots_lit=<span id="z80_dots">0</span>/512</span>
+</pre>
+</div>
+
+<script>
+// ============================================================
+// 8x8 bitmap font data — from dotscroll.a80 (chars 32..90)
+// Each character = 8 bytes, one per row, MSB = leftmost pixel
+// ============================================================
+const FONT_DATA = [
+    // Space (32)
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    // ! (33)
+    [0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x00],
+    // " (34)
+    [0x6C, 0x6C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    // # (35)
+    [0x6C, 0xFE, 0x6C, 0x6C, 0xFE, 0x6C, 0x00, 0x00],
+    // $ (36)
+    [0x18, 0x7E, 0xC0, 0x7C, 0x06, 0xFC, 0x18, 0x00],
+    // % (37)
+    [0xC6, 0xCC, 0x18, 0x30, 0x66, 0xC6, 0x00, 0x00],
+    // & (38)
+    [0x38, 0x6C, 0x38, 0x76, 0xDC, 0xCC, 0x76, 0x00],
+    // ' (39)
+    [0x18, 0x18, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00],
+    // ( (40)
+    [0x0C, 0x18, 0x30, 0x30, 0x30, 0x18, 0x0C, 0x00],
+    // ) (41)
+    [0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00],
+    // * (42)
+    [0x00, 0x66, 0x3C, 0xFF, 0x3C, 0x66, 0x00, 0x00],
+    // + (43)
+    [0x00, 0x18, 0x18, 0x7E, 0x18, 0x18, 0x00, 0x00],
+    // , (44)
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x30],
+    // - (45)
+    [0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00],
+    // . (46)
+    [0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00],
+    // / (47)
+    [0x06, 0x0C, 0x18, 0x30, 0x60, 0xC0, 0x00, 0x00],
+    // 0 (48)
+    [0x7C, 0xC6, 0xCE, 0xD6, 0xE6, 0xC6, 0x7C, 0x00],
+    // 1 (49)
+    [0x18, 0x38, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00],
+    // 2 (50)
+    [0x7C, 0xC6, 0x06, 0x1C, 0x30, 0x60, 0xFE, 0x00],
+    // 3 (51)
+    [0x7C, 0xC6, 0x06, 0x3C, 0x06, 0xC6, 0x7C, 0x00],
+    // 4 (52)
+    [0x1C, 0x3C, 0x6C, 0xCC, 0xFE, 0x0C, 0x0C, 0x00],
+    // 5 (53)
+    [0xFE, 0xC0, 0xFC, 0x06, 0x06, 0xC6, 0x7C, 0x00],
+    // 6 (54)
+    [0x3C, 0x60, 0xC0, 0xFC, 0xC6, 0xC6, 0x7C, 0x00],
+    // 7 (55)
+    [0xFE, 0x06, 0x0C, 0x18, 0x30, 0x30, 0x30, 0x00],
+    // 8 (56)
+    [0x7C, 0xC6, 0xC6, 0x7C, 0xC6, 0xC6, 0x7C, 0x00],
+    // 9 (57)
+    [0x7C, 0xC6, 0xC6, 0x7E, 0x06, 0x0C, 0x78, 0x00],
+    // : (58)
+    [0x00, 0x18, 0x18, 0x00, 0x18, 0x18, 0x00, 0x00],
+    // ; (59)
+    [0x00, 0x18, 0x18, 0x00, 0x18, 0x18, 0x30, 0x00],
+    // < (60)
+    [0x0C, 0x18, 0x30, 0x60, 0x30, 0x18, 0x0C, 0x00],
+    // = (61)
+    [0x00, 0x00, 0x7E, 0x00, 0x7E, 0x00, 0x00, 0x00],
+    // > (62)
+    [0x30, 0x18, 0x0C, 0x06, 0x0C, 0x18, 0x30, 0x00],
+    // ? (63)
+    [0x7C, 0xC6, 0x06, 0x1C, 0x18, 0x00, 0x18, 0x00],
+    // @ (64)
+    [0x7C, 0xC6, 0xDE, 0xDE, 0xDC, 0xC0, 0x7C, 0x00],
+    // A (65)
+    [0x38, 0x6C, 0xC6, 0xC6, 0xFE, 0xC6, 0xC6, 0x00],
+    // B (66)
+    [0xFC, 0xC6, 0xC6, 0xFC, 0xC6, 0xC6, 0xFC, 0x00],
+    // C (67)
+    [0x7C, 0xC6, 0xC0, 0xC0, 0xC0, 0xC6, 0x7C, 0x00],
+    // D (68)
+    [0xF8, 0xCC, 0xC6, 0xC6, 0xC6, 0xCC, 0xF8, 0x00],
+    // E (69)
+    [0xFE, 0xC0, 0xC0, 0xFC, 0xC0, 0xC0, 0xFE, 0x00],
+    // F (70)
+    [0xFE, 0xC0, 0xC0, 0xFC, 0xC0, 0xC0, 0xC0, 0x00],
+    // G (71)
+    [0x7C, 0xC6, 0xC0, 0xC0, 0xCE, 0xC6, 0x7E, 0x00],
+    // H (72)
+    [0xC6, 0xC6, 0xC6, 0xFE, 0xC6, 0xC6, 0xC6, 0x00],
+    // I (73)
+    [0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00],
+    // J (74)
+    [0x06, 0x06, 0x06, 0x06, 0x06, 0xC6, 0x7C, 0x00],
+    // K (75)
+    [0xC6, 0xCC, 0xD8, 0xF0, 0xD8, 0xCC, 0xC6, 0x00],
+    // L (76)
+    [0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xFE, 0x00],
+    // M (77)
+    [0xC6, 0xEE, 0xFE, 0xD6, 0xC6, 0xC6, 0xC6, 0x00],
+    // N (78)
+    [0xC6, 0xE6, 0xF6, 0xDE, 0xCE, 0xC6, 0xC6, 0x00],
+    // O (79)
+    [0x7C, 0xC6, 0xC6, 0xC6, 0xC6, 0xC6, 0x7C, 0x00],
+    // P (80)
+    [0xFC, 0xC6, 0xC6, 0xFC, 0xC0, 0xC0, 0xC0, 0x00],
+    // Q (81)
+    [0x7C, 0xC6, 0xC6, 0xC6, 0xD6, 0xCC, 0x76, 0x00],
+    // R (82)
+    [0xFC, 0xC6, 0xC6, 0xFC, 0xD8, 0xCC, 0xC6, 0x00],
+    // S (83)
+    [0x7C, 0xC6, 0xC0, 0x7C, 0x06, 0xC6, 0x7C, 0x00],
+    // T (84)
+    [0xFE, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00],
+    // U (85)
+    [0xC6, 0xC6, 0xC6, 0xC6, 0xC6, 0xC6, 0x7C, 0x00],
+    // V (86)
+    [0xC6, 0xC6, 0xC6, 0xC6, 0x6C, 0x38, 0x10, 0x00],
+    // W (87)
+    [0xC6, 0xC6, 0xC6, 0xD6, 0xFE, 0xEE, 0xC6, 0x00],
+    // X (88)
+    [0xC6, 0x6C, 0x38, 0x38, 0x6C, 0xC6, 0xC6, 0x00],
+    // Y (89)
+    [0xC6, 0xC6, 0x6C, 0x38, 0x18, 0x18, 0x18, 0x00],
+    // Z (90)
+    [0xFE, 0x0C, 0x18, 0x30, 0x60, 0xC0, 0xFE, 0x00],
+];
+
+// ============================================================
+// Sine table — 256 entries, matching the Z80 version exactly
+// range: -BOUNCE_AMP..+BOUNCE_AMP (signed)
+// ============================================================
+function buildSineTable(amp) {
+    const table = new Int8Array(256);
+    for (let i = 0; i < 256; i++) {
+        table[i] = Math.round(amp * Math.sin(2 * Math.PI * i / 256));
+    }
+    return table;
+}
+
+// ============================================================
+// Canvas setup — ZX Spectrum resolution 256x192, scaled 3x
+// ============================================================
+const SCALE = 3;
+const W = 256, H = 192;
+const canvas = document.getElementById('screen');
+canvas.width = W * SCALE;
+canvas.height = H * SCALE;
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+// Offscreen buffer at native resolution
+const offscreen = document.createElement('canvas');
+offscreen.width = W;
+offscreen.height = H;
+const offCtx = offscreen.getContext('2d');
+
+// ============================================================
+// Message
+// ============================================================
+const MESSAGE = "DOTFIELD SCROLLER    BY X-TRADE    ILLUSION 96    DOTS BOUNCE!    ";
+
+// ============================================================
+// Font helpers
+// ============================================================
+function getCharData(ch) {
+    const code = ch.charCodeAt(0);
+    const idx = code - 32;
+    if (idx < 0 || idx >= FONT_DATA.length) return FONT_DATA[0]; // space
+    return FONT_DATA[idx];
+}
+
+function getPixel(charData, row, col) {
+    // row 0..7, col 0..7. MSB = leftmost (col 0)
+    return (charData[row] >> (7 - col)) & 1;
+}
+
+// ============================================================
+// Animation state
+// ============================================================
+let scrollX = 0;         // sub-pixel scroll position (fractional characters)
+let bouncePhase = 0;     // sine phase (0..255, wraps)
+let paused = false;
+
+function resetAnim() {
+    scrollX = 0;
+    bouncePhase = 0;
+    paused = false;
+}
+
+// ============================================================
+// Main render
+// ============================================================
+let lastTime = performance.now(), frameCounter = 0;
+
+function frame() {
+    const scrollSpeed = parseFloat(document.getElementById('scrollSpeed').value);
+    const bounceSpeed = parseFloat(document.getElementById('bounceSpeed').value);
+    const bounceAmp = parseInt(document.getElementById('bounceAmp').value);
+    const dotSpacing = parseInt(document.getElementById('dotSpacing').value);
+    const phaseSpread = parseInt(document.getElementById('phaseSpread').value);
+
+    if (!paused) {
+        // Build sine table with current amplitude
+        const sinTable = buildSineTable(bounceAmp);
+
+        // How many characters fit on screen at current dot spacing?
+        // Each character = 8 dot columns, each dot column takes `dotSpacing` pixels wide
+        const charPixelWidth = 8 * dotSpacing;
+        const numVisibleChars = Math.ceil(W / charPixelWidth) + 1;
+
+        // Pixel-level scroll offset within current character
+        const scrollPixel = scrollX * charPixelWidth;  // total pixel offset
+        const pixelOffset = scrollPixel % charPixelWidth;
+        const charOffset = Math.floor(scrollPixel / charPixelWidth);
+
+        // Centre Y for the bounce
+        const centreY = H / 2;
+
+        // Clear to black
+        const imgData = offCtx.createImageData(W, H);
+        const pixels = imgData.data;
+
+        let dotsLit = 0;
+
+        // For each visible character
+        for (let ci = 0; ci < numVisibleChars; ci++) {
+            const msgIdx = (charOffset + ci) % MESSAGE.length;
+            const charData = getCharData(MESSAGE[msgIdx]);
+
+            // For each dot column within this character (0..7)
+            for (let dc = 0; dc < 8; dc++) {
+                // Screen X for this dot column
+                const screenX = ci * charPixelWidth + dc * dotSpacing - pixelOffset;
+
+                if (screenX < -dotSpacing || screenX >= W) continue;
+
+                // Overall dot column index (for sine phase)
+                const globalCol = ci * 8 + dc;
+
+                // Sine lookup: phase varies per column
+                const sineIdx = ((globalCol * phaseSpread) + Math.floor(bouncePhase)) & 0xFF;
+                const sineOffset = sinTable[sineIdx];
+
+                // For each font row (0..7)
+                for (let row = 0; row < 8; row++) {
+                    if (!getPixel(charData, row, dc)) continue;
+
+                    // Y position: centre + sine bounce + row offset (centred around 0)
+                    const y = Math.round(centreY + sineOffset + (row - 3.5) * dotSpacing);
+
+                    if (y < 0 || y >= H) continue;
+
+                    const sx = Math.round(screenX);
+                    if (sx < 0 || sx >= W) continue;
+
+                    // Plot a single white pixel (ZX Spectrum style)
+                    const idx = (y * W + sx) * 4;
+                    pixels[idx] = 255;     // R
+                    pixels[idx + 1] = 255; // G
+                    pixels[idx + 2] = 255; // B
+                    pixels[idx + 3] = 255; // A
+                    dotsLit++;
+                }
+            }
+        }
+
+        offCtx.putImageData(imgData, 0, 0);
+
+        // Scale up to display canvas
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(offscreen, 0, 0, W * SCALE, H * SCALE);
+
+        // Update info panel
+        document.getElementById('scrollPos').textContent = scrollX.toFixed(1);
+        document.getElementById('bouncePhase').textContent = Math.floor(bouncePhase);
+        document.getElementById('dotCount').textContent = dotsLit;
+        document.getElementById('charCount').textContent = numVisibleChars;
+
+        // Z80 panel
+        const scrollByte = Math.floor(scrollX * 8) & 0xFF;
+        const phaseByte = Math.floor(bouncePhase) & 0xFF;
+        document.getElementById('z80_scroll').textContent =
+            '$' + scrollByte.toString(16).toUpperCase().padStart(2, '0');
+        document.getElementById('z80_phase').textContent =
+            '$' + phaseByte.toString(16).toUpperCase().padStart(2, '0');
+        document.getElementById('z80_dots').textContent = dotsLit;
+
+        // Advance animation
+        scrollX += scrollSpeed * 0.05;
+        while (scrollX >= MESSAGE.length) {
+            scrollX -= MESSAGE.length;
+        }
+        bouncePhase = (bouncePhase + bounceSpeed) % 256;
+    }
+
+    // FPS counter
+    frameCounter++;
+    const now = performance.now();
+    if (now - lastTime > 1000) {
+        document.getElementById('fps').textContent = frameCounter + ' fps';
+        frameCounter = 0;
+        lastTime = now;
+    }
+
+    requestAnimationFrame(frame);
+}
+
+frame();
+</script>
+</body></html>
