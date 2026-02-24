@@ -32,7 +32,7 @@ The top 16 KB slot at `$C000`-`$FFFF` is the flexible one. Write to port `$7FFD`
 
 Port `$7FFD` controls memory configuration on the 128K. It is write-only -- you cannot read it back. This means you must shadow its value in a RAM variable if you need to know the current state.
 
-```z80 id:ch15_the_7ffd_port_bank_switching
+```text id:ch15_the_7ffd_port_bank_switching
 Port $7FFD bit layout:
   Bit 0-2:  RAM page mapped at $C000 (0-7)
   Bit 3:    Screen select (0 = normal screen at page 5,

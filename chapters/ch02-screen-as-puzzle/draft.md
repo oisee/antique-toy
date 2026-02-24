@@ -228,7 +228,7 @@ The naive approach -- calling the classic DOWN_HL routine 191 times -- costs **5
 
 His key insight was to use **split counters**. Instead of testing the address bits after every increment to detect boundary crossings, he structured the loop to match the screen's three-level hierarchy directly:
 
-```z80 id:ch02_introspec_s_optimisation
+```text id:ch02_introspec_s_optimisation
 For each third (3 iterations):
     For each character row within the third (8 iterations):
         For each scan line within the character cell (8 iterations):

@@ -188,7 +188,7 @@ Every 8x8 cell will now display alternating ink and paper pixels. When we change
 
 Page-align a 256-byte sine table for fast indexing. This can be generated at assembly time using sjasmplus's Lua scripting, or pre-calculated and included as binary data:
 
-```z80 id:ch09_step_2_sine_table
+```lua id:ch09_step_2_sine_table
     ALIGN 256
 sin_table:
     LUA ALLPASS

@@ -56,7 +56,7 @@ graph LR
     G -- Yes --> I{"Optimise?"}
     I -- Yes --> J["Profile with DeZog<br>(measure T-states)"]
     J --> A
-    I -- No --> K["Done ✓"]
+    I -- No --> K["Done!"]
 
     style A fill:#ffd,stroke:#993
     style B fill:#ddf,stroke:#339
@@ -294,9 +294,9 @@ Consider the rotozoomer inner loop from his Illusion analysis. The effect walks 
     ld   a, (hl)    ; 7T   read texture byte
     inc  l          ; 4T   next column (no carry needed: 256-aligned!)
     dec  h          ; 4T   previous row
-    add  a          ; 4T   double (same as SLA A but 4T not 8T)
-    add  a          ; 4T   quadruple
-    add  (hl)       ; 7T   combine with second texture sample
+    add  a,a        ; 4T   double (same as SLA A but 4T not 8T)
+    add  a,a        ; 4T   quadruple
+    add  a,(hl)     ; 7T   combine with second texture sample
                     ; --- 30T per pixel pair
 ```
 

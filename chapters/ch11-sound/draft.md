@@ -103,7 +103,7 @@ Useful ranges:
 
 Register R7 is the heart of the AY. Six bits control which channels receive tone, noise, or both. Two more bits control the I/O port direction (irrelevant for sound, leave them as inputs = 1).
 
-```z80 id:ch11_r7_the_mixer_the_most
+```text id:ch11_r7_the_mixer_the_most
 Bit 7: I/O port B direction (1 = input)
 Bit 6: I/O port A direction (1 = input)
 Bit 5: Noise C enable (0 = ON, 1 = off)
@@ -146,7 +146,7 @@ call ay_write
 
 Each channel has a 4-bit volume control (0-15, where 15 is loudest). But bit 4 is special: setting it switches that channel to **envelope mode**, where the volume is controlled automatically by the envelope generator instead of the fixed value.
 
-```z80 id:ch11_volume_registers_r8_r10
+```text id:ch11_volume_registers_r8_r10
 Bit 4: 1 = use envelope generator, 0 = use bits 3-0
 Bits 3-0: Fixed volume level (0-15)
 ```

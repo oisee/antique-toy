@@ -22,7 +22,7 @@ Consider the simplest possible inner loop: clearing 256 bytes of memory.
     djnz .loop           ; 13 T  (8 on last iteration)
 ```
 
-Each iteration costs 7 + 6 + 13 = 26 T-states to store a single byte. Only 7 of those T-states do the work --- the rest is overhead. That is 73% waste. For 256 bytes: 256 x 26 - 5 = 6,651 T-states. On a machine where you have 69,888 T-states per frame, those wasted T-states hurt.
+Each iteration costs 7 + 6 + 13 = 26 T-states to store a single byte. Only 7 of those T-states do the work --- the rest is overhead. That is 73% waste. For 256 bytes: 256 x 26 - 5 = 6,651 T-states. On a machine where you have 71,680 T-states per frame, those wasted T-states hurt.
 
 ### Unrolling: trade ROM for speed
 
@@ -80,6 +80,32 @@ restore_sp:
 ```
 
 The `ld (nn), sp` saves the current SP directly into the operand of the later `ld sp, nn`. No temporary variable. This is idiomatic Z80 demoscene code.
+
+### Self-modifying variables: the `$+1` pattern
+
+The most pervasive SMC pattern on the ZX Spectrum is not patching opcodes or saving SP --- it is embedding a *variable* directly inside an instruction's immediate operand. The idea is simple: instead of storing a counter in a named memory location and loading it with `LD A,(nn)` at 13 T-states, you let the instruction's own operand byte *be* the variable.
+
+```z80 id:ch03_smc_dollar_plus_one
+.smc_counter:
+    ld   a, 0                    ; 7T — this 0 is the "variable"
+    inc  a                       ; 4T
+    ld   (.smc_counter + 1), a   ; 13T — write back to the operand byte
+```
+
+The `ld a, 0` fetches its operand as part of the normal instruction decode --- 7 T-states total, and the value is already in A. Compare that to loading from a separate memory address: `ld a, (counter)` costs 13 T-states, plus you still need a separate `ld (counter), a` at 13 T-states to write it back. The SMC version reads the variable for free (it is part of the instruction fetch) and only pays the 13 T-states once for the write-back.
+
+In sjasmplus, you can place a label at `$+1` to give the embedded variable a readable name:
+
+```z80 id:ch03_smc_named_variable
+    ld   a, 0                    ; 7T
+.scroll_pos EQU $ - 1           ; .scroll_pos names the operand byte above
+    add  a, 4                   ; 7T — advance by 4 pixels
+    ld   (.scroll_pos), a       ; 13T — store back into the operand
+```
+
+This pattern appears everywhere in ZX Spectrum code: scroll positions, animation frame counters, effect phase accumulators, direction flags. Any single-byte value that persists between calls is a candidate. You will see it constantly in Parts II and V --- practically every effect routine in this book uses at least one self-modifying variable.
+
+The convention is to prefix these labels with `.smc_` or place them immediately after the instruction they modify. Either way, the intent should be clear to anyone reading the source. As we noted in Chapter 2, local labels (`.label`) prevent naming collisions when multiple routines each have their own embedded variables.
 
 **A word of caution.** SMC is safe on the Z80, the eZ80, and every Spectrum clone. It is *not* safe on modern cached CPUs (x86, ARM) without explicit cache flush instructions. If you port to a different architecture, this is the first thing that breaks.
 
@@ -168,6 +194,21 @@ restore_sp:
 
 The 16-PUSH inner body writes 32 bytes in 176 T-states. Total for the full 6,144-byte pixel area: roughly 36,000 T-states. Compare LDIR: 6,144 x 21 - 5 = 129,019 T-states. The PUSH method is about 3.6x faster --- the difference between fitting in one frame and bleeding into the next.
 
+### POP as a fast read
+
+PUSH is the fastest write, but POP is the fastest *read*. POP loads 2 bytes from (SP) into a register pair in 10 T-states --- that is 5.0 T-states per byte. Compare the alternatives:
+
+| Method | Bytes read | T-states | T-states per byte |
+|--------|-----------|----------|-------------------|
+| `ld a, (hl)` + `inc hl` | 1 | 13 | 13.0 |
+| `ld a, (hl)` + `inc l` | 1 | 11 | 11.0 |
+| `ldi` (as a read+write) | 1 | 16 | 16.0 |
+| `pop hl` | 2 | 10 | **5.0** |
+
+The pattern: pre-build a table of 16-bit values in memory, point SP at the start of the table, and POP into register pairs. Each POP advances SP by 2, walking through the table automatically. This is the read-side complement of the PUSH write trick.
+
+Combine POP and PUSH and you get a fast memory-to-memory pipe: POP a value from a source table (10T), process the register pair if needed, then PUSH it to the destination (11T). Total: 21 T-states for 2 bytes --- the same throughput as LDIR, but with the register pair available for processing between the read and write. You can mask bits, add offsets, swap bytes, or apply any register-to-register transformation at no extra memory-access cost. This POP-process-PUSH pipeline is the backbone of many compiled sprite routines.
+
 ### Where PUSH tricks are used
 
 - **Screen clearing.** The most common use. Every demo needs to clear the screen between effects.
@@ -226,9 +267,33 @@ This variable-length copy with zero per-byte loop overhead is a technique you si
 
 ---
 
+## Bit Tricks: SBC A,A and Friends
+
+### SBC A,A as a conditional mask
+
+After any instruction that produces a carry flag, `SBC A,A` converts that flag into a full byte: $FF if carry was set, $00 if not. The cost: 4 T-states. Compare this to the branching alternative --- `JR C,.set` / `LD A,0` / `JR .done` / `.set: LD A,$FF` / `.done:` --- which costs 17-22 T-states depending on which path is taken, plus the pipeline disruption of a conditional branch.
+
+The canonical use case is *bit-to-byte expansion*. Given a byte where each bit represents a pixel (the Spectrum's pixel format), you can expand each bit into a full attribute byte:
+
+```z80 id:ch03_sbc_bit_expand
+    rlc  (hl)            ; rotate top bit into carry    — 15T
+    sbc  a, a            ; A = $FF if set, $00 if not   — 4T
+    and  $47             ; A = bright white ($47) or $00 — 7T
+```
+
+Three instructions, 26 T-states, no branches. To select between two *arbitrary* values rather than zero and a mask, use the pattern `SBC A,A : AND mask : XOR base`. The AND selects which bits change between the two values, and the XOR flips them to the desired base. This pattern replaces every "if bit set then value A else value B" test in your inner loops.
+
+### ADD A,A vs SLA A
+
+Both instructions shift A left by one bit. But `ADD A,A` is 4 T-states and 1 byte, while `SLA A` is 8 T-states and 2 bytes. There is no situation where SLA A is preferable --- `ADD A,A` is strictly faster and smaller. Similarly, `ADD HL,HL` shifts HL left in 11 T-states (1 byte), replacing the two-instruction sequence `SLA L : RL H` at 16 T-states (4 bytes). For a 16-bit left shift inside an inner loop running 192 times per frame, that substitution alone saves 960 T-states --- over four scanlines of border time.
+
+These are not tricks. They are vocabulary. Just as a fluent speaker does not pause to conjugate common verbs, a Z80 programmer reaches for `ADD A,A` and `SBC A,A` without conscious thought. If you find yourself writing `SLA A` or a conditional branch to select between two values, stop and reach for the shorter form. The T-states add up.
+
+---
+
 ## Code Generation
 
-### The most powerful technique
+### Code generation: writing the program that draws
 
 Everything above is a fixed optimisation --- the code runs the same way every frame. Code generation goes further: your program writes the program that draws the screen. There are two variants: offline (before assembly) and runtime (during execution).
 
@@ -276,6 +341,14 @@ Sometimes parameters change every frame, so offline generation is not enough. Th
 ```
 
 The generated code is a straight-line sequence with no branches, no lookups, no loop overhead --- but it is *different code every frame*. Instead of "if pixel_skip == 3 then..." at 12 T-states per branch, you emit the exact instructions needed and execute them branch-free.
+
+### The cost of generation
+
+Runtime code generation is not free. Look at the generator loop above: each emitted instruction requires loading an opcode byte, storing it, advancing the pointer, and possibly loading an operand --- roughly 30-50 T-states per emitted byte, depending on complexity. Call it ~40 T-states on average. For a generated routine of 100 instruction bytes, that is about 4,000 T-states of generation overhead.
+
+The break-even point: generation pays off when the generated code runs more than once per frame, or when it replaces branching logic that costs more than the generation itself. In the Illusion sphere mapper, each generated rendering pass executes once per frame --- but it replaces per-pixel conditional branches that would cost far more. Alone Coder documented a similar trade-off in his rotation engine: generating a sequence of INC H/INC L instructions for coordinate stepping costs roughly 5,000 T-states to emit, but eliminates coordinate arithmetic that would cost approximately 146,000 T-states if computed inline. The generation overhead is under 4% of the cost it replaces.
+
+The rule of thumb: if you find yourself writing a loop that contains branches selecting between different instruction sequences based on per-pixel or per-line data, that loop is a candidate for code generation. Emit the right instructions once, execute them branch-free, and regenerate only when the parameters change.
 
 **When to generate code:** If the same operations happen every frame with only data changes, self-modifying code (patching operands) suffices. If the *structure* changes --- different numbers of iterations, different instruction sequences --- generate the code. If you can precompute the variations on a modern machine, prefer offline generation: it is debuggable, verifiable, and imposes zero runtime cost. Runtime generation pays off when the generated code executes far more often than it costs to generate.
 
@@ -366,13 +439,14 @@ Introspec's essay is a challenge, not a surrender. He went on to publish some of
 The techniques in this chapter are not independent. In practice, they compose:
 
 - **Screen clearing** combines *unrolled loops* with *PUSH tricks*: a partially unrolled loop of 16 PUSHes per iteration, with SP hijacked via *self-modifying code*.
-- **Compiled sprites** combine *code generation* (each sprite compiles to executable code), *PUSH output* (the fastest way to write pixel data), and *self-modification* (patching screen addresses per frame).
+- **Compiled sprites** combine *code generation* (each sprite compiles to executable code), *POP reads* and *PUSH output* (the fastest way to move pixel data through registers), *bit tricks* (SBC A,A for mask expansion), and *self-modification* (patching screen addresses per frame).
 - **Tile engines** combine *RET-chaining* for dispatch with *LDI chains* inside each tile routine for fast data copy.
 - **Chaos zoomers** combine *offline code generation* (Processing scripts emitting assembly) with *LDI chains* (the generated code is mostly LDI sequences) and *self-modification* (patching source addresses per frame).
+- **Attribute effects** combine *POP reads* from pre-computed tables with *bit tricks* (SBC A,A to expand bitmasks into colour values) and *PUSH writes* for fast attribute output.
 
-The common thread: every technique eliminates something from the inner loop. Unrolling eliminates the loop counter. Self-modification eliminates branches. PUSH eliminates per-byte overhead. LDI chains eliminate the LDIR repeat penalty. Code generation eliminates the entire distinction between code and data. RET-chaining eliminates CALL overhead.
+The common thread: every technique eliminates something from the inner loop. Unrolling eliminates the loop counter. Self-modification eliminates branches. PUSH eliminates per-byte write overhead. POP eliminates per-byte read overhead. LDI chains eliminate the LDIR repeat penalty. Bit tricks eliminate conditional branches. Code generation eliminates the entire distinction between code and data. RET-chaining eliminates CALL overhead.
 
-The Z80 runs at 3.5 MHz. You have 69,888 T-states per frame. Every T-state you save in the inner loop is a T-state you can spend on more pixels, more colours, more motion. The toolbox in this chapter is how you get there.
+The Z80 runs at 3.5 MHz. You have 71,680 T-states per frame. Every T-state you save in the inner loop is a T-state you can spend on more pixels, more colours, more motion. The toolbox in this chapter is how you get there.
 
 In the chapters that follow, you will see each of these techniques at work in real demos --- the textured sphere of Illusion, the attribute tunnel of Eager, the multicolor engine of Old Tower. The goal of this chapter was to give you the vocabulary. Now let us see what the masters built with it.
 
@@ -387,5 +461,9 @@ In the chapters that follow, you will see each of these techniques at work in re
 3. **Time an LDI chain.** Write a 32-byte copy using LDIR and another using 32 x LDI. Measure both with the border-colour technique. The LDI chain should save 160 T-states --- visible if you run the copy in a tight loop.
 
 4. **Experiment with entry points.** Build a 128-entry LDI chain and a small routine that calculates an entry point based on a value in register A (0--128). Jump into the chain at different points. This is a simplified version of the variable-length copy used in real chaos zoomers.
+
+5. **Variable-length copier with calculated entry.** Build a 256-entry LDI chain and a front-end that accepts a byte count in register B (1--256). Calculate the entry point: each LDI is 2 bytes, so the offset is (256 - B) x 2 from the start of the chain. Add this to the chain's base address, then JP (HL) into it. Wrap the whole thing in the border-colour harness and compare the stripe width against LDIR for the same byte count. For small counts (under 16), the difference is slim. For counts above 64, the LDI chain pulls visibly ahead.
+
+6. **Bit-to-attribute unpacker.** Write a routine that reads a byte from (HL), rotates each bit out with RLC (HL), and uses `SBC A,A : AND $47` to expand each bit into an attribute byte (bright white or black). Store the 8 resulting attribute bytes to a destination buffer using (DE) / INC DE. This is the seed of a compiled sprite's attribute writer --- in later chapters you will see this pattern generate entire sprite routines.
 
 > **Sources:** DenisGrachev "Tiles and RET" (Hype, 2025); Introspec "Making of Eager" (Hype, 2015); Introspec "Technical Analysis of Illusion" (Hype, 2017); Introspec "Code is Dead" (Hype, 2015)

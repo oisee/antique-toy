@@ -231,7 +231,7 @@ Here is the structure for a working rotozoomer with 2x2 chunky pixels and a chec
 
 **Texture.** A 256-byte page-aligned table where each byte is `$03` or `$00`, generating 8-pixel-wide stripes. The H register provides the second dimension; XORing H into the lookup creates a full checkerboard:
 
-```z80 id:ch07_practical_building_a_simple
+```lua id:ch07_practical_building_a_simple
     ALIGN 256
 texture:
     LUA ALLPASS

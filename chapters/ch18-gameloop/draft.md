@@ -435,7 +435,7 @@ Offset  Size  Name        Description
 
 Flag bits in the `flags` byte:
 
-```z80 id:ch18_structure_layout_2
+```text id:ch18_structure_layout_2
 Bit 0: ACTIVE      -- entity is alive and should be updated/rendered
 Bit 1: VISIBLE     -- entity should be rendered (active but invisible = logic only)
 Bit 2: COLLIDABLE  -- entity participates in collision detection

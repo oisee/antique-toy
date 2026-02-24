@@ -1,0 +1,159 @@
+; Chapter 3: LDI Chain with Variable-Length Entry Point
+; Demonstrates a classic demoscene trick: an unrolled chain of LDI instructions
+; with a computed jump to enter at the right position for N bytes.
+;
+; Each LDI copies 1 byte from (HL) to (DE) and increments both, in 16 T-states.
+; An LDIR loop costs 21 T per byte (16 T on the last iteration).
+; For short variable-length copies, the LDI chain avoids the 5 T/byte overhead
+; of LDIR's loop test AND eliminates branch misprediction concerns.
+;
+; Entry point arithmetic:
+;   We have 32 LDI instructions laid end-to-end. To copy N bytes (1..32),
+;   we jump to (chain_end - N*2), since each LDI is 2 bytes of opcode.
+;   In practice: negate N, double it, add base address of chain end.
+;
+; Assembles with: sjasmplus --nologo
+
+    ORG $8000
+
+SRC_BUF    EQU $9000            ; source buffer (32 bytes)
+DST_BUF    EQU $A000            ; destination buffer (32 bytes)
+COPY_LEN   EQU 24               ; number of bytes to copy (1..32)
+
+; ============================================================
+; Main loop -- runs both methods in a tight loop so border
+; colour stripes are visible on a real machine / emulator.
+; ============================================================
+main:
+    halt                        ; 4 T -- sync to frame interrupt
+
+    ; --- LDI chain method (red border) ---
+    ld   a, 2                   ; 7 T
+    out  ($FE), a               ; 11 T -- border = red
+
+    ld   hl, SRC_BUF            ; 10 T -- source pointer
+    ld   de, DST_BUF            ; 10 T -- destination pointer
+    ld   a, COPY_LEN            ; 7 T -- bytes to copy (1..32)
+    call ldi_chain_copy         ; 17 T
+
+    xor  a                      ; 4 T
+    out  ($FE), a               ; 11 T -- border = black
+
+    ; --- LDIR method (blue border) for comparison ---
+    ld   a, 1                   ; 7 T
+    out  ($FE), a               ; 11 T -- border = blue
+
+    ld   hl, SRC_BUF            ; 10 T -- source pointer
+    ld   de, DST_BUF            ; 10 T -- destination pointer
+    ld   bc, COPY_LEN           ; 10 T -- byte count
+    ldir                        ; 21 T/byte (16 T on last) = 507 T for 24 bytes
+
+    xor  a                      ; 4 T
+    out  ($FE), a               ; 11 T -- border = black
+
+    jr   main                   ; 12 T -- loop forever
+
+; ============================================================
+; LDI_CHAIN_COPY -- Copy A bytes (1..32) from (HL) to (DE)
+; using a computed jump into an unrolled LDI chain.
+;
+; Input:   A  = number of bytes to copy (1..32)
+;          HL = source address
+;          DE = destination address
+; Output:  HL += A, DE += A, BC decremented by A
+; Destroys: A, BC
+;
+; Entry point calculation:
+;   Each LDI instruction is exactly 2 bytes ($ED, $A0).
+;   The chain has 32 LDIs, so the full chain is 64 bytes.
+;   To copy N bytes, we need to skip (32 - N) LDIs,
+;   i.e., jump to chain_end - N * 2.
+;
+;   We compute this as:
+;     A = -N          (NEG)           -- negate the count
+;     A = -N * 2      (ADD A, A)      -- double it (2 bytes per LDI)
+;     This is a negative 8-bit offset. Sign-extend into BC,
+;     add to the chain_end address, and self-modify JP target.
+;
+; This approach uses self-modifying code to patch a JP instruction,
+; so HL and DE are preserved for the LDI chain to use directly.
+; ============================================================
+ldi_chain_copy:
+    ; --- Calculate entry point ---
+    neg                         ; 8 T -- A = -N (e.g. if N=24, A=$E8)
+    add  a, a                   ; 4 T -- A = -N * 2 (= -48 = $D0)
+                                ;         each LDI is 2 bytes, so this
+                                ;         is the byte offset from chain end
+
+    ; Sign-extend A into BC: for N=1..32, the doubled negation is
+    ; always negative (range -2..-64), so high byte is always $FF.
+    ld   b, $FF                 ; 7 T -- sign-extend high byte
+    ld   c, a                   ; 4 T -- BC = sign-extended offset
+
+    ; Save HL (source pointer) -- we need it for the LDI chain.
+    push hl                     ; 11 T -- save source on stack
+
+    ; Compute entry address: chain_end + offset = chain_end - N*2
+    ld   hl, ldi_chain_end      ; 10 T -- base = end of LDI chain
+    add  hl, bc                 ; 11 T -- HL = entry point in chain
+
+    ; Patch the JP instruction with the computed entry address.
+    ; Self-modifying code: we write HL into the operand of .smc_jp.
+    ld   (.smc_jp + 1), hl     ; 16 T -- patch JP target
+
+    ; Restore HL (source pointer) for the LDI chain.
+    pop  hl                     ; 10 T -- HL = source again
+
+    ; Jump into the chain at the calculated position.
+.smc_jp:
+    jp   $0000                  ; 10 T -- self-modified: jumps into chain
+                                ;         (patched address replaces $0000)
+
+; ============================================================
+; The LDI chain itself -- 32 consecutive LDI instructions.
+; Each LDI: copies (HL) -> (DE), increments HL and DE, decrements BC.
+; Opcode: $ED $A0 -- exactly 2 bytes, 16 T-states.
+; Total chain if all 32 execute: 32 * 16 = 512 T-states.
+; For N bytes: N * 16 T-states (no loop overhead at all).
+;
+; Compare with LDIR for 24 bytes:
+;   LDIR: 23 * 21 + 16 = 499 T-states
+;   LDI chain: 24 * 16 = 384 T-states (+ ~81 T setup overhead)
+;   Net LDI chain: ~465 T -- still faster, and the advantage
+;   grows dramatically for short copies (e.g. 4-8 bytes).
+; ============================================================
+ldi_chain:
+    ldi                         ; 16 T -- byte 1
+    ldi                         ; 16 T -- byte 2
+    ldi                         ; 16 T -- byte 3
+    ldi                         ; 16 T -- byte 4
+    ldi                         ; 16 T -- byte 5
+    ldi                         ; 16 T -- byte 6
+    ldi                         ; 16 T -- byte 7
+    ldi                         ; 16 T -- byte 8
+    ldi                         ; 16 T -- byte 9
+    ldi                         ; 16 T -- byte 10
+    ldi                         ; 16 T -- byte 11
+    ldi                         ; 16 T -- byte 12
+    ldi                         ; 16 T -- byte 13
+    ldi                         ; 16 T -- byte 14
+    ldi                         ; 16 T -- byte 15
+    ldi                         ; 16 T -- byte 16
+    ldi                         ; 16 T -- byte 17
+    ldi                         ; 16 T -- byte 18
+    ldi                         ; 16 T -- byte 19
+    ldi                         ; 16 T -- byte 20
+    ldi                         ; 16 T -- byte 21
+    ldi                         ; 16 T -- byte 22
+    ldi                         ; 16 T -- byte 23
+    ldi                         ; 16 T -- byte 24
+    ldi                         ; 16 T -- byte 25
+    ldi                         ; 16 T -- byte 26
+    ldi                         ; 16 T -- byte 27
+    ldi                         ; 16 T -- byte 28
+    ldi                         ; 16 T -- byte 29
+    ldi                         ; 16 T -- byte 30
+    ldi                         ; 16 T -- byte 31
+    ldi                         ; 16 T -- byte 32
+ldi_chain_end:
+    ret                         ; 10 T -- return to caller
