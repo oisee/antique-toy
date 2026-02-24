@@ -30,7 +30,7 @@ DEMO_TORUS := demo/src/torus.a80
 PYTHON ?= python3
 BUILD_BOOK := $(PYTHON) build_book.py
 
-.PHONY: all clean test test-mza test-compare demo book book-a4 book-a5 book-epub release version-bump verify-listings inject-listings audit-tstates autotag-stats
+.PHONY: all clean test test-mza test-compare demo book book-a4 book-a5 book-epub release version-bump verify-listings inject-listings audit-tstates autotag-stats screenshots
 
 all: $(patsubst chapters/%.a80,$(BUILD_DIR)/%.bin,$(CHAPTERS))
 
@@ -174,6 +174,9 @@ audit-tstates:
 
 autotag-stats:
 	$(PYTHON) tools/autotag.py --stats
+
+screenshots:
+	$(PYTHON) tools/screenshots.py --force
 
 clean:
 	rm -rf $(BUILD_DIR)
