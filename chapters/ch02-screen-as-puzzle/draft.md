@@ -548,10 +548,10 @@ up_hl:
     ret                ; 10T
 ```
 
-There is a subtle optimisation here, contributed by Artem Topchiy: replacing `and 7 / cp 7` with `cpl / and 7`. After `DEC H`, if the low 3 bits of H wrapped from `000` to `111`, we crossed a character boundary. The classic test checks `AND 7` then compares with 7. The optimised version complements first: if the bits are `111`, CPL makes them `000`, and `AND 7` gives zero. This saves 1 byte and 3 T-states in the boundary-crossing path:
+There is a subtle optimisation here, contributed by Art-top (Artem Topchiy): replacing `and 7 / cp 7` with `cpl / and 7`. After `DEC H`, if the low 3 bits of H wrapped from `000` to `111`, we crossed a character boundary. The classic test checks `AND 7` then compares with 7. The optimised version complements first: if the bits are `111`, CPL makes them `000`, and `AND 7` gives zero. This saves 1 byte and 3 T-states in the boundary-crossing path:
 
 ```z80
-; UP_HL optimised (Artem Topchiy)
+; UP_HL optimised (Art-top)
 ; Saves 1 byte, 3 T-states on boundary crossing
 ;
 up_hl_opt:
@@ -688,7 +688,7 @@ So the final clean version is:
 
 This works because L already contains `LLL CCCCC` -- the character row within the third (0--7) combined with the column (0--31) -- and that is exactly the low byte of the attribute address. The high byte just needs the third number added to `$58`. Elegant.
 
-**Special case: when H has scanline bits = 111.** If you are iterating through a character cell top-to-bottom and have just processed the last scanline (scanline 7), the low 3 bits of H are `111`. In this case there is a faster 4-instruction conversion, contributed by Artem Topchiy:
+**Special case: when H has scanline bits = 111.** If you are iterating through a character cell top-to-bottom and have just processed the last scanline (scanline 7), the low 3 bits of H are `111`. In this case there is a faster 4-instruction conversion, contributed by Art-top:
 
 ```z80
 ; Pixel-to-attribute when H low bits are %111
@@ -765,6 +765,6 @@ Every technique in the rest of this book is shaped by the screen layout describe
 
 ---
 
-> **Sources:** Introspec "Eshchyo raz pro DOWN_HL" (Hype, 2020); Introspec "GO WEST Part 1" (Hype, 2015) for contended memory effects at screen addresses; Introspec "Making of Eager" (Hype, 2015) for attribute-based effect design; the Spectrum's ULA documentation for memory layout rationale; Artem Topchiy (personal communication, 2026) for the optimised UP_HL and fast pixel-to-attribute conversion.
+> **Sources:** Introspec "Eshchyo raz pro DOWN_HL" (Hype, 2020); Introspec "GO WEST Part 1" (Hype, 2015) for contended memory effects at screen addresses; Introspec "Making of Eager" (Hype, 2015) for attribute-based effect design; the Spectrum's ULA documentation for memory layout rationale; Art-top (personal communication, 2026) for the optimised UP_HL and fast pixel-to-attribute conversion.
 
 *Next: Chapter 3 -- The Demoscener's Toolbox. Unrolled loops, self-modifying code, the stack as a data pipe, and the techniques that let you do the impossible within the budget.*

@@ -111,6 +111,20 @@ Two frames at 50 Hz is 40 milliseconds. For a musical track with kick drums on t
 
 This is the architectural challenge that drives the rest of the chapter. How do you keep the visuals running smoothly when the audio steals the CPU for two frames at a time, unpredictably, dozens of times per minute?
 
+> **Sidebar: MCC -- More Than 16 Levels from One AY**
+>
+> The single-channel approach above gives you 16 volume levels (4-bit DAC). But the AY has three channels, and their analogue outputs are mixed together before reaching the speaker. What if you write different volume values to all three channels simultaneously? The combined signal has more amplitude steps than any single channel.
+>
+> This is the MCC (Mixed Channel Covox) technique, documented by UnBEL!EVER (Born Dead #09, 1999). Two "edge" channels provide the main signal; the centre channel adds a correction value. With a precomputed lookup table mapping 8-bit sample values to three register values, you can synthesise approximately 108 distinct amplitude levels -- far better than 16.
+>
+> The standard MCC playback loop runs at ~24 KHz (144 T per sample). A super-fast variant by MOn5+Er (Born Dead #0G, 2000) uses SP as the sample data pointer (`POP HL` reads two bytes in 10 T) and `JP (IX)` for the loop branch (8 T), achieving ~43.75 KHz at 80 T per sample -- approaching telephone quality from a sound chip designed for square waves.
+>
+> **The catch:** the MCC lookup table depends on the exact analogue output levels of each channel. The AY-3-8910 and YM2149F have different volume curves (the YM is closer to linear, the AY is more logarithmic), and even chips of the same model vary between production runs. UnBEL!EVER's 108-level table was calculated for the YM2149F. On a different chip, the combined levels shift, and the carefully calibrated amplitude steps become uneven. The centre channel contributes roughly 52% of the mixed signal -- if that ratio drifts, the correction values distort rather than improve the output.
+>
+> For demo work targeting a specific machine (say, Pentagon with YM2149F), MCC works well. For cross-hardware compatibility, the single-channel 4-bit approach is safer. And for fun experiments -- like feeding AY-beat formulas (Appendix I) through an averaged MCC table -- the distortion is part of the charm.
+>
+> *Sources: UnBEL!EVER, "Воспроизведение оцифровок на AY (MCC)," Born Dead #09 (1999); MOn5+Er, Born Dead #0G (2000).*
+
 ---
 
 ## 12.2 Asynchronous Frame Generation

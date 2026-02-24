@@ -412,7 +412,7 @@ Some coders mix R into their generator at every call, adding genuine instruction
 
 ### Four Generators from the Community
 
-In 2024, Gogin (of the Russian ZX scene) assembled a collection of Z80 PRNG routines and shared them for evaluation. Artem Topchiy tested them systematically, filling large bitmaps to reveal statistical patterns. The results are instructive -- not all "random" routines are equally random.
+In 2024, Gogin (of the Russian ZX scene) assembled a collection of Z80 PRNG routines and shared them for evaluation. Gogin tested them systematically, filling large bitmaps to reveal statistical patterns. The results are instructive -- not all "random" routines are equally random.
 
 Here are four generators from that collection, ordered from best to worst quality.
 
@@ -459,7 +459,7 @@ patrik_rak_cmwc_rnd:
 
 The algorithm multiplies the current buffer entry by 253, adds a carry value, stores the new carry, and complements the result. The 8-byte circular buffer means the generator's state space is vast -- 8 bytes of buffer plus 1 byte of carry plus the index, giving far more internal state than any single-register generator can achieve.
 
-Artem Topchiy's verdict: **best quality** in the collection. When filling a 256x192 bitmap, no visible patterns emerge even at large scales.
+Gogin's verdict: **best quality** in the collection. When filling a 256x192 bitmap, no visible patterns emerge even at large scales.
 
 #### Ion Random (Second Best)
 
@@ -487,7 +487,7 @@ ion_rnd:
 
 The R register injection means this generator produces different sequences depending on the calling context -- how many instructions execute between calls affects R, which feeds back into the state. For a demo main loop with fixed timing, R advances predictably, but the nonlinear mixing (ADD + XOR) still produces good output. In a game where player input varies the call pattern, the R contribution adds genuine unpredictability.
 
-Artem Topchiy's verdict: **second best**. Very compact, good quality for its size.
+Gogin's verdict: **second best**. Very compact, good quality for its size.
 
 #### XORshift 16-bit (Mediocre)
 
@@ -525,7 +525,7 @@ XORshift generators are fast and simple, but with only 16 bits of state the peri
 
 #### Raxoft's CMWC Variant (Mediocre)
 
-A CMWC variant by Raxoft, similar in principle to Patrik Rak's version but with a different buffer arrangement. Artem Topchiy found it produced **visible patterns at scale** -- likely due to the way the carry propagation interacts with the buffer indexing. We include it in the compilable example (`examples/prng.a80`) for completeness, but for production use, Patrik Rak's version is strictly superior.
+A CMWC variant by Raxoft, similar in principle to Patrik Rak's version but with a different buffer arrangement. Gogin found it produced **visible patterns at scale** -- likely due to the way the carry propagation interacts with the buffer indexing. We include it in the compilable example (`examples/prng.a80`) for completeness, but for production use, Patrik Rak's version is strictly superior.
 
 ### Elite's Tribonacci Approach
 
@@ -577,7 +577,7 @@ In a demo, reproducibility is usually desirable: the effect should look the same
 
 In a game, unpredictability matters. Common seeding strategies:
 
-- **FRAMES system variable ($5C78)** -- the Spectrum ROM maintains a 3-byte frame counter at address $5C78 that increments every 1/50th of a second from power-on. Reading it gives a time-dependent seed that varies with how long the machine has been running. Artem Topchiy recommends using it to initialise Patrik Rak's CMWC table:
+- **FRAMES system variable ($5C78)** -- the Spectrum ROM maintains a 3-byte frame counter at address $5C78 that increments every 1/50th of a second from power-on. Reading it gives a time-dependent seed that varies with how long the machine has been running. Art-top (Artem Topchiy) recommends using it to initialise Patrik Rak's CMWC table:
 
 ```z80
 ; Seed Patrik Rak CMWC from FRAMES system variable
@@ -612,7 +612,7 @@ For demos, simply initialise the generator's state to a known value and leave it
 
 For most demoscene work, **Patrik Rak's CMWC** is the clear winner: excellent quality, reasonable size, and a period so long it will never repeat during a demo. If code size is critical (size-coding, 256-byte intros), **Ion Random** packs remarkable quality into 15 bytes. XORshift is a fallback when you need something quick and do not care about visual quality.
 
-> **Credits:** PRNG collection assembled by **Gogin**. Quality assessment and bitmap testing by **Artem Topchiy**. Patrik Rak's CMWC generator is based on George Marsaglia's Complementary Multiply-With-Carry theory. Ion Random originates from **Ion Shell** for the TI-83 calculator.
+> **Credits:** PRNG collection, quality assessment, and bitmap testing by **Gogin**. Patrik Rak's CMWC generator is based on George Marsaglia's Complementary Multiply-With-Carry theory. Ion Random originates from **Ion Shell** for the TI-83 calculator.
 
 ---
 

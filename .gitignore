@@ -3,3 +3,4 @@ build/
 *.sna
 *.tap
 *.sjasm.bin
+_in/who-is-who.md

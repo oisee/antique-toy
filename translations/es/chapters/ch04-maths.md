@@ -411,7 +411,7 @@ Algunos coders mezclan R en su generador en cada llamada, anadiendo entropia gen
 
 ### Cuatro Generadores de la Comunidad
 
-En 2024, Gogin (de la escena ZX rusa) recopilo una coleccion de rutinas PRNG para Z80 y las compartio para evaluacion. Artem Topchiy las probo sistematicamente, llenando bitmaps grandes para revelar patrones estadisticos. Los resultados son instructivos -- no todas las rutinas "aleatorias" son igualmente aleatorias.
+En 2024, Gogin (de la escena ZX rusa) recopilo una coleccion de rutinas PRNG para Z80 y las compartio para evaluacion. Gogin las probo sistematicamente, llenando bitmaps grandes para revelar patrones estadisticos. Los resultados son instructivos -- no todas las rutinas "aleatorias" son igualmente aleatorias.
 
 Aqui hay cuatro generadores de esa coleccion, ordenados de mejor a peor calidad.
 
@@ -458,7 +458,7 @@ patrik_rak_cmwc_rnd:
 
 El algoritmo multiplica la entrada actual del buffer por 253, suma un valor de acarreo, almacena el nuevo acarreo y complementa el resultado. El buffer circular de 8 bytes significa que el espacio de estados del generador es vasto -- 8 bytes de buffer mas 1 byte de acarreo mas el indice, dando mucho mas estado interno del que cualquier generador de un solo registro puede lograr.
 
-El veredicto de Artem Topchiy: **mejor calidad** de la coleccion. Al llenar un bitmap de 256x192, no emergen patrones visibles ni siquiera a escalas grandes.
+El veredicto de Gogin: **mejor calidad** de la coleccion. Al llenar un bitmap de 256x192, no emergen patrones visibles ni siquiera a escalas grandes.
 
 #### Ion Random (Segundo Mejor)
 
@@ -486,7 +486,7 @@ ion_rnd:
 
 La inyeccion del registro R significa que este generador produce secuencias diferentes dependiendo del contexto de llamada -- cuantas instrucciones se ejecutan entre llamadas afecta a R, que retroalimenta al estado. Para un bucle principal de demo con temporizado fijo, R avanza predeciblemente, pero la mezcla no lineal (ADD + XOR) aun produce buena salida. En un juego donde la entrada del jugador varia el patron de llamada, la contribucion de R anade verdadera impredecibilidad.
 
-El veredicto de Artem Topchiy: **segundo mejor**. Muy compacto, buena calidad para su tamano.
+El veredicto de Gogin: **segundo mejor**. Muy compacto, buena calidad para su tamano.
 
 #### XORshift de 16 bits (Mediocre)
 
@@ -524,7 +524,7 @@ Los generadores XORshift son rapidos y simples, pero con solo 16 bits de estado 
 
 #### Variante CMWC de Raxoft (Mediocre)
 
-Una variante CMWC de Raxoft, similar en principio a la version de Patrik Rak pero con un arreglo de buffer diferente. Artem Topchiy encontro que producia **patrones visibles a escala** -- probablemente debido a como la propagacion del acarreo interactua con la indexacion del buffer. Lo incluimos en el ejemplo compilable (`examples/prng.a80`) por completitud, pero para uso en produccion, la version de Patrik Rak es estrictamente superior.
+Una variante CMWC de Raxoft, similar en principio a la version de Patrik Rak pero con un arreglo de buffer diferente. Gogin encontro que producia **patrones visibles a escala** -- probablemente debido a como la propagacion del acarreo interactua con la indexacion del buffer. Lo incluimos en el ejemplo compilable (`examples/prng.a80`) por completitud, pero para uso en produccion, la version de Patrik Rak es estrictamente superior.
 
 ### El Enfoque Tribonacci de Elite
 
@@ -576,7 +576,7 @@ En una demo, la reproducibilidad es usualmente deseable: el efecto deberia verse
 
 En un juego, la impredecibilidad importa. Estrategias comunes de sembramiento:
 
-- **Variable de sistema FRAMES ($5C78)** -- la ROM del Spectrum mantiene un contador de fotogramas de 3 bytes en la direccion $5C78 que se incrementa cada 1/50 de segundo desde el encendido. Leerlo da una semilla dependiente del tiempo que varia con cuanto tiempo ha estado funcionando la maquina. Artem Topchiy recomienda usarlo para inicializar la tabla CMWC de Patrik Rak:
+- **Variable de sistema FRAMES ($5C78)** -- la ROM del Spectrum mantiene un contador de fotogramas de 3 bytes en la direccion $5C78 que se incrementa cada 1/50 de segundo desde el encendido. Leerlo da una semilla dependiente del tiempo que varia con cuanto tiempo ha estado funcionando la maquina. Art-top recomienda usarlo para inicializar la tabla CMWC de Patrik Rak:
 
 ```z80
 ; Seed Patrik Rak CMWC from FRAMES system variable
@@ -611,7 +611,7 @@ Para demos, simplemente inicializa el estado del generador a un valor conocido y
 
 Para la mayoria del trabajo de demoscene, el **CMWC de Patrik Rak** es el claro ganador: excelente calidad, tamano razonable y un periodo tan largo que nunca se repetira durante una demo. Si el tamano del codigo es critico (sizecoding, intros de 256 bytes), **Ion Random** empaqueta una calidad notable en 15 bytes. XORshift es un recurso de emergencia cuando necesitas algo rapido y no te importa la calidad visual.
 
-> **Creditos:** Coleccion de PRNG recopilada por **Gogin**. Evaluacion de calidad y pruebas de bitmap por **Artem Topchiy**. El generador CMWC de Patrik Rak se basa en la teoria de Multiply-With-Carry Complementario de George Marsaglia. Ion Random se origina en **Ion Shell** para la calculadora TI-83.
+> **Creditos:** Coleccion de PRNG, evaluacion de calidad y pruebas de bitmap por **Gogin**. El generador CMWC de Patrik Rak se basa en la teoria de Multiply-With-Carry Complementario de George Marsaglia. Ion Random se origina en **Ion Shell** para la calculadora TI-83.
 
 ---
 

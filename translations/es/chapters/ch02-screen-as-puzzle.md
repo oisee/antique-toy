@@ -546,10 +546,10 @@ up_hl:
     ret                ; 10T
 ```
 
-Hay una optimización sutil aquí, contribuida por Artem Topchiy: reemplazar `and 7 / cp 7` con `cpl / and 7`. Después de `DEC H`, si los 3 bits bajos de H pasaron de `000` a `111`, cruzamos un límite de caracteres. La prueba clásica verifica `AND 7` luego compara con 7. La versión optimizada complementa primero: si los bits son `111`, CPL los convierte en `000`, y `AND 7` da cero. Esto ahorra 1 byte y 3 T-states en la ruta de cruce de límites:
+Hay una optimización sutil aquí, contribuida por Art-top (Artem Topchiy): reemplazar `and 7 / cp 7` con `cpl / and 7`. Después de `DEC H`, si los 3 bits bajos de H pasaron de `000` a `111`, cruzamos un límite de caracteres. La prueba clásica verifica `AND 7` luego compara con 7. La versión optimizada complementa primero: si los bits son `111`, CPL los convierte en `000`, y `AND 7` da cero. Esto ahorra 1 byte y 3 T-states en la ruta de cruce de límites:
 
 ```z80
-; UP_HL optimised (Artem Topchiy)
+; UP_HL optimised (Art-top)
 ; Saves 1 byte, 3 T-states on boundary crossing
 ;
 up_hl_opt:
@@ -686,7 +686,7 @@ Así que la versión final limpia es:
 
 Esto funciona porque L ya contiene `LLL CCCCC` -- la fila de caracteres dentro del tercio (0--7) combinada con la columna (0--31) -- y eso es exactamente el byte bajo de la dirección de atributo. El byte alto solo necesita el número de tercio sumado a `$58`. Elegante.
 
-**Caso especial: cuando H tiene bits de línea de escaneo = 111.** Si estás iterando a través de una celda de caracteres de arriba a abajo y acabas de procesar la última línea de escaneo (línea de escaneo 7), los 3 bits bajos de H son `111`. En este caso hay una conversión más rápida de 4 instrucciones, contribuida por Artem Topchiy:
+**Caso especial: cuando H tiene bits de línea de escaneo = 111.** Si estás iterando a través de una celda de caracteres de arriba a abajo y acabas de procesar la última línea de escaneo (línea de escaneo 7), los 3 bits bajos de H son `111`. En este caso hay una conversión más rápida de 4 instrucciones, contribuida por Art-top:
 
 ```z80
 ; Pixel-to-attribute when H low bits are %111
@@ -763,6 +763,6 @@ Cada técnica en el resto de este libro está moldeada por el diseño de pantall
 
 ---
 
-> **Fuentes:** Introspec "Eshchyo raz pro DOWN_HL" (Hype, 2020); Introspec "GO WEST Part 1" (Hype, 2015) para efectos de memoria contendida en direcciones de pantalla; Introspec "Making of Eager" (Hype, 2015) para diseño de efectos basados en atributos; la documentación de la ULA del Spectrum para la justificación del diseño de memoria; Artem Topchiy (comunicación personal, 2026) para el UP_HL optimizado y la conversión rápida de píxel a atributo.
+> **Fuentes:** Introspec "Eshchyo raz pro DOWN_HL" (Hype, 2020); Introspec "GO WEST Part 1" (Hype, 2015) para efectos de memoria contendida en direcciones de pantalla; Introspec "Making of Eager" (Hype, 2015) para diseño de efectos basados en atributos; la documentación de la ULA del Spectrum para la justificación del diseño de memoria; Art-top (Artem Topchiy) (comunicación personal, 2026) para el UP_HL optimizado y la conversión rápida de píxel a atributo.
 
 *Siguiente: Capítulo 3 -- La Caja de Herramientas del Demoscener. Bucles desenrollados, código auto-modificable, la pila como tubería de datos, y las técnicas que te permiten hacer lo imposible dentro del presupuesto.*
