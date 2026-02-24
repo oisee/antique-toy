@@ -1,0 +1,341 @@
+; aybeat.a80 — AY-Beat: Algorithmic Music on AY-3-8910
+; From Appendix I: Bytebeat and AY-Beat
+;
+; Demonstrates generative music using formulas instead of pattern data.
+; Three channels of melodic, harmonically coherent sound from ~200 bytes.
+;
+; Music theory packed into algorithms:
+;
+;   #1  Pentatonic scale table — 5 notes, always consonant
+;   #2  Octave derivation — SRL halves period (up one octave)
+;   #3  Arpeggio — cycle through chord tones via (t/speed) % 3
+;   #4  Step ornaments — trill pattern as relative scale steps
+;   #5  Diatonic progression — chord root walks I-IV-V-I
+;   #6  Envelope drone — hardware volume modulation, zero CPU
+;   #7  Noise percussion — kick on downbeat via mixer toggle
+;   #8  Multi-channel harmony — root + third + fifth from same scale
+;
+; Sound: evolving 3-channel AY piece with chord progressions,
+;        arpeggios, ornaments, envelope drones, and rhythmic noise.
+;        All generated from frame counter + 19 bytes of table data.
+;
+; Assembles with: sjasmplus --nologo --raw=build/aybeat.bin aybeat.a80
+; Target: ZX Spectrum 128K (or 48K with AY interface)
+
+    ORG  $8000
+
+; ============================================================
+; AY port constants
+; ============================================================
+AY_REG   EQU  $FFFD            ; AY register select port
+AY_DATA  EQU  $BFFD            ; AY data write port
+
+; ============================================================
+; Musical constants
+; ============================================================
+TEMPO    EQU  8                 ; frames per beat (50/8 = 6.25 beats/sec)
+ARPSPD   EQU  3                ; frames per arpeggio step
+
+; ============================================================
+; Init: set up AY, clear screen
+; ============================================================
+init:
+    ld   a, 7                  ; AY register 7: mixer
+    ld   d, %00111000          ; tone A,B,C on; noise off initially
+    call ay_write
+
+    ; Enable envelope on channel C for drone
+    ld   a, 10                 ; register 10: volume C
+    ld   d, $10                ; bit 4 = use envelope
+    call ay_write
+
+    ; Envelope shape: triangle (shape 10 = \/ repeating)
+    ld   a, 13                 ; register 13: envelope shape
+    ld   d, 10
+    call ay_write
+
+    ; Set border to black
+    xor  a
+    out  ($FE), a
+
+; ============================================================
+; Main loop — one iteration per frame
+; ============================================================
+main_loop:
+    halt                       ; wait for vsync — 50 Hz tick
+
+    ; ----------------------------------------------------------
+    ; Read frame counter
+    ; ----------------------------------------------------------
+    ld   a, (frame)
+    ld   (cur_t), a            ; save for reuse
+    inc  a
+    ld   (frame), a
+
+    ; ----------------------------------------------------------
+    ; Chord progression: I - IV - V - I
+    ; Root note index changes every 32 beats (256 frames)
+    ; (t / 64) % 4 selects chord root from progression table
+    ; ----------------------------------------------------------
+    ld   a, (cur_t)
+    rrca
+    rrca
+    rrca
+    rrca
+    rrca
+    rrca                       ; A = t >> 6 = t / 64
+    and  $03                   ; mod 4 — four chords in cycle
+    ld   hl, progression
+    add  a, l
+    ld   l, a                  ; HL points to scale degree
+    ld   a, (hl)               ; A = root note index in scale
+    ld   (chord_root), a
+
+    ; ----------------------------------------------------------
+    ; Channel A: melody — arpeggio over chord tones
+    ; Cycle through root, third, fifth at ARPSPD frames each
+    ; ----------------------------------------------------------
+    ld   a, (cur_t)
+
+    ; Arpeggio step = (t / ARPSPD) % 3
+    ld   b, a
+    ; Divide by ARPSPD (3): approximate with repeated subtract
+    xor  a
+    ld   c, b
+.div3:
+    ld   b, c
+    sub  ARPSPD
+    jr   c, .div3_done
+    ld   c, a
+    ld   a, b
+    inc  a                     ; quotient++
+    ld   b, a
+    ld   a, c
+    jr   .div3
+.div3_done:
+    ld   a, b                  ; A = t / ARPSPD
+    ; mod 3 for arpeggio cycle
+    ld   b, a
+.mod3:
+    sub  3
+    jr   nc, .mod3
+    add  a, 3                  ; A = (t/ARPSPD) % 3
+
+    ; A = arpeggio offset (0, 1, or 2)
+    ; Map to scale steps: 0=root, 1=root+2 (third), 2=root+4 (fifth)
+    add  a, a                  ; A = 0, 2, or 4
+    ld   b, a
+    ld   a, (chord_root)
+    add  a, b                  ; A = note index in scale
+
+    ; Step ornament: add a trill on every other frame
+    ; ornament = (+1, 0, -1, 0) cycling at 4 frames
+    push af
+    ld   a, (cur_t)
+    and  $03                   ; (t % 4) selects ornament step
+    ld   hl, ornament
+    add  a, l
+    ld   l, a
+    ld   b, (hl)               ; B = ornament offset (-1, 0, +1)
+    pop  af
+    add  a, b                  ; apply ornament to note index
+
+    ; Clamp to positive
+    and  $0F                   ; keep in 0-15 range
+
+    ; Look up AY period from scale table
+    call get_period            ; DE = period for note index A
+    ; Octave: shift right for higher octave
+    srl  d
+    rr   e                     ; up one octave — brighter melody
+
+    ; Write to AY: channel A tone period
+    ld   a, 0                  ; reg 0: tone A low
+    ld   d, e
+    call ay_write
+    ld   a, 1                  ; reg 1: tone A high
+    ld   d, 0                  ; high byte (periods < 256)
+    call ay_write
+
+    ; Channel A volume: accent on beat, softer off-beat
+    ld   a, (cur_t)
+    and  TEMPO - 1             ; position within beat
+    jr   nz, .soft_a
+    ld   d, 15                 ; on-beat: full volume
+    jr   .vol_a
+.soft_a:
+    ld   d, 10                 ; off-beat: quieter
+.vol_a:
+    ld   a, 8                  ; reg 8: volume A
+    call ay_write
+
+    ; ----------------------------------------------------------
+    ; Channel B: bass — chord root, low octave
+    ; ----------------------------------------------------------
+    ld   a, (chord_root)
+    call get_period            ; DE = period at base octave
+    ; Bass: use period as-is (low octave) or shift left for lower
+    sla  e
+    rl   d                     ; down one octave — deeper bass
+
+    ld   a, 2                  ; reg 2: tone B low
+    push de
+    ld   d, e
+    call ay_write
+    pop  de
+    ld   a, 3                  ; reg 3: tone B high
+    ld   d, d                  ; high bits
+    call ay_write
+
+    ; Channel B volume: steady
+    ld   a, 9                  ; reg 9: volume B
+    ld   d, 12
+    call ay_write
+
+    ; ----------------------------------------------------------
+    ; Channel C: drone — fifth above root, envelope modulated
+    ; ----------------------------------------------------------
+    ld   a, (chord_root)
+    add  a, 4                  ; fifth = root + 4 scale steps
+    call get_period
+    ; Drone at base octave
+
+    ld   a, 4                  ; reg 4: tone C low
+    ld   d, e
+    call ay_write
+    ld   a, 5                  ; reg 5: tone C high
+    ld   d, 0
+    call ay_write
+
+    ; Envelope period: slowly evolving from frame counter
+    ; Creates phasing/beating effect against the tone
+    ld   a, (cur_t)
+    rrca                       ; evolve at half speed
+    and  $3F
+    add  a, $20               ; offset: not too fast, not too slow
+    ld   d, a
+    ld   a, 11                ; reg 11: envelope period low
+    call ay_write
+    ld   a, 12                ; reg 12: envelope period high
+    ld   d, 0
+    call ay_write
+
+    ; ----------------------------------------------------------
+    ; Noise percussion: kick on downbeat
+    ; ----------------------------------------------------------
+    ld   a, (cur_t)
+    and  TEMPO * 2 - 1        ; every 2 beats
+    jr   nz, .no_kick
+
+    ; Kick: enable noise on channel B briefly
+    ld   a, 7                 ; mixer
+    ld   d, %00110000         ; tone A,B,C on + noise B on
+    call ay_write
+    ld   a, 6                 ; noise period
+    ld   d, 2                 ; low = bass-heavy kick
+    call ay_write
+    jr   .kick_done
+
+.no_kick:
+    ; Kick decay: disable noise after a few frames
+    cp   3                    ; first 3 frames of beat: noise on
+    jr   c, .kick_done
+    ld   a, 7
+    ld   d, %00111000         ; noise off, tones on
+    call ay_write
+.kick_done:
+
+    ; ----------------------------------------------------------
+    ; Visual: border colour from chord root (minimal visual)
+    ; ----------------------------------------------------------
+    ld   a, (chord_root)
+    and  $07
+    out  ($FE), a
+
+    jp   main_loop
+
+; ============================================================
+; get_period — look up AY tone period from scale index
+; Input: A = note index (0-15, wraps via pentatonic table)
+; Output: DE = 12-bit AY tone period
+; ============================================================
+get_period:
+    ; Map to pentatonic: index % 5 selects note,
+    ; index / 5 selects octave (higher octave = period >> 1)
+    ld   c, a
+    ; Octave = index / 5
+    ld   b, 0
+.oct_loop:
+    cp   5
+    jr   c, .oct_done
+    sub  5
+    inc  b
+    jr   .oct_loop
+.oct_done:
+    ; A = index % 5 (note within pentatonic scale)
+    ; B = octave number (0 = base, 1 = up, etc.)
+    ld   hl, pentatonic
+    add  a, a                  ; ×2 for word entries
+    add  a, l
+    ld   l, a
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)               ; DE = base period
+
+    ; Shift right by octave number — each shift = up one octave
+    ld   a, b
+    or   a
+    ret  z                     ; octave 0: no shift
+.shift:
+    srl  d
+    rr   e
+    djnz .shift
+    ret
+
+; ============================================================
+; ay_write — write value D to AY register A
+; Clobbers: BC
+; ============================================================
+ay_write:
+    ld   bc, AY_REG
+    out  (c), a                ; select register
+    ld   b, high AY_DATA       ; B = $BF, C stays $FD
+    out  (c), d                ; write value
+    ret
+
+; ============================================================
+; Data tables — 19 bytes total
+; ============================================================
+
+; Pentatonic scale: C D E G A (minor pentatonic feel)
+; AY periods for octave 4 (middle range)
+; Period = 125000 / frequency (for 1.7734 MHz AY clock)
+pentatonic:
+    DW   478                   ; C4  (261.6 Hz)
+    DW   426                   ; D4  (293.7 Hz)
+    DW   379                   ; E4  (329.6 Hz)
+    DW   319                   ; G4  (392.0 Hz)
+    DW   284                   ; A4  (440.0 Hz)
+
+; Chord progression: scale degree offsets
+; I (root=0), IV (root=3), V (root=4), I (root=0)
+progression:
+    DB   0, 3, 4, 0
+
+; Step ornament: relative offsets cycling every 4 frames
+; Creates a subtle trill effect on the melody
+ornament:
+    DB   0, 1, 0, -1           ; steady, up, steady, down
+
+; ============================================================
+; Variables
+; ============================================================
+frame:       DB   0
+cur_t:       DB   0
+chord_root:  DB   0
+
+; ============================================================
+; Size check
+; ============================================================
+aybeat_end:
+    DISPLAY "AY-Beat size: ", /D, aybeat_end - init, " bytes"
