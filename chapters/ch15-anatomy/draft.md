@@ -85,6 +85,7 @@ The critical constraint: **your interrupt handler and main loop must live in pag
 
 **Rule:** never put time-critical code in a banked page unless you are absolutely certain which page is active when that code runs.
 
+<!-- figure: ch15_memory_map -->
 ![ZX Spectrum 128K memory map](illustrations/output/ch15_memory_map.png)
 
 ---

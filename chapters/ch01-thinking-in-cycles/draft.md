@@ -31,6 +31,7 @@ Here is a handful of instructions you will use constantly:
 
 Look at the range. A register-to-register `LD A,B` costs 4 T-states -- the minimum for any instruction. A memory read `LD A,(HL)` costs 7, because the CPU needs extra machine cycles to put the address on the bus and wait for the RAM to respond. `LDIR`, the block copy instruction that every Spectrum coder reaches for instinctively, costs 21 T-states per byte it copies (except the last byte, which costs 16). That is over five times the cost of a NOP.
 
+<!-- figure: ch01_tstate_costs -->
 ![T-state costs for common Z80 instructions](illustrations/output/ch01_tstate_costs.png)
 
 Why does this matter? Because when you are filling a screen, or updating sprite data, or computing the next frame of a plasma effect, every instruction is eating into your budget. The difference between a 4-T-state instruction and a 7-T-state instruction, multiplied across ten thousand iterations in an inner loop, is the difference between an effect that runs at 50 frames per second and one that does not.
@@ -59,6 +60,7 @@ The number of T-states between one interrupt and the next -- the **frame budget*
 
 Those are *total* T-states between interrupts. The practical budget is less -- subtract the interrupt handler cost (a PT3 music player typically consumes 3,000--5,000 T-states per frame), HALT overhead, and on non-Pentagon machines, contention penalties. On a Pentagon with a music player, expect roughly 66,000--68,000 T-states for your main loop. Chapter 15 has the detailed tact-maps.
 
+<!-- figure: ch01_frame_budget -->
 ![Frame budget breakdown across ZX Spectrum models](illustrations/output/ch01_frame_budget.png)
 
 If your main loop -- input handling, game logic, sound update, screen rendering -- takes more T-states than one frame, you drop frames. Things slow down. The border stripe trick we will build later in this chapter will make that painfully visible.

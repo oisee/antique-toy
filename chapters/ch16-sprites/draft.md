@@ -493,6 +493,7 @@ For 16 rows x 2 bytes: 16 x (28 + 28 + 4 + 4 + 4) = 16 x 68 = **1,088 T-states**
 | Compiled (no mask) | ~570 T | No | Code = sprite; large footprint |
 | Compiled (masked) | ~1,088 T | Yes | Best of both; largest footprint |
 
+<!-- figure: ch16_sprite_methods -->
 ![Sprite rendering methods comparison](illustrations/output/ch16_sprite_methods.png)
 
 ---

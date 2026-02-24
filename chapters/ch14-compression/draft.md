@@ -73,6 +73,29 @@ You cannot have all three. Exomizer wins on ratio but is slow to decompress and 
 
 Introspec's genius was to map these tradeoffs on a Pareto frontier --- a curve where no tool can improve on one dimension without losing on another. If a compressor is dominated on all three axes by another tool, it is obsolete. If it sits on the frontier, it is the right choice for some use case.
 
+<!-- figure: ch14_compression_tradeoff -->
+```mermaid
+graph LR
+    SRC["Source Data\n(raw bytes)"] --> EXO["Exomizer\n48.3% ratio\n~250 T/byte\n170B decompressor"]
+    SRC --> APL["ApLib\n49.2% ratio\n~105 T/byte\n199B decompressor"]
+    SRC --> PLT["Pletter 5\n51.5% ratio\n~69 T/byte\n~120B decompressor"]
+    SRC --> ZX0["ZX0\n~52% ratio\n~100 T/byte\n~70B decompressor"]
+    SRC --> LZ4["LZ4\n58.6% ratio\n~34 T/byte\n~100B decompressor"]
+
+    EXO --> T1["Best ratio\nSlowest decompression"]
+    LZ4 --> T2["Worst ratio\nFastest decompression"]
+    ZX0 --> T3["Smallest decompressor\nGood all-around"]
+
+    style EXO fill:#fdd,stroke:#333
+    style LZ4 fill:#ddf,stroke:#333
+    style ZX0 fill:#dfd,stroke:#333
+    style T1 fill:#fdd,stroke:#933
+    style T2 fill:#ddf,stroke:#339
+    style T3 fill:#dfd,stroke:#393
+```
+
+> **The tradeoff:** Smaller compressed size = slower decompression. No compressor wins on all three axes (ratio, speed, decompressor size). Choose based on your use case: Exomizer for one-time loads, LZ4 for real-time streaming, ZX0 for size-coded intros.
+
 His practical recommendations are crisp:
 
 - **Maximum compression, speed irrelevant:** Exomizer. Use for one-time decompression at load time --- loading screens, level data, anything you unpack once into a buffer and use repeatedly.

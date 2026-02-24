@@ -49,6 +49,34 @@ Before diving into code, let us lay out the two machines side by side.
 
 The frame budget ratio is roughly 5:1. But this understates the real difference, because many operations that consume CPU T-states on the Spectrum --- sprite rendering, screen scrolling, framebuffer management --- are offloaded to the VDP on the Agon. The eZ80 CPU spends its cycles on game logic, not pixel pushing.
 
+<!-- figure: ch22_spectrum_vs_agon_sprite -->
+```mermaid
+graph TD
+    subgraph ZX["ZX Spectrum: Draw Sprite (~1200T CPU)"]
+        direction TB
+        ZA["Calculate screen address\nfrom (x, y) coordinates"] --> ZB["Select pre-shifted variant\n(x mod 8 → shift table)"]
+        ZB --> ZC["For each pixel row:\nAND mask with screen byte\nOR sprite data\nwrite back to framebuffer"]
+        ZC --> ZD["Advance to next screen row\n(DOWN_HL: handle interleave)"]
+        ZD --> ZE{"16 rows\ndone?"}
+        ZE -- No --> ZC
+        ZE -- Yes --> ZF["Done — pixels in\nvideo RAM at $4000"]
+    end
+
+    subgraph AGON["Agon Light 2: Draw Sprite (~50T CPU)"]
+        direction TB
+        AA["Send VDU 23,27,4,N\n(select sprite N)"] --> AB["Send VDU 23,27,13,x,y\n(set position)"]
+        AB --> AC["Send VDU 23,27,15\n(update display)"]
+        AC --> AD["Done — VDP renders\nsprite in hardware"]
+    end
+
+    style ZC fill:#fdd,stroke:#933
+    style AA fill:#dfd,stroke:#393
+    style AB fill:#dfd,stroke:#393
+    style AC fill:#dfd,stroke:#393
+```
+
+> **The architectural shift:** On the Spectrum, the CPU _is_ the rendering engine — every pixel is placed by Z80 instructions. On the Agon, the CPU is a _command sequencer_ — it tells the VDP what to draw, and the ESP32 coprocessor handles the actual rendering. The CPU cost drops from ~1,200T to ~50T per sprite, but you now manage an asynchronous command pipeline with serial latency.
+
 ---
 
 ## ADL Mode vs Z80-Compatible Mode

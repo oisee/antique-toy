@@ -328,6 +328,31 @@ This is what "MORE" demands. Not more polygons, not more colours, not more effec
 
 For the reader who has followed this book from Chapter 1 and wants to make a demo, here is a concrete path.
 
+<!-- figure: ch20_demo_workflow_pipeline -->
+```mermaid
+graph TD
+    IDEA["Idea\n(visual concept, mood, music)"] --> PROTO["Prototype\n(verify/ HTML/JS, or\nquick Z80 test)"]
+    PROTO --> IMPL["Z80 Implementation\n(sjasmplus, effect code)"]
+    IMPL --> TIME{"Fits in\nframe budget?"}
+    TIME -- No --> OPT["Optimise\n(unroll, precompute,\nreduce scope)"]
+    OPT --> IMPL
+    TIME -- Yes --> POLISH["Polish\n(transitions, sync to music,\ncolour palette)"]
+    POLISH --> PARTY["Party Version\n(submit to compo)"]
+    PARTY --> FINAL["Final Version\n(fix bugs, add credits,\ntest on hardware)"]
+
+    IMPL -.-> |"border-colour timing"| TIME
+    POLISH -.-> |"scene table reorder"| POLISH
+
+    style IDEA fill:#ffd,stroke:#993
+    style PROTO fill:#ddf,stroke:#339
+    style IMPL fill:#dfd,stroke:#393
+    style OPT fill:#fdd,stroke:#933
+    style PARTY fill:#fdf,stroke:#939
+    style FINAL fill:#dff,stroke:#399
+```
+
+> **The iterative loop:** The path from implementation to timing check and back is where most development time is spent. The prototype stage (HTML/JS or quick Z80 sketch) validates the visual concept before committing to full implementation. The scene table makes reordering effects trivial during the polish phase.
+
 ### Week 1: Foundation
 
 1. **Set up the toolchain.** Install sjasmplus, choose an emulator (Unreal Speccy, Fuse, or ZEsarUX), set up a project directory with a Makefile. Verify that you can assemble a minimal program and run it in the emulator.

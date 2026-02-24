@@ -52,6 +52,7 @@ Note the trick: we only change the high byte of BC between the two OUT instructi
 | R12 | Envelope period, high | 8 | Upper 8 bits of envelope period |
 | R13 | Envelope shape | 4 | Envelope waveform shape (0-15) |
 
+<!-- figure: ch11_ay_registers -->
 ![AY-3-8910 register map](illustrations/output/ch11_ay_registers.png)
 
 ### Tone Channels (R0-R5): How Pitch Works
@@ -198,6 +199,7 @@ $0B: |\                    $0D:    /|
      |  ''''''''                /  |''''''''
 ```
 
+<!-- figure: ch11_envelope_shapes -->
 ![AY envelope shape waveforms](illustrations/output/ch11_envelope_shapes.png)
 
 **Key insight:** Writing to R13 *restarts* the envelope from the beginning. This is crucial for bass techniques -- you can trigger a new envelope cycle at any time by writing to R13, even with the same value.
@@ -309,6 +311,7 @@ Check our standard table. Octave 4:
 
 Not a single clean division! Every note in the equal-tempered scale produces a slightly detuned envelope. For short percussive buzz sounds the beating is masked, but for sustained bass notes it creates an unpleasant warble.
 
+<!-- figure: ch11_te_alignment -->
 ![Tone + Envelope Phase Alignment: clean T+E with period divisible by 16 (top) vs beating T+E with rounding error (bottom)](illustrations/output/ch11_te_alignment.png)
 
 ### Natural Tuning: Table #5
@@ -323,6 +326,7 @@ C [9/8] D [10/9] E [16/15] F [9/8] G [10/9] A [9/8] B [16/15] C
 
 This gives pure fifths (3:2 ratio) for C--G, E--B, A--E. Chromatic notes (sharps/flats) are calculated with the 16/15 ratio.
 
+<!-- figure: ch11_just_intonation -->
 ![Just Intonation: interval structure of the natural scale with period divisibility table for buzz-bass](illustrations/output/ch11_just_intonation.png)
 
 The resulting periods, computed for a *non-standard* AY clock of 1,520,640 Hz:

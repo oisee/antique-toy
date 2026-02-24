@@ -21,6 +21,29 @@ Axis-Aligned Bounding Boxes. Every entity gets a rectangle defined by its positi
 
 If any one of these conditions fails, the boxes do not overlap. This is the **early exit** that makes AABB fast: on average, most entity pairs are *not* colliding, so most checks bail out after one or two comparisons rather than doing all four.
 
+<!-- figure: ch19_aabb_collision -->
+```mermaid
+graph TD
+    START["Check collision\nbetween Entity A and Entity B"] --> X1{"A.left < B.right?\n(A.x < B.x + B.width)"}
+    X1 -- No --> MISS["No collision\n(clear carry, return)"]
+    X1 -- Yes --> X2{"A.right > B.left?\n(A.x + A.width > B.x)"}
+    X2 -- No --> MISS
+    X2 -- Yes --> Y1{"A.top < B.bottom?\n(A.y < B.y + B.height)"}
+    Y1 -- No --> MISS
+    Y1 -- Yes --> Y2{"A.bottom > B.top?\n(A.y + A.height > B.y)"}
+    Y2 -- No --> MISS
+    Y2 -- Yes --> HIT["COLLISION!\n(set carry, return)"]
+
+    style MISS fill:#dfd,stroke:#393
+    style HIT fill:#fdd,stroke:#933
+    style X1 fill:#eef,stroke:#339
+    style X2 fill:#eef,stroke:#339
+    style Y1 fill:#fee,stroke:#933
+    style Y2 fill:#fee,stroke:#933
+```
+
+> **Early exit saves cycles:** Most entity pairs are far apart. The first X-overlap test rejects them in ~82 T-states. Only pairs that pass all four tests (worst case: ~156 T-states) are collisions. Test horizontal overlap first in side-scrollers — entities are more spread out on X than Y.
+
 On the Z80, we store entity positions as 8.8 fixed-point values, but for collision detection we only need the integer part -- the high byte of each coordinate. Pixel-level precision is more than enough. Here is a complete AABB collision routine:
 
 ```z80

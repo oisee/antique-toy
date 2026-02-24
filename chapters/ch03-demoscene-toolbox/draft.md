@@ -111,6 +111,25 @@ The pattern is always the same:
 4. Load your data into register pairs and PUSH repeatedly.
 5. Restore SP and re-enable interrupts (EI).
 
+<!-- figure: ch03_push_fill_pipeline -->
+```mermaid
+graph TD
+    A["DI — disable interrupts"] --> B["Save SP via self-modifying code"]
+    B --> C["Set SP to screen bottom ($5800)"]
+    C --> D["Load register pairs with fill data"]
+    D --> E["PUSH loop: 16 PUSHes per iteration\n11T × 16 = 176T → 32 bytes"]
+    E --> F{All 192\niterations done?}
+    F -- No --> E
+    F -- Yes --> G["Restore SP from self-modified LD SP,nn"]
+    G --> H["EI — re-enable interrupts"]
+
+    style E fill:#f9f,stroke:#333
+    style A fill:#fdd,stroke:#333
+    style H fill:#fdd,stroke:#333
+```
+
+> **Why PUSH wins:** `LD (HL),A` + `INC HL` writes 1 byte in 13T (13.0 T/byte). `PUSH HL` writes 2 bytes in 11T (**5.5 T/byte**) — nearly 2.4× faster per byte. The cost: interrupts must be disabled while SP is hijacked.
+
 Here is the core of the `push_fill.a80` example from this chapter's `examples/` directory:
 
 ```z80

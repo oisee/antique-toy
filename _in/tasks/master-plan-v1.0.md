@@ -1,15 +1,15 @@
 # Master Plan — Path to v1.0
 
-## Date: 2026-02-24 | Current: v0.6 (all translations done)
+## Date: 2026-02-24 | Current: v0.7 (EN ahead, translations at v0.6)
 
 ## Current State
 
 | Category | Done | Total | % |
 |----------|------|-------|---|
 | Chapters | 23 | 23 | 100% |
-| Chapter examples (.a80) | 23 | 23 | 100% |
-| Appendices | 5 (A,B,C,D,G) | 8 (A-H) | 63% |
-| Illustrations | 14 | ~248 planned | 6% |
+| Chapter examples (.a80) | 28 | 28 | 100% |
+| Appendices | 8 (A-H) | 8 (A-H) | 100% |
+| Illustrations | 23 (14 PNG + 9 Mermaid/ASCII) | ~248 planned | 9% |
 | Translations | 4 langs | 4 langs | 100% |
 | Spectools | 5 | 6 | 83% |
 | Glossary | 95 terms | 95 terms | 100% |
@@ -38,7 +38,7 @@
 
 | # | Task | Impact | Effort |
 |---|------|--------|--------|
-| L1 | **Appendices F, H** — Clone memory maps, esxDOS API reference | Completeness for power users | 2-3h each |
+| ~~L1~~ | ~~**Appendices F, H** — Z80 variants, Storage APIs (TR-DOS & esxDOS)~~ | DONE — moved to Phase 2 | — |
 | L2 | **Full illustration coverage** — Batch D screenshots + remaining diagrams | Professional look | 1-2 weeks |
 | L3 | **Editing pass** — all 23 chapters, consistency, flow, fact-check | Publication quality | 1-2 weeks |
 | L4 | **Demo release** — "Antique Toy" with 5+ effects, music, release at demoparty | Proof of concept | 2-4 weeks |
@@ -51,9 +51,12 @@
 - Q2: Ch21-23 assembly examples — DONE (28/28 pass, 0 fail)
 - ~~Q4: MinZ test integration~~ — DEFERRED (oisee/minz issues #11-13)
 
-### Phase 2: Visual Polish
-- Q3: Batch A illustrations (9 charts)
-- Q5: Appendix E (eZ80 reference)
+### Phase 2: Visual Polish + eZ80 + Appendices — DONE
+- Q3: Batch A illustrations (9 Mermaid/ASCII diagrams) — DONE (23 total figures)
+- Q5: Appendix E (eZ80 reference, 332 lines) — DONE
+- L1: Appendix F (Z80 variants: Z80N, R800, Soviet clones, 236 lines) — DONE
+- L1: Appendix H (Storage APIs: TR-DOS & esxDOS, 503 lines) — DONE
+- Figure tagging (`<!-- figure: -->`) — DONE (14 existing PNG + 9 new diagrams tagged)
 
 ### Phase 3: Depth & Quality
 - M1: Expand thin chapters (ch07, ch10, ch13)
@@ -71,9 +74,20 @@ Tools at `~/dev/minz-ts` (v0.18.0-dev, Go, zero deps) are excluded from the book
 
 Once issues are resolved, re-evaluate Q4 (test-run), M5 (MinZ appendix), and L5 (test suite).
 
+## Feedback-driven items
+
+| Source | Request | Priority | Status |
+|--------|---------|----------|--------|
+| Eremus | Contended memory coverage (48K/128K ULA timing) | High | TODO — affects multiple chapters |
+| Eremus | Reference Introspec's "Go West" articles | Medium | TODO |
+| RCL | More direct links to source materials | Medium | TODO |
+| RCL | Reference zxdn.narod.ru/coding.htm | Low | Noted |
+| RCL | Platform-specific optimization (DOWN_HL, RST, stack) | Done | README now has per-chapter platform tags |
+
 ## Notes
 - No TODO/FIXME markers in any chapter
-- All 25 sjasmplus examples pass (14/25 mza — expected)
-- All 14 illustration image links valid
+- All 28 sjasmplus examples pass
+- All figures tagged with `<!-- figure: chNN_name -->` for greppability
 - Translation manifest system tracks staleness for future EN edits
+- EN is primary; translations catch up periodically
 - Build: `python3 build_book.py --lang {en,es,ru,uk} --all`

@@ -24,6 +24,7 @@ The attribute area holds the colour information: one byte per 8x8 character cell
 
 Together: 6,144 + 768 = 6,912 bytes. That is the entire display.
 
+<!-- figure: ch02_screen_layout -->
 ![ZX Spectrum screen memory layout with thirds, character cells, and attribute area](illustrations/output/ch02_screen_layout.png)
 
 The pixel data and attribute data serve different purposes but are tightly coupled. Each pixel byte controls 8 dots on screen; the attribute byte for the corresponding 8x8 cell controls what colour those dots appear in. Change the pixel and you change the shape. Change the attribute and you change the colour. But you can only change colour for an entire 8x8 block -- not per pixel. This is the "attribute clash" that defines the Spectrum's visual character, and we will return to it shortly.
@@ -323,6 +324,7 @@ Bright:  Black  Blue  Red  Magenta  Green  Cyan  Yellow  White
                 (brighter versions of each)
 ```
 
+<!-- figure: ch02_attr_byte -->
 ![Attribute byte bit layout showing flash, bright, paper, and ink fields](illustrations/output/ch02_attr_byte.png)
 
 An attribute byte of `$47` means: flash off, bright off, paper = 0 (black), ink = 7 (white). White text on a black background -- the Spectrum's default. The bright version would be `$C7`: `$47` OR `$40` sets the bright bit.

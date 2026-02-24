@@ -199,6 +199,39 @@ The technique works like this:
 
 The timing is brutal. Each scanline takes 224 T-states on Pentagon. The ULA reads 32 attribute bytes early in each scanline, and the CPU must change all 32 bytes in the gap before the next read. With `LD (HL),A : INC L` at 11 T-states per byte, writing 32 bytes takes 352 T-states --- more than one entire scanline. You cannot change every scanline. At best, you can change every other scanline (8x2 resolution) if you use the fastest possible output method (PUSH-based), and even then the timing margins are razor-thin.
 
+<!-- figure: ch08_multicolor_beam_racing -->
+```mermaid
+sequenceDiagram
+    participant CPU
+    participant ULA as ULA (electron beam)
+    participant ATTR as Attribute RAM ($5800)
+
+    Note over ULA: Scanline N begins (224T)
+    ULA->>ATTR: Read 32 attribute bytes for row
+    Note over ULA: Display scanline N using attrs
+
+    rect rgb(200, 230, 255)
+        Note over CPU: ← Window: CPU rewrites attributes
+        CPU->>ATTR: Write 32 new attribute bytes
+        Note over CPU: (must complete before next read!)
+    end
+
+    Note over ULA: Scanline N+2 begins
+    ULA->>ATTR: Read 32 attribute bytes (sees NEW values)
+    Note over ULA: Display scanline N+2 with new colours
+
+    rect rgb(200, 230, 255)
+        Note over CPU: ← Window: CPU rewrites again
+        CPU->>ATTR: Write 32 more attribute bytes
+    end
+
+    Note over ULA: Scanline N+4 begins
+    ULA->>ATTR: Read attrs (sees NEWEST values)
+    Note over ULA: Display with third colour band
+```
+
+> **The race:** At 224 T-states per scanline, writing 32 bytes via `LD (HL),A : INC L` costs 352T — more than one scanline. This is why 8×2 resolution (change every 2 scanlines) is the practical limit with CPU-based attribute rewriting, and why LDPUSH merges pixel and attribute output to avoid a separate attribute pass.
+
 The practical result: traditional multicolor consumes 80--90% of the CPU on attribute management. In a demo, where the multicolor *is* the effect, this is acceptable. In a game, it is lethal. No T-states remain for game logic, collision detection, or sound.
 
 DenisGrachev's LDPUSH technique solves this by merging the attribute output with the pixel output. The same code that writes pixel data also writes attributes, and both are embedded in executable instructions. There is no separate "attribute management" phase eating the budget. The rendering pass handles everything.

@@ -186,6 +186,38 @@ Bank 7 ($4000)  -- Shadow screen (used for double buffering)
                    not actively double-buffering
 ```
 
+<!-- figure: ch21_128k_bank_allocation -->
+```
+         ZX Spectrum 128K — Ironclaw Bank Allocation
+         ═══════════════════════════════════════════
+
+$0000 ┌─────────────────────────────┐
+      │         ROM (16 KB)         │  BASIC / 128K editor
+$4000 ├─────────────────────────────┤
+      │    Bank 5 — FIXED           │  Screen pixels ($4000–$57FF)
+      │    Normal screen            │  Attributes ($5800–$5AFF)
+      │    + IM2 handler, buffers   │  ~9 KB free for interrupt code
+$8000 ├─────────────────────────────┤
+      │    Bank 2 — FIXED           │  Main game code (~14 KB)
+      │    Player, physics, AI      │  Tables, buffers (~2 KB)
+      │    Sprites, entities, HUD   │  Stack grows down from $BFFF
+$C000 ├─────────────────────────────┤
+      │    Switchable bank (0–7)    │  Selected via port $7FFD
+      │    ┌───────────────────┐    │
+      │    │ Bank 0: Levels 1–2│    │  Compressed tilemaps + tileset
+      │    │ Bank 1: Levels 3–5│    │  Boss data, enemy spawns
+      │    │ Bank 3: Sprites   │    │  Pre-shifted ×4 (24+64 variants)
+      │    │ Bank 4: Music A   │    │  PT3: title, levels 1–3
+      │    │ Bank 6: Music B   │    │  PT3: levels 4–5, boss; SFX
+      │    │ Bank 7: Shadow scr│    │  Double buffer / data storage
+      │    └───────────────────┘    │
+$FFFF └─────────────────────────────┘
+
+  Key: Banks 2 and 5 are always visible (hardwired).
+       Only $C000–$FFFF is switchable.
+       Port $7FFD is write-only — always shadow its state!
+```
+
 Several things to notice about this layout:
 
 **Code lives in bank 2 (fixed).** Because bank 2 is always mapped at `$8000-$BFFF`, your main game code is always accessible. You never need to page in code -- only data. This eliminates the most dangerous class of banking bug: calling a routine that has been paged out.

@@ -479,6 +479,7 @@ This is simplified --- real polygon fillers must handle partial bytes at the lef
 
 The complete frame loop for a spinning 3D solid object follows this sequence:
 
+<!-- figure: ch05_3d_pipeline -->
 ![3D rendering pipeline: model, rotation, projection, screen](illustrations/output/ch05_3d_pipeline.png)
 
 ```

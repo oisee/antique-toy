@@ -41,6 +41,30 @@ prompt --> code --> assemble --> error? --> fix --> assemble --> run --> wrong? 
   +------------------------------------------------------------------------------------------------+
 ```
 
+<!-- figure: ch23_ai_feedback_loop -->
+```mermaid
+graph LR
+    A["Prompt\n(describe what you want)"] --> B["Generate Code\n(AI writes Z80 asm)"]
+    B --> C["Assemble\n(sjasmplus / mza)"]
+    C --> D{"Errors?"}
+    D -- Yes --> E["Paste errors\nback to AI"]
+    E --> B
+    D -- No --> F["Run in Emulator"]
+    F --> G{"Output\ncorrect?"}
+    G -- No --> H["Describe what's wrong\n(or paste DeZog state)"]
+    H --> B
+    G -- Yes --> I{"Optimise?"}
+    I -- Yes --> J["Profile with DeZog\n(measure T-states)"]
+    J --> A
+    I -- No --> K["Done ✓"]
+
+    style A fill:#ffd,stroke:#993
+    style B fill:#ddf,stroke:#339
+    style K fill:#dfd,stroke:#393
+    style D fill:#fee,stroke:#933
+    style G fill:#fee,stroke:#933
+```
+
 You describe what you want. The AI generates Z80 assembly. You assemble it. It fails -- wrong syntax, wrong label format, wrong assembler dialect. You paste the error back. The AI fixes it. You assemble again. This time it compiles. You run it in the emulator. The output is wrong -- the screen fills with garbage, the border is the wrong colour, nothing appears at all. You describe what you see. The AI adjusts. You run again.
 
 This loop is not fundamentally different from how a human programmer works, except for one critical detail: the AI generates its first attempt much faster and gets some classes of errors much more predictably.

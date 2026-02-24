@@ -37,6 +37,27 @@ On the Z80, this means table lookups. A 256-byte sine table, page-aligned so you
 
 The tunnel shape is implicit, not explicit. There is no distance-from-centre calculation, no angle table, no polar coordinate transform. Instead, the frequency and phase parameters of the plasma are arranged so that the resulting colour pattern naturally forms concentric rings when viewed on screen. The rings emerge from the interference of the sine waves, just as Moire patterns emerge from overlapping grids. Adjust the parameters and the rings contract toward the centre, creating the illusion of depth -- of looking down a tunnel.
 
+<!-- figure: ch09_tunnel_plasma_computation -->
+```mermaid
+graph TD
+    A["For each attribute cell (row, col)"] --> B["Look up sin(col × freq1 + phase1)\nfrom 256-byte sine table"]
+    B --> C["Look up sin(row × freq2 + phase2)"]
+    C --> D["Look up sin(col+row + phase3)"]
+    D --> E["Sum the three sine values"]
+    E --> F["Index into colour map\n(sum → attribute byte)"]
+    F --> G["Write attribute to buffer"]
+    G --> H{More cells\nin quadrant?}
+    H -- Yes --> A
+    H -- No --> I["4-fold symmetry copy:\ntop-left → top-right,\nbottom-left, bottom-right"]
+    I --> J["Increment phase1, phase2, phase3\n→ next frame"]
+    J --> A
+
+    style F fill:#f9f,stroke:#333
+    style I fill:#bfb,stroke:#333
+```
+
+> **Key insight:** There is no distance-from-centre calculation, no angle table, no polar coordinate transform. The tunnel shape emerges from sine wave interference — concentric rings appear naturally from overlapping frequencies. Only one quarter (16×12) is computed; the rest is mirrored.
+
 This is cheaper than a true geometric tunnel (which would require per-pixel distance and angle lookups) and produces a visually rich result. The trade-off is less geometric precision, but at 32x24 resolution, geometric precision was never on the table anyway.
 
 ---

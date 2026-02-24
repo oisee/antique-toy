@@ -67,10 +67,10 @@ Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. 
 | B: Sine Table Generation | Done | 7 approaches compared (full table to Bhaskara I), decision tree |
 | C: Compression Quick Reference | Done | 14 compressors compared, decision tree, decompressor code |
 | D: Development Environment | Done | sjasmplus, VS Code, DeZog, ZEsarUX/Fuse setup |
-| E: eZ80 Reference | Planned | ADL mode, new instructions, MOS API |
-| F: Memory Maps | Planned | Spectrum 128K, Pentagon, clone variants |
+| E: eZ80 Reference | Done | ADL mode, MLT/LEA/PEA/TST, Agon Light 2 specifics, porting checklist |
+| F: Z80 Variants | Done | Z80N (Next), R800 (MSX turboR), eZ80 summary, Soviet clones, comparison table |
 | G: AY-3-8910 Register Reference | Done | Full register map, note table, TurboSound, envelope shapes |
-| H: esxDOS/DivMMC API | Planned | File I/O for modern storage |
+| H: Storage APIs | Done | TR-DOS (Beta Disk 128) and esxDOS (DivMMC) — ports, ROM API, code examples |
 
 ## Building the book
 
