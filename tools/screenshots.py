@@ -27,6 +27,10 @@ MZX = "mzx"
 # Pre-built attribute block ($38 = white ink on black paper)
 ATTRS_FILE = BUILD_DIR / "attrs_38.bin"
 
+# Minimal IM1 ISR stub: EI ($FB) + RETI ($ED $4D) — loaded at $0038
+# Required for bare-metal --run mode where no ROM provides an ISR
+ISR_STUB = BUILD_DIR / "isr_stub.bin"
+
 
 # ---------------------------------------------------------------------------
 # Per-example configuration
@@ -90,12 +94,12 @@ EXAMPLES = [
     }),
     # Ch08
     ("chapters/ch08-multicolor/examples/multicolor.a80", {
-        "frames": 50,
-        "note": "Multicolour effect (attribute racing)",
+        "frames": 50, "set": "EI,IM=1",
+        "note": "Multicolour effect (beam-racing, timing-dependent)",
     }),
     ("chapters/ch08-multicolor/examples/multicolor_dualscreen.a80", {
-        "frames": 50,
-        "note": "Dual-screen multicolour",
+        "frames": 50, "model": "128k", "set": "EI,IM=1",
+        "note": "Dual-screen multicolour (128K, beam-racing)",
     }),
     # Ch09
     ("chapters/ch09-tunnels/examples/plasma.a80", {
@@ -104,8 +108,8 @@ EXAMPLES = [
     }),
     # Ch10
     ("chapters/ch10-scroller/examples/dotscroll.a80", {
-        "frames": 300,
-        "note": "Bouncing dotfield text scroller",
+        "frames": 33, "set": "EI",
+        "note": "Bouncing dotfield text scroller (frame-sensitive: render takes >1 frame)",
     }),
     # Ch11
     ("chapters/ch11-sound/examples/ay_test.a80", {
@@ -114,13 +118,13 @@ EXAMPLES = [
     }),
     # Ch12
     ("chapters/ch12-music-sync/examples/music_sync.a80", {
-        "frames": 200,
-        "note": "Music sync framework with border effects",
+        "frames": 200, "set": "EI,IM=1", "skip": True,
+        "note": "Music sync framework (IM2 pipeline — mzx IM2 not yet working in bare-metal mode)",
     }),
     # Ch13
     ("chapters/ch13-sizecoding/examples/intro256.a80", {
-        "frames": 500,
-        "note": "256-byte intro",
+        "frames": 500, "set": "EI,IM=1",
+        "note": "256-byte intro (no EI in code, needs it from config)",
     }),
     ("chapters/ch13-sizecoding/examples/aybeat.a80", {
         "frames": 100, "skip": True,
@@ -133,8 +137,8 @@ EXAMPLES = [
     }),
     # Ch15
     ("chapters/ch15-anatomy/examples/bank_inspect.a80", {
-        "frames": 30, "model": "128k",
-        "note": "128K RAM bank inspector",
+        "frames": 30, "model": "128k", "set": "EI", "skip": True,
+        "note": "128K RAM bank inspector (needs ROM font at $3D00 — not available in bare-metal mode)",
     }),
     # Ch16
     ("chapters/ch16-sprites/examples/sprite_demo.a80", {
@@ -148,12 +152,12 @@ EXAMPLES = [
     }),
     # Ch18
     ("chapters/ch18-gameloop/examples/game_skeleton.a80", {
-        "frames": 200,
-        "note": "Game loop skeleton with entity system",
+        "frames": 200, "skip": True,
+        "note": "Game loop skeleton (needs FIRE key input to render)",
     }),
     # Ch19
     ("chapters/ch19-collisions/examples/aabb_test.a80", {
-        "frames": 100,
+        "frames": 100, "set": "EI",
         "note": "AABB collision detection test",
     }),
     # Ch20
@@ -163,27 +167,30 @@ EXAMPLES = [
     }),
     # Ch21
     ("chapters/ch21-full-game/examples/game_skeleton.a80", {
-        "frames": 200, "model": "128k",
-        "note": "Full game skeleton (128K)",
+        "frames": 200, "model": "128k", "skip": True,
+        "note": "Full game skeleton (128K, needs SPACE key input to render)",
     }),
     # Ch22
     ("chapters/ch22-porting-agon/examples/agon_entity.a80", {
-        "frames": 100,
-        "note": "Agon Light 2 entity system (Z80 subset)",
+        "frames": 100, "skip": True,
+        "note": "Agon VDP port stub (no screen memory writes)",
     }),
     # Ch23
     ("chapters/ch23-ai-assisted/examples/diagonal_fill.a80", {
-        "frames": 30, "attrs": True,
-        "note": "AI-generated diagonal fill",
+        "frames": 30, "attrs": True, "set": "EI",
+        "note": "AI-generated diagonal fill (needs pixel fill fix for visibility)",
     }),
 ]
 
 
-def ensure_attrs():
-    """Create the 768-byte attribute preload file."""
+def ensure_preloads():
+    """Create pre-built binary files for screenshot pipeline."""
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     if not ATTRS_FILE.exists():
         ATTRS_FILE.write_bytes(b'\x38' * 768)
+    if not ISR_STUB.exists():
+        # EI ($FB) + RETI ($ED $4D) — minimal IM1 handler at $0038
+        ISR_STUB.write_bytes(b'\xfb\xed\x4d')
 
 
 def compile_example(src_path):
@@ -206,18 +213,25 @@ def take_screenshot(bin_path, png_path, opts):
     extra_set = opts.get("set", "")
     border = opts.get("border", False)
 
+    # Check if example needs interrupts (EI in set flags)
+    needs_isr = any(f.strip().upper() == "EI" for f in extra_set.split(",")) if extra_set else False
+
     cmd = [MZX, "--model", model]
 
-    if attrs:
-        # Use --load for both attrs and code, with --set for CPU state
-        loads = f"{ATTRS_FILE}@5800,{bin_path}@8000"
+    if attrs or needs_isr:
+        # Use --load mode: allows preloading ISR stub + attrs + code
+        loads = f"{bin_path}@8000"
+        if attrs:
+            loads = f"{ATTRS_FILE}@5800," + loads
+        if needs_isr:
+            loads += f",{ISR_STUB}@0038"
         cmd += ["--load", loads]
         set_flags = "PC=8000,SP=FF00,DI,IM=1"
         if extra_set:
             set_flags += "," + extra_set
         cmd += ["--set", set_flags]
     else:
-        # Use --run for simple cases
+        # Use --run for simple cases (no ISR needed)
         cmd += ["--run", f"{bin_path}@8000"]
         if extra_set:
             cmd += ["--set", extra_set]
@@ -261,7 +275,7 @@ def main():
             print(f"ERROR: {tool} not found in PATH", file=sys.stderr)
             sys.exit(1)
 
-    ensure_attrs()
+    ensure_preloads()
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Filter examples
@@ -297,7 +311,9 @@ def main():
 
     for src, opts in examples:
         name = src.stem
-        png = SCREENSHOT_DIR / f"{name}.png"
+        ch = get_chapter_num(src)
+        png_name = f"ch{ch:02d}_{name}"
+        png = SCREENSHOT_DIR / f"{png_name}.png"
 
         if opts.get("skip") and not args.include_skipped:
             print(f"  SKIP  {name:30s}  {opts.get('note', '')}")

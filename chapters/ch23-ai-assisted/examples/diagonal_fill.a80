@@ -33,6 +33,13 @@ entry:
     im   1                      ; 8T
     ei                          ; 4T
 
+    ; Fill pixel area with $FF so INK colours are visible
+    ld   hl, $4000
+    ld   de, $4001
+    ld   (hl), $FF
+    ld   bc, 6143
+    ldir
+
     xor  a                      ; 4T
     ld   (anim_offset), a       ; 13T
 

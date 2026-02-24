@@ -23,11 +23,11 @@ start:
     ld   sp, $FFFF
     im   1
 
-    ; Clear screen
+    ; Fill pixel area with $FF so INK colours are visible
     ld   hl, $4000
     ld   de, $4001
+    ld   (hl), $FF
     ld   bc, 6143
-    ld   (hl), 0
     ldir
 
     ; Set attrs: white on black
