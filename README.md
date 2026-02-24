@@ -4,13 +4,15 @@
 
 **TL;DR:** 23 chapters, ~128K words, 28 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v0.7/book-a4-v0.7.pdf)
 
-A book about Z80 optimization for those who already know the processor and want to understand *why* certain techniques work the way they do. Not a beginner tutorial, not a platform manual -- a cookbook of hard-won tricks from the demoscene, with cycle counts and working code.
+This book lives on the **ZX Spectrum**. Most techniques -- DOWN_HL, attribute tricks, ULA timing, 128K bank juggling -- only make sense on this machine. That's where the demoscene is, and that's where the hard problems are.
 
-The book covers ZX Spectrum 128K as the primary platform, with eZ80/Agon Light 2 as a modern counterpoint. Agon is the most powerful and actually purchasable (~$50 on Olimex) descendant of Z80 -- architecturally closer to BBC Micro than to Spectrum, showing how the same instruction set can drive a completely different machine.
+The foundation (T-state budgets, fixed-point maths, compression, algorithms) is pure Z80 and works on any platform. One chapter takes the whole game to **eZ80/Agon Light 2** (~$50 on Olimex) to show how the same instruction set drives a completely different machine.
+
+Not a beginner tutorial, not a reference manual. A cookbook for those who already know Z80 and want to understand *why* the tricks work.
 
 ## How to read this book
 
-Chapter 1 (T-state budgets) is the foundation -- read it first. Everything after that can be read in any order, like a recipe book. This is deliberate: linear "here are registers, here are instructions" exposition is the path to the "car manual from the glovebox" feeling. If you already know Z80, you don't need that.
+Chapter 1 (T-state budgets) is the foundation -- read it first. Everything after that can be read in any order, like a recipe book. Linear "here are registers, here are instructions" exposition is the "car manual from the glovebox" experience. If you already know Z80, you don't need that.
 
 ## Download
 
@@ -29,12 +31,33 @@ English is the primary edition and always ahead. Translations catch up periodica
 
 23 chapters, ~128K words (English), 28 compilable assembly examples.
 
-| Part | Chapters | Topic |
-|------|----------|-------|
-| I: Foundations | 1-4 | T-state budgets, screen layout, demoscene toolbox, fast maths |
-| II: Demoscene | 5-14 | Wireframe 3D, sphere, rotozoomer, multicolor, plasma tunnels, scrollers, AY sound, music sync, sizecoding, compression |
-| III: Game Dev | 15-22 | 128K hardware, sprites, scrolling, game loop, collisions, demo workflow, full 128K game, porting to Agon Light 2 |
-| IV: Meta | 23 | AI-assisted Z80 development |
+Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. **eZ80** = Agon Light 2.
+
+| # | Chapter | Platform |
+|---|---------|----------|
+| 1 | Thinking in Cycles (T-state budgets) | **Z80** |
+| 2 | The Screen as a Puzzle (ULA layout, attributes) | ZX |
+| 3 | Demoscene Toolbox (PUSH fill, LDI chains, SMC) | **Z80** / ZX |
+| 4 | The Maths You Actually Need (multiply, PRNG, fixed-point) | **Z80** |
+| 5 | 3D on 3.5 MHz (wireframe, rotation matrices) | **Z80** |
+| 6 | The Sphere (texture mapping, skip tables) | **Z80** / ZX |
+| 7 | Rotozoomer (chunky pixels, SMC inner loop) | ZX |
+| 8 | Multicolor (beam racing, per-scanline colour) | ZX |
+| 9 | Attribute Tunnels and Chaos Zoomers | ZX |
+| 10 | Dotfield Scroller and 4-Phase Colour | ZX |
+| 11 | Sound Architecture (AY, TurboSound, Triple AY) | ZX |
+| 12 | Digital Drums and Music Sync | ZX |
+| 13 | The Craft of Size-Coding | **Z80** / ZX |
+| 14 | Compression (ZX0, Exomizer, LZ4, decision tree) | **Z80** |
+| 15 | Anatomy of Two Machines (128K banking, ports) | ZX |
+| 16 | Fast Sprites (OR/AND, compiled, masking) | ZX |
+| 17 | Scrolling (pixel, tile, hardware tricks) | ZX |
+| 18 | Game Loop and Entity System | **Z80** / ZX |
+| 19 | Collisions, Physics, and Enemy AI | **Z80** |
+| 20 | Demo Workflow (idea to compo release) | ZX |
+| 21 | Full Game -- ZX Spectrum 128K | ZX |
+| 22 | Porting to Agon Light 2 (ADL mode, VDP, MOS) | **eZ80** |
+| 23 | AI-Assisted Z80 Development | **Z80** |
 
 ### Appendices
 
