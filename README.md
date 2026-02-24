@@ -2,6 +2,16 @@
 
 **Z80 Demoscene Techniques for Modern Makers**
 
+> **!!! UNDER CONSTRUCTION !!!**
+>
+> This book is a work in progress. Content is incomplete, may contain errors,
+> and is subject to change without notice.
+>
+> **How this book is written:**
+> 1. With assistance from LLM (Claude Opus 4.6) based on open publications and data
+> 2. By Alice directly — where personal expertise is "good enough" or no available sources or in new areas
+> 3. Corrections and contributions on topic are welcome — PRs open
+
 **TL;DR:** 23 chapters + 9 appendices, ~180K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v0.7/book-a4-v0.7.pdf)
 
 This book lives on the **ZX Spectrum**. Most techniques -- DOWN_HL, attribute tricks, ULA timing, 128K bank juggling -- only make sense on this machine. That's where the demoscene is, and that's where the hard problems are.

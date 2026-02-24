@@ -30,7 +30,7 @@ DEMO_TORUS := demo/src/torus.a80
 PYTHON ?= python3
 BUILD_BOOK := $(PYTHON) build_book.py
 
-.PHONY: all clean test test-mza test-compare demo book book-a4 book-a5 book-epub release version-major version-minor
+.PHONY: all clean test test-mza test-compare demo book book-a4 book-a5 book-epub release version-bump verify-listings inject-listings
 
 all: $(patsubst chapters/%.a80,$(BUILD_DIR)/%.bin,$(CHAPTERS))
 
@@ -158,14 +158,17 @@ book-epub:
 release: clean book
 	@mkdir -p release
 	cp $(BUILD_DIR)/Coding_the_Impossible_*.pdf $(BUILD_DIR)/Coding_the_Impossible_*.epub release/ 2>/dev/null || true
-	cp $(BUILD_DIR)/book-a4.pdf $(BUILD_DIR)/book-a5.pdf $(BUILD_DIR)/book.epub release/
+	cp $(BUILD_DIR)/book-a4-*.pdf $(BUILD_DIR)/book-a5-*.pdf $(BUILD_DIR)/book-*.epub release/ 2>/dev/null || true
 	@echo "Release files copied to release/"
 
-version-major:
-	$(BUILD_BOOK) --version-major
+version-bump:
+	$(BUILD_BOOK) --bump
 
-version-minor:
-	$(BUILD_BOOK) --version-minor
+verify-listings:
+	$(PYTHON) tools/manage_listings.py verify
+
+inject-listings:
+	$(PYTHON) tools/manage_listings.py inject --lang all
 
 clean:
 	rm -rf $(BUILD_DIR)

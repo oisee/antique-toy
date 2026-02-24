@@ -12,12 +12,12 @@ Usage:
     python3 build_book.py --lang es       # Spanish edition (ES suffix)
     python3 build_book.py --lang ru       # Russian edition
     python3 build_book.py --lang uk       # Ukrainian edition
-    python3 build_book.py --version-major # bump major, reset minor
-    python3 build_book.py --version-minor # bump minor
+    python3 build_book.py --bump          # increment version (v9 → v10)
 """
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -70,8 +70,13 @@ TRANSLATIONS = {
 def load_version():
     if VERSION_FILE.exists():
         with open(VERSION_FILE) as f:
-            return json.load(f)
-    return {"major": 0, "minor": 1, "build_number": 0, "last_build": ""}
+            data = json.load(f)
+        # Migrate from old major/minor/build_number format
+        if "version" not in data:
+            data = {"version": 9, "last_build": data.get("last_build", "")}
+            save_version(data)
+        return data
+    return {"version": 1, "last_build": ""}
 
 
 def save_version(v):
@@ -80,30 +85,95 @@ def save_version(v):
         f.write("\n")
 
 
-def increment_build(v):
-    v["build_number"] += 1
+def bump_version(v):
+    v["version"] += 1
     v["last_build"] = datetime.now().isoformat(timespec="seconds")
     save_version(v)
     return v
 
 
+def version_tag(v):
+    """Return version tag string, e.g. 'v9'."""
+    return f"v{v['version']}"
+
+
 def version_string(v):
+    """Return full version string for filenames: 'v9_20260224'."""
     date = datetime.now().strftime("%Y%m%d")
-    return f"{date}-v{v['major']}.{v['minor']}-b{v['build_number']}"
+    return f"v{v['version']}_{date}"
 
 
-def release_tag():
-    """Get the latest git tag for versioned filenames, e.g. 'v0.6'."""
-    try:
-        result = subprocess.run(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            capture_output=True, text=True, cwd=ROOT
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except FileNotFoundError:
-        pass
-    return None
+DISCLAIMER_FILE = ROOT / "disclaimer.md"
+
+# Regex matching tagged code fences: ```lang src:path [lines:N..M]
+_TAGGED_SRC_RE = re.compile(
+    r'^```(\w+)((?:\s+\w+:\S+)+)\s*$'
+)
+
+
+def preprocess_listings(text, base_dir=ROOT):
+    """Replace content of src:-tagged code blocks with fresh source file content.
+
+    Called during book build to ensure PDF always has the latest code,
+    even if .md files are stale. Only processes src: tags (not id: tags,
+    which are self-contained in the .md).
+    """
+    lines = text.split('\n')
+    out = []
+    i = 0
+
+    while i < len(lines):
+        m = _TAGGED_SRC_RE.match(lines[i])
+        if m:
+            tag_str = m.group(2)
+            tags = {}
+            for tm in re.finditer(r'(\w+):(\S+)', tag_str):
+                tags[tm.group(1)] = tm.group(2)
+
+            if 'src' in tags:
+                # Keep the fence opening
+                out.append(lines[i])
+
+                # Skip old content until closing ```
+                j = i + 1
+                while j < len(lines) and lines[j].rstrip() != '```':
+                    j += 1
+
+                # Resolve source file
+                src_path = tags['src']
+                full_path = base_dir / src_path
+                if not full_path.exists():
+                    full_path = ROOT / src_path
+
+                if full_path.exists():
+                    src_text = full_path.read_text(encoding='utf-8')
+                    src_lines = src_text.split('\n')
+
+                    # Apply line range if specified
+                    if 'lines' in tags:
+                        parts = tags['lines'].split('..')
+                        if len(parts) == 2:
+                            start, end = int(parts[0]), int(parts[1])
+                            src_lines = src_lines[start - 1:end]
+
+                    out.extend(src_lines)
+                else:
+                    # Source missing — keep original inline content
+                    k = i + 1
+                    while k < j:
+                        out.append(lines[k])
+                        k += 1
+
+                # Add closing fence
+                if j < len(lines):
+                    out.append(lines[j])
+                i = j + 1
+                continue
+
+        out.append(lines[i])
+        i += 1
+
+    return '\n'.join(out)
 
 
 def combine_chapters(chapter_glob=CHAPTER_GLOB, extra_files=EXTRA_FILES,
@@ -115,6 +185,11 @@ def combine_chapters(chapter_glob=CHAPTER_GLOB, extra_files=EXTRA_FILES,
         sys.exit(1)
 
     parts = []
+
+    # Prepend disclaimer page if it exists
+    if DISCLAIMER_FILE.exists():
+        parts.append(DISCLAIMER_FILE.read_text(encoding='utf-8'))
+
     for i, path in enumerate(chapters):
         with open(path, encoding="utf-8") as f:
             content = f.read()
@@ -140,10 +215,11 @@ def combine_chapters(chapter_glob=CHAPTER_GLOB, extra_files=EXTRA_FILES,
     return "\n".join(parts)
 
 
-def write_metadata(vs, paper="a4", title=TITLE, subtitle=SUBTITLE, lang=LANG):
+def write_metadata(vs, vtag="", paper="a4", title=TITLE, subtitle=SUBTITLE, lang=LANG):
     """Generate metadata.yaml for pandoc with version on title page."""
     meta = BUILD_DIR / "metadata.yaml"
-    date_line = f"{AUTHOR} --- {vs}"
+    date = datetime.now().strftime("%Y-%m-%d")
+    date_line = f"{AUTHOR} --- {vtag} ({date})"
 
     content = f"""---
 title: "{title}"
@@ -197,18 +273,14 @@ def run_pandoc(args, label):
 
 
 def _copy_stable(out, base, ext):
-    """Copy build output to stable names: book-a4.pdf + book-a4-v0.6.pdf."""
+    """Copy build output to stable name: book-a4-v9-ES.pdf."""
     import shutil
     stable = BUILD_DIR / f"{base}{ext}"
     shutil.copy2(out, stable)
-    tag = release_tag()
-    if tag:
-        versioned = BUILD_DIR / f"{base}-{tag}{ext}"
-        shutil.copy2(out, versioned)
-        print(f"    → {versioned.name}")
+    print(f"    → {stable.name}")
 
 
-def build_pdf_a4(meta, combined, vs, lang_suffix=""):
+def build_pdf_a4(meta, combined, vs, vtag, lang_suffix=""):
     out = BUILD_DIR / f"Coding_the_Impossible_{vs}{lang_suffix}.pdf"
     run_pandoc([
         str(meta), str(combined),
@@ -217,11 +289,11 @@ def build_pdf_a4(meta, combined, vs, lang_suffix=""):
         "-V", "fontsize=11pt",
         "-V", "geometry=a4paper, margin=1in",
     ], f"A4 PDF → {out.name}")
-    _copy_stable(out, f"book-a4{lang_suffix}", ".pdf")
+    _copy_stable(out, f"book-a4-{vtag}{lang_suffix}", ".pdf")
     return out
 
 
-def build_pdf_a5(meta, combined, vs, lang_suffix=""):
+def build_pdf_a5(meta, combined, vs, vtag, lang_suffix=""):
     out = BUILD_DIR / f"Coding_the_Impossible_{vs}{lang_suffix}_A5.pdf"
     run_pandoc([
         str(meta), str(combined),
@@ -230,18 +302,18 @@ def build_pdf_a5(meta, combined, vs, lang_suffix=""):
         "-V", "fontsize=10pt",
         "-V", "geometry=a5paper, top=15mm, bottom=15mm, left=18mm, right=15mm",
     ], f"A5 PDF → {out.name}")
-    _copy_stable(out, f"book-a5{lang_suffix}", ".pdf")
+    _copy_stable(out, f"book-a5-{vtag}{lang_suffix}", ".pdf")
     return out
 
 
-def build_epub(meta, combined, vs, lang_suffix=""):
+def build_epub(meta, combined, vs, vtag, lang_suffix=""):
     out = BUILD_DIR / f"Coding_the_Impossible_{vs}{lang_suffix}.epub"
     run_pandoc([
         str(meta), str(combined),
         "-o", str(out),
         "--epub-chapter-level=1",
     ], f"EPUB → {out.name}")
-    _copy_stable(out, f"book{lang_suffix}", ".epub")
+    _copy_stable(out, f"book-{vtag}{lang_suffix}", ".epub")
     return out
 
 
@@ -256,41 +328,30 @@ def main():
     parser.add_argument("--all", action="store_true", help="Build all formats")
     parser.add_argument("--lang", default="en", choices=["en", "es", "ru", "uk"],
                         help="Language edition to build (default: en)")
-    parser.add_argument("--version-major", action="store_true", help="Bump major version")
-    parser.add_argument("--version-minor", action="store_true", help="Bump minor version")
-    parser.add_argument("--no-increment", action="store_true", help="Don't increment build number")
+    parser.add_argument("--bump", action="store_true", help="Bump version (v9 → v10)")
+    parser.add_argument("--no-increment", action="store_true", help="Don't update last_build timestamp")
     parser.add_argument("--no-changelog", action="store_true", help="Skip changelog appendix")
     args = parser.parse_args()
 
     # Default to --all if nothing specified
-    if not (args.pdf or args.pdf_a5 or args.epub or args.all
-            or args.version_major or args.version_minor):
+    if not (args.pdf or args.pdf_a5 or args.epub or args.all or args.bump):
         args.all = True
 
     v = load_version()
 
-    # Handle version bumps
-    if args.version_major:
-        v["major"] += 1
-        v["minor"] = 0
-        v["build_number"] = 0
-        save_version(v)
-        print(f"Version bumped to v{v['major']}.{v['minor']}")
-        args.all = True
-
-    if args.version_minor:
-        v["minor"] += 1
-        v["build_number"] = 0
-        save_version(v)
-        print(f"Version bumped to v{v['major']}.{v['minor']}")
+    # Handle version bump
+    if args.bump:
+        v = bump_version(v)
+        print(f"Version bumped to {version_tag(v)}")
         args.all = True
 
     if args.all:
         args.pdf = args.pdf_a5 = args.epub = True
 
-    # Increment build number
+    # Update last_build timestamp
     if not args.no_increment:
-        v = increment_build(v)
+        v["last_build"] = datetime.now().isoformat(timespec="seconds")
+        save_version(v)
 
     # Resolve language settings
     if args.lang != "en":
@@ -311,12 +372,16 @@ def main():
         build_extra_files = EXTRA_FILES
         lang_suffix = ""
 
+    vtag = version_tag(v)
     vs = version_string(v)
-    print(f"Building: {build_title} [{vs}] ({args.lang.upper()})")
+    print(f"Building: {build_title} [{vtag}] ({args.lang.upper()})")
 
     # Prepare
     BUILD_DIR.mkdir(exist_ok=True)
     text = combine_chapters(build_chapter_glob, build_extra_files, build_appendix_glob)
+
+    # Resolve src:-tagged code blocks with fresh source content
+    text = preprocess_listings(text)
 
     # Append changelog appendix (EN only, manually maintained CHANGELOG.md)
     if args.lang == "en" and not args.no_changelog and CHANGELOG_FILE.exists():
@@ -325,15 +390,15 @@ def main():
         text += "\n" + CHANGELOG_FILE.read_text(encoding="utf-8")
 
     combined = write_combined(text, vs)
-    meta = write_metadata(vs, title=build_title, subtitle=build_subtitle, lang=build_lang)
+    meta = write_metadata(vs, vtag=vtag, title=build_title, subtitle=build_subtitle, lang=build_lang)
 
     outputs = []
     if args.pdf:
-        outputs.append(build_pdf_a4(meta, combined, vs, lang_suffix))
+        outputs.append(build_pdf_a4(meta, combined, vs, vtag, lang_suffix))
     if args.pdf_a5:
-        outputs.append(build_pdf_a5(meta, combined, vs, lang_suffix))
+        outputs.append(build_pdf_a5(meta, combined, vs, vtag, lang_suffix))
     if args.epub:
-        outputs.append(build_epub(meta, combined, vs, lang_suffix))
+        outputs.append(build_epub(meta, combined, vs, vtag, lang_suffix))
 
     print(f"\nDone. {len(outputs)} file(s) built:")
     for o in outputs:
