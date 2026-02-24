@@ -1,0 +1,49 @@
+; IM2 interrupt handler: runs every frame (50 Hz)
+frame_isr:
+    push af
+    push bc
+    push de
+    push hl
+
+    ; Play music (updates AY registers)
+    call music_play
+
+    ; Check if music engine signals a drum hit
+    ld   a, (music_drum_flag)
+    or   a
+    jr   z, .no_drum_signal
+    xor  a
+    ld   (music_drum_flag), a
+    ld   a, 1
+    ld   (drum_pending), a    ; signal main loop
+.no_drum_signal:
+
+    ; Display next frame from ring buffer
+    ld   a, (buf_count)
+    or   a
+    jr   z, .no_frame         ; buffer empty, keep current frame
+
+    ; Copy buffered attributes to display page
+    call copy_buf_to_screen
+
+    ; Advance read pointer
+    ld   a, (buf_read_idx)
+    inc  a
+    cp   BUF_CAPACITY
+    jr   nz, .no_wrap_r
+    xor  a
+.no_wrap_r:
+    ld   (buf_read_idx), a
+    ld   a, (buf_count)
+    dec  a
+    ld   (buf_count), a
+
+.no_frame:
+    pop  hl
+    pop  de
+    pop  bc
+    pop  af
+    ei
+    reti
+
+BUF_CAPACITY EQU 8           ; 8 frames of buffer (8 x 768 = 6,144 bytes)

@@ -1,0 +1,12 @@
+; Convert pixel address in HL to attribute address in HL
+; Input:  HL = pixel address ($4000-$57FF)
+; Output: HL = corresponding attribute address ($5800-$5AFF)
+;
+    ld   a, h          ; 4T
+    rrca               ; 4T
+    rrca               ; 4T
+    rrca               ; 4T
+    and  3             ; 7T
+    or   $58           ; 7T
+    ld   h, a          ; 4T
+    ; L unchanged       --- Total: 34T

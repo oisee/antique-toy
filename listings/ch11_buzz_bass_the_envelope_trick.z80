@@ -1,0 +1,20 @@
+; Buzz-bass: play bass note using envelope generator
+; DE = envelope period for desired note
+buzz_bass:
+    ; Set envelope period
+    ld   a, R_ENV_LO
+    call ay_write_de_lo
+    ld   a, R_ENV_HI
+    call ay_write_de_hi
+
+    ; Set envelope shape to repeating sawtooth down
+    ; Writing R13 restarts the envelope
+    ld   a, R_ENV_SHAPE
+    ld   e, $08          ; \\\\  repeating sawtooth down
+    call ay_write
+
+    ; Set channel volume to envelope mode (bit 4 = 1)
+    ld   a, R_VOL_C
+    ld   e, $10          ; bit 4 set = use envelope
+    call ay_write
+    ret

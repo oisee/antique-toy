@@ -1,0 +1,15 @@
+.byte_loop:
+    ld   a,(hl)              ; read texel 1
+    inc  l                   ; walk (patched per-frame)
+    add  a,a : add  a,a     ; shift
+    add  a,(hl)              ; read texel 2
+    inc  l                   ; walk
+    add  a,a : add  a,a     ; shift
+    add  a,(hl)              ; read texel 3
+    inc  l                   ; walk
+    add  a,a : add  a,a     ; shift
+    add  a,(hl)              ; read texel 4
+    inc  l                   ; walk
+    ld   (de),a              ; write output byte
+    inc  de
+    djnz .byte_loop

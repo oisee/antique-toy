@@ -1,0 +1,16 @@
+; Example: one unrolled 8-pixel segment of a nearly-horizontal line
+; (octant 0: moving right, gently sloping down)
+;
+; The line enters at the left edge of an 8x8 character cell
+; and exits at the right edge, dropping one pixel row partway through.
+
+    set  7, (hl)        ; pixel 0 (leftmost bit in byte)
+    set  6, (hl)        ; pixel 1
+    set  5, (hl)        ; pixel 2
+    set  4, (hl)        ; pixel 3
+    set  3, (hl)        ; pixel 4
+    ; --- step down one pixel row ---
+    inc  h              ; next screen row (within character cell)
+    set  2, (hl)        ; pixel 5
+    set  1, (hl)        ; pixel 6
+    set  0, (hl)        ; pixel 7 (rightmost bit in byte)

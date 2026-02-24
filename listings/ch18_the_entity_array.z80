@@ -1,0 +1,6 @@
+; Entity array: 16 entities, 10 bytes each = 160 bytes
+MAX_ENTITIES    EQU  16
+ENTITY_SIZE     EQU  10
+
+entity_array:
+    DS   MAX_ENTITIES * ENTITY_SIZE    ; 160 bytes, zeroed at init

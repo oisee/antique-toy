@@ -1,0 +1,53 @@
+; Play hybrid kick drum
+; 1. Start digital sample playback for attack phase
+; 2. When sample ends, configure AY envelope for decay
+
+play_kick_drum:
+    di                        ; disable interrupts -- timing critical
+
+    ; --- Digital attack phase ---
+    ; Play ~800 samples at ~8kHz = ~100ms = ~2 frames
+    ld   hl, kick_sample      ; pointer to 4-bit sample data
+    ld   b, 0                 ; 256 samples per loop pass
+    ld   c, $FD               ; low byte of AY data port ($BFFD)
+
+    ; Select volume register R8 (channel A)
+    ld   a, 8
+    ld   bc, $FFFD
+    out  (c), a               ; select R8
+    ld   c, $FD               ; prepare for $BFFD writes
+
+.sample_loop:
+    ld   a, (hl)              ; 7 T  - load sample byte
+    inc  hl                   ; 6 T  - advance pointer
+    ld   b, $BF               ; 7 T  - high byte of $BFFD
+    out  (c), a               ; 12 T - write volume = sample value
+    ; ... timing padding to hit target sample rate ...
+    djnz .sample_loop         ; 13 T (approx 45 T per sample)
+
+    ; --- AY decay phase ---
+    ; Configure envelope for smooth volume decay
+    ; The AY takes over -- zero CPU cost from here
+
+    ld   a, R_ENV_LO
+    ld   e, 200               ; envelope period: moderate decay speed
+    call ay_write
+    ld   a, R_ENV_HI
+    ld   e, 0
+    call ay_write
+    ld   a, R_ENV_SHAPE
+    ld   e, $00               ; \___  single decay to silence
+    call ay_write
+    ld   a, R_VOL_A
+    ld   e, $10               ; switch channel A to envelope mode
+    call ay_write
+
+    ei
+    ret
+
+kick_sample:
+    ; 4-bit PCM data: attack portion of a kick drum
+    ; Each byte = one sample, value 0-15
+    DB 0, 2, 8, 15, 14, 12, 15, 13
+    DB 10, 14, 11, 8, 12, 9, 6, 10
+    ; ... (typically 400-800 bytes for the full attack)

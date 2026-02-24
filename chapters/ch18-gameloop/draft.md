@@ -16,7 +16,7 @@ By the end, you will have a working game skeleton with 16 active entities -- a p
 
 Every game on the ZX Spectrum follows the same fundamental rhythm:
 
-```
+```text
 1. HALT          -- wait for the frame interrupt
 2. Read input    -- what does the player want?
 3. Update state  -- move entities, run AI, check collisions
@@ -28,7 +28,7 @@ This is the game loop. It is not complicated. Its power comes from the fact that
 
 Here is the minimal implementation:
 
-```z80
+```z80 id:ch18_the_main_loop_2
     ORG  $8000
 
     ; Install IM1 interrupt handler (standard for games)
@@ -92,7 +92,7 @@ The cleanest way to organise these is a **state machine**: a variable that track
 
 ### State Definitions
 
-```z80
+```z80 id:ch18_state_definitions
 ; Game states (byte values, used as table offsets)
 STATE_TITLE     EQU  0
 STATE_MENU      EQU  2      ; x2 because each table entry is 2 bytes
@@ -106,7 +106,7 @@ game_state:     DB   STATE_TITLE
 
 ### The Jump Table
 
-```z80
+```z80 id:ch18_the_jump_table
 ; Table of handler addresses, indexed by state
 state_table:
     DW   state_title        ; STATE_TITLE   = 0
@@ -120,7 +120,7 @@ state_table:
 
 The main loop becomes a dispatcher that reads the current state and jumps to the appropriate handler:
 
-```z80
+```z80 id:ch18_the_dispatcher
 main_loop:
     halt                    ; sync to frame
 
@@ -142,7 +142,7 @@ The `JP (HL)` instruction is the key. It does not jump to the address stored *at
 
 Each handler runs its own logic and then jumps back to `main_loop`:
 
-```z80
+```z80 id:ch18_the_dispatcher_2
 state_title:
     call draw_title_screen
     call read_input
@@ -203,7 +203,7 @@ state_gameover:
 
 You might be tempted to write the dispatcher as:
 
-```z80
+```z80 id:ch18_why_not_a_chain_of
     ld   a, (game_state)
     cp   STATE_TITLE
     jp   z, state_title
@@ -222,7 +222,7 @@ Second, and more importantly, the jump table scales cleanly. Adding a sixth stat
 
 State transitions happen by writing a new value to `game_state`. Typically you also call an initialisation routine for the new state:
 
-```z80
+```z80 id:ch18_state_transitions
 ; Transition: Game -> Game Over
 game_over_transition:
     ld   a, STATE_GAMEOVER
@@ -256,7 +256,7 @@ The half-row map:
 
 The standard game controls -- Q/A/O/P for up/down/left/right and SPACE for fire -- span three half-rows. Here is a routine that reads them and packs the result into a single byte:
 
-```z80
+```z80 id:ch18_zx_spectrum_keyboard
 ; Input flag bits
 INPUT_RIGHT  EQU  0
 INPUT_LEFT   EQU  1
@@ -318,7 +318,7 @@ At roughly 220 T-states worst case, input reading is trivial in the frame budget
 
 The Kempston interface is even simpler. One port read returns all five directions plus fire:
 
-```z80
+```z80 id:ch18_kempston_joystick
 ; Kempston joystick port
 KEMPSTON_PORT  EQU  $1F
 
@@ -335,7 +335,7 @@ read_kempston:
 
 Notice something convenient: the Kempston bit layout matches our `INPUT_*` flag definitions exactly. This is not a coincidence -- the Kempston interface was designed with this standard in mind, and most Spectrum games adopt the same bit ordering. If you support both keyboard and joystick, you can OR the results together:
 
-```z80
+```z80 id:ch18_kempston_joystick_2
 read_input:
     call read_keyboard       ; D = keyboard flags
     push de
@@ -354,7 +354,7 @@ For some actions -- firing a bullet, opening a menu -- you want to respond to th
 
 The technique: store the previous frame's input alongside the current frame's, and XOR them to find the bits that changed:
 
-```z80
+```z80 id:ch18_edge_detection_press_vs_hold
 input_flags:      DB  0    ; current frame
 input_prev:       DB  0    ; previous frame
 input_pressed:    DB  0    ; newly pressed this frame (edges)
@@ -385,7 +385,7 @@ The Agon reads its PS/2 keyboard through the MOS (Machine Operating System) API.
 
 The MOS system variable `sysvar_keyascii` (at address $0800 + offset) holds the ASCII code of the most recently pressed key, or 0 if no key is down. For game controls, you typically poll this variable or use the MOS `waitvblank` / keyboard API calls:
 
-```z80
+```z80 id:ch18_agon_light_2_ps_2_keyboard
 ; Agon: Read keyboard via MOS sysvar
 ; MOS sysvar_keyascii at IX+$05
 read_input_agon:
@@ -417,7 +417,7 @@ A game entity is anything that moves, animates, interacts, or needs per-frame up
 
 Here is the entity structure we will use throughout the game-dev chapters:
 
-```
+```text
 Offset  Size  Name        Description
 ------  ----  ----------  -------------------------------------------
  +0     2     x           X position, 8.8 fixed-point (high=pixel, low=subpixel)
@@ -435,7 +435,7 @@ Offset  Size  Name        Description
 
 Flag bits in the `flags` byte:
 
-```
+```z80 id:ch18_structure_layout_2
 Bit 0: ACTIVE      -- entity is alive and should be updated/rendered
 Bit 1: VISIBLE     -- entity should be rendered (active but invisible = logic only)
 Bit 2: COLLIDABLE  -- entity participates in collision detection
@@ -449,7 +449,7 @@ Bit 6-7: reserved
 
 Ten bytes is a deliberate choice. It is small enough that 16 entities occupy only 160 bytes -- trivial in memory terms. More importantly, multiplying an entity index by 10 to find its offset is straightforward on the Z80:
 
-```z80
+```z80 id:ch18_why_10_bytes
 ; Calculate entity address from index in A
 ; Input: A = entity index (0-15)
 ; Output: HL = address of entity structure
@@ -483,7 +483,7 @@ The Y position is only 8 bits because the Spectrum's screen is 192 pixels tall -
 
 Fixed-point arithmetic was introduced in Chapter 4. Here is a quick recap of how it applies to entity movement:
 
-```z80
+```z80 id:ch18_the_8_8_fixed_point_system
 ; Move entity right at velocity dx
 ; HL points to entity X (2 bytes: low=fractional, high=pixel)
 ; A = dx (signed velocity, treated as fractional byte)
@@ -519,7 +519,7 @@ The beauty of fixed-point: addition and subtraction are just regular 16-bit `ADD
 
 Entities live in a statically allocated array. No dynamic memory allocation, no linked lists, no heap. Static arrays are the standard approach on the Z80 for good reason: they are fast, predictable, and cannot fragment.
 
-```z80
+```z80 id:ch18_the_entity_array
 ; Entity array: 16 entities, 10 bytes each = 160 bytes
 MAX_ENTITIES    EQU  16
 ENTITY_SIZE     EQU  10
@@ -532,7 +532,7 @@ entity_array:
 
 Slot 0 is always the player. Slots 1-8 are enemies. Slots 9-15 are projectiles and effects (bullets, explosions, score popups). This fixed partitioning simplifies the code: when you need to iterate over enemies for AI, you iterate slots 1-8. When a bullet needs spawning, you search slots 9-15. The player is always at a known address.
 
-```z80
+```z80 id:ch18_entity_slot_allocation
 ; Fixed slot assignments
 SLOT_PLAYER      EQU  0
 SLOT_ENEMY_FIRST EQU  1
@@ -545,7 +545,7 @@ SLOT_PROJ_LAST   EQU  15
 
 The core update loop walks through every entity slot, checks the ACTIVE flag, and calls the appropriate update handler:
 
-```z80
+```z80 id:ch18_iterating_entities
 ; Update all active entities
 ; Total cost: ~2,500T for 16 entities (most inactive), up to ~8,000T (all active)
 update_entities:
@@ -577,7 +577,7 @@ This uses IX as the entity pointer, which is convenient because IX-indexed addre
 
 Each entity type has its own update handler. We use the same jump-table technique as the game state machine:
 
-```z80
+```z80 id:ch18_update_dispatch_by_type
 ; Entity type constants
 TYPE_INACTIVE  EQU  0
 TYPE_PLAYER    EQU  1
@@ -615,7 +615,7 @@ Each handler receives IX pointing to the entity and can access all fields via in
 
 Here is a typical player update -- read input flags, apply movement, update animation:
 
-```z80
+```z80 id:ch18_the_player_update_handler
 ; Update player entity
 ; IX = entity pointer (slot 0)
 update_player:
@@ -666,7 +666,7 @@ We already have the pool -- it is the entity array. Slots 9-15 are the projectil
 
 ### Spawning a Bullet
 
-```z80
+```z80 id:ch18_spawning_a_bullet
 ; Spawn a bullet at position (B=x_pixel, C=y)
 ; moving in direction determined by player facing
 ; Returns: carry set if no free slot available
@@ -679,9 +679,10 @@ spawn_bullet:
     bit  0, a               ; 8T   ACTIVE?
     jr   z, .found          ; 12/7T found an inactive slot
 
-    ld   e, ENTITY_SIZE     ; 7T
-    add  ix, de             ; 15T  next slot (note: DE high byte may be nonzero,
-                            ;      but we only care about the low 8 bits of offset)
+    push de                 ; 11T  save loop counter (D)
+    ld   de, ENTITY_SIZE    ; 10T  DE = 10 (D=0, E=10)
+    add  ix, de             ; 15T  next slot
+    pop  de                 ; 10T  restore loop counter
     dec  d                  ; 4T
     jr   nz, .find_slot     ; 12T
 
@@ -718,7 +719,7 @@ spawn_bullet:
 
 When a bullet leaves the screen or an explosion finishes its animation, deactivation is a single instruction:
 
-```z80
+```z80 id:ch18_deactivating_an_entity
 ; Deactivate entity at IX
 deactivate_entity:
     ld   (ix + 9), 0        ; 19T  clear all flags (ACTIVE=0)
@@ -729,7 +730,7 @@ That is it. Next frame, the update loop sees ACTIVE=0 and skips the slot. The sl
 
 ### Bullet Update Handler
 
-```z80
+```z80 id:ch18_bullet_update_handler
 ; Update a bullet entity
 ; IX = entity pointer
 update_bullet:
@@ -778,7 +779,7 @@ On the Agon, you can afford larger pools. With 360,000 T-states per frame and ha
 
 Explosions, score popups, and particle effects use the same entity slots as bullets. The difference is in their update handlers: they animate through a sequence of frames and then self-destruct.
 
-```z80
+```z80 id:ch18_explosion_and_effect_entities
 ; Update an explosion entity
 ; IX = entity pointer
 update_explosion:
@@ -799,7 +800,7 @@ update_explosion:
 
 To spawn an explosion when an enemy dies:
 
-```z80
+```z80 id:ch18_explosion_and_effect_entities_2
 ; Spawn explosion at the enemy's position
 ; IX currently points to the dying enemy
 spawn_explosion_at_entity:
@@ -845,7 +846,7 @@ The pattern is always the same: find a free slot, fill in the structure, set the
 
 Here is the complete game skeleton that ties everything together. This is a compilable framework with all the pieces wired up: state machine, input, entity system, and the main loop.
 
-```z80
+```z80 id:ch18_putting_it_all_together_the
     ORG  $8000
 
 ; ============================================================
@@ -882,7 +883,10 @@ FLAG_FACING_L   EQU  3
 ; ============================================================
 entry:
     di
-    ld   sp, $FFFF          ; set stack
+    ld   sp, $C000          ; set stack (below banked memory on 128K)
+                            ; NOTE: $FFFF is in banked page on 128K Spectrum,
+                            ; which causes stack corruption during bank switches.
+                            ; Use $C000 (or $BFFF) for 128K compatibility.
     im   1
     ei
 
@@ -1286,11 +1290,10 @@ spawn_bullet:
     ld   a, (ix + 9)
     bit  FLAG_ACTIVE, a
     jr   z, .found
-    ld   e, ENTITY_SIZE
-    push de
-    pop  de                  ; (DE preserved; only low byte matters for add ix,de)
-    ld   e, ENTITY_SIZE
+    push de                  ; save loop counter in D
+    ld   de, ENTITY_SIZE     ; DE = 10 (D=0, E=10)
     add  ix, de
+    pop  de                  ; restore loop counter
     dec  d
     jr   nz, .find
     ; No free slot
@@ -1439,7 +1442,7 @@ IX-indexed addressing is convenient but expensive: 19 T-states per access versus
 
 But in the rendering loop, where you might touch 4-6 entity fields for each of 8 visible sprites, the cost adds up. The technique: at the start of the render pass for each entity, copy the fields you need into registers:
 
-```z80
+```z80 id:ch18_when_to_use_hl_instead_of_ix
     ; Copy entity fields to registers for fast rendering
     ld   l, (ix + 0)        ; 19T  X lo
     ld   h, (ix + 1)        ; 19T  X hi

@@ -1,0 +1,25 @@
+; RET-chaining: zero call overhead
+    di
+    ld   (restore_sp + 1), sp   ; save SP
+    ld   sp, render_list        ; SP points to our dispatch table
+
+    ; "Call" the first tile routine by falling into it or using RET:
+    ret                         ; pops first address from render_list
+
+; Each tile routine ends with:
+draw_tile_N:
+    ; ... draw the tile ...
+    ret                         ; pops NEXT address from render_list
+
+; The render list is a sequence of addresses:
+render_list:
+    dw   draw_tile_42           ; first tile to draw
+    dw   draw_tile_7            ; second tile
+    dw   draw_tile_42           ; third tile (same tile type, different position)
+    ; ... one entry per tile on screen ...
+    dw   render_done            ; sentinel: address of cleanup code
+
+render_done:
+restore_sp:
+    ld   sp, $0000              ; self-modified: restore SP
+    ei

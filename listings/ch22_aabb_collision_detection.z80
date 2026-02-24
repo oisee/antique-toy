@@ -1,0 +1,11 @@
+; AABB collision check: identical on both platforms
+; A = entity1.x, B = entity1.x + width
+; C = entity2.x, D = entity2.x + width
+check_overlap_x:
+    ld   a,(ix+ENT_X)
+    cp   (iy+ENT_X2)       ; entity1.x < entity2.x+width?
+    ret  nc                 ; no overlap
+    ld   a,(ix+ENT_X2)
+    cp   (iy+ENT_X)        ; entity1.x+width > entity2.x?
+    ret  c                  ; no overlap
+    ; overlap on X axis confirmed

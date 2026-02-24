@@ -1,0 +1,8 @@
+midpoint_prog:
+    ; Mirrors: cells 4-7 are pre-negated by the main loop
+    ; Derive additional vertices:
+    DB  0, 128+1, 64+8        ; v8  = avg(v0, v1)
+    DB  2, 128+3, 64+9        ; v9  = avg(v2, v3)
+    DB  0, 128+2, 64+10       ; v10 = avg(v0, v2)
+    DB  1, 128+3, 64+11       ; v11 = avg(v1, v3)
+    DB  192                    ; END

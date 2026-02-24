@@ -1,0 +1,108 @@
+; check_player_tiles -- Check player against tilemap
+;
+; Input: IX = player entity
+; Output: Updates player position/velocity based on tile collisions
+;
+; We check up to 6 points around the player's bounding box,
+; but bail out as soon as we find a solid tile.
+
+check_player_tiles:
+    ; --- Check below (feet) ---
+    ; Bottom-left corner of player
+    ld   b, (ix+1)        ; 19T  x_int
+    ld   a, (ix+3)        ; 19T  y_int
+    add  a, (ix+14)       ; 19T  + height = bottom edge
+    ld   c, a             ; 4T
+    call tile_at           ; 17T+body
+    cp   TILE_SOLID        ; 7T
+    jr   z, .on_ground     ; 12/7T
+
+    ; Bottom-right corner
+    ld   a, (ix+1)        ; 19T  x_int
+    add  a, (ix+13)       ; 19T  + width
+    dec  a                ; 4T   -1 (rightmost pixel of entity)
+    ld   b, a
+    ld   a, (ix+3)
+    add  a, (ix+14)
+    ld   c, a
+    call tile_at
+    cp   TILE_SOLID
+    jr   z, .on_ground
+
+    ; Not standing on solid ground -- apply gravity
+    jr   .in_air
+
+.on_ground:
+    ; Snap Y to top of tile, clear vertical velocity
+    ld   a, c              ; bottom edge Y
+    and  %11111000         ; align to tile boundary (clear low 3 bits)
+    sub  (ix+14)           ; subtract height to get top-left Y
+    ld   (ix+3), a         ; snap y_int
+    xor  a
+    ld   (ix+9), a         ; dy_frac = 0
+    ld   (ix+10), a        ; dy_int = 0
+    set  0, (ix+12)        ; set "on_ground" flag in flags byte
+    jr   .check_walls
+
+.in_air:
+    res  0, (ix+12)        ; clear "on_ground" flag
+
+.check_walls:
+    ; --- Check right (wall) ---
+    ld   a, (ix+1)
+    add  a, (ix+13)        ; right edge
+    ld   b, a
+    ld   a, (ix+3)
+    add  a, 4              ; check midpoint vertically
+    ld   c, a
+    call tile_at
+    cp   TILE_SOLID
+    jr   nz, .check_left
+
+    ; Push out left: snap X to left edge of tile
+    ld   a, b
+    and  %11111000
+    dec  a
+    sub  (ix+13)
+    inc  a
+    ld   (ix+1), a
+    xor  a
+    ld   (ix+7), a         ; dx_frac = 0
+    ld   (ix+8), a         ; dx_int = 0
+
+.check_left:
+    ; --- Check left (wall) ---
+    ld   b, (ix+1)         ; left edge
+    ld   a, (ix+3)
+    add  a, 4
+    ld   c, a
+    call tile_at
+    cp   TILE_SOLID
+    jr   nz, .check_ceiling
+
+    ; Push out right: snap X to right edge of tile + 1
+    ld   a, b
+    and  %11111000
+    add  a, 8
+    ld   (ix+1), a
+    xor  a
+    ld   (ix+7), a
+    ld   (ix+8), a
+
+.check_ceiling:
+    ; --- Check above (head) ---
+    ld   b, (ix+1)
+    ld   c, (ix+3)         ; top edge
+    call tile_at
+    cp   TILE_SOLID
+    ret  nz
+
+    ; Hit ceiling: push down, zero vertical velocity
+    ld   a, c
+    and  %11111000
+    add  a, 8              ; bottom of ceiling tile
+    ld   (ix+3), a
+    xor  a
+    ld   (ix+9), a
+    ld   (ix+10), a
+    ret

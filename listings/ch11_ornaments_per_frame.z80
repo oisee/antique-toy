@@ -1,0 +1,5 @@
+; Example ornament: pitch vibrato
+; Table of signed semitone offsets, applied once per frame
+ornament_vibrato:
+    DB 0, 0, 1, 1, 0, 0, -1, -1    ; 8-frame cycle
+    DB $80                           ; end marker

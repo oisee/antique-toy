@@ -1,0 +1,41 @@
+; ai_retreat -- Move away from the player
+;
+; Input:  IX = enemy entity
+; Output: Position updated, transitions to PATROL if far enough away
+;
+; Cost: ~100 T-states (Pentagon)
+
+RETREAT_DISTANCE equ 64   ; flee until 64 pixels away
+
+ai_retreat:
+    ; --- Move away from player ---
+    ld   a, (player_x)
+    sub  (ix+1)           ; dx = player.x - enemy.x
+    jr   c, .flee_right   ; player is left, so flee right
+
+.flee_left:
+    ld   a, (ix+1)
+    sub  CHASE_SPEED
+    ld   (ix+1), a
+    set  1, (ix+12)       ; face left (fleeing)
+    jr   .check_safe
+
+.flee_right:
+    ld   a, (ix+1)
+    add  a, CHASE_SPEED
+    ld   (ix+1), a
+    res  1, (ix+12)       ; face right (fleeing)
+
+.check_safe:
+    ; --- Far enough away? Return to patrol ---
+    ld   a, (player_x)
+    sub  (ix+1)
+    jr   nc, .pos_ret
+    neg
+.pos_ret:
+    cp   RETREAT_DISTANCE
+    ret  c                ; not far enough -- keep fleeing
+
+    ; Safe distance reached -- return to PATROL
+    ld   (ix+5), ST_PATROL
+    ret

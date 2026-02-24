@@ -1,0 +1,7 @@
+; Tile rendering fragment (conceptual)
+    pop  af             ; 10 T  load tile data from stack-based source
+    or   (hl)           ;  7 T  combine with existing screen data
+    ld   (hl),a         ;  7 T  write back
+    inc  l              ;  4 T  next attribute column
+                        ; ---
+                        ; 28 T per attribute byte

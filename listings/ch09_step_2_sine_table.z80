@@ -1,0 +1,8 @@
+    ALIGN 256
+sin_table:
+    LUA ALLPASS
+    for i = 0, 255 do
+        -- Sine scaled to 0..63 (6-bit unsigned)
+        sj.add_byte(math.floor(math.sin(i * math.pi / 128) * 31 + 32))
+    end
+    ENDLUA

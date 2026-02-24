@@ -1,0 +1,31 @@
+stack_fill:
+    di                          ; critical: no interrupts while SP is moved
+    ld   (restore_sp + 1), sp   ; self-modifying: save SP
+
+    ld   sp, SCREEN_END         ; SP points to end of screen ($5800)
+    ld   hl, $AAAA              ; pattern to fill
+
+    ld   b, 192                 ; 192 iterations x 16 PUSHes x 2 bytes = 6144
+.loop:
+    push hl                     ; 11 T  \
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |  16 PUSHes = 32 bytes
+    push hl                     ; 11 T   |  = 176 T-states
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T   |
+    push hl                     ; 11 T  /
+    djnz .loop                  ; 13 T (8 on last)
+
+restore_sp:
+    ld   sp, $0000              ; self-modified: restores original SP
+    ei
+    ret

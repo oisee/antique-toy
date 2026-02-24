@@ -1,0 +1,40 @@
+; ai_dispatch -- Run the AI for one enemy entity
+;
+; Input:  IX = enemy entity pointer
+; Output: Entity state/position/velocity updated
+;
+; The state byte (ix+5) indexes into a table of handler addresses.
+; Each handler is responsible for:
+;   1. Executing this frame's behaviour
+;   2. Checking transition conditions
+;   3. Setting (ix+5) to the new state if transitioning
+;
+; Cost: ~45 T-states dispatch overhead + handler cost
+
+; State constants
+ST_PATROL  equ 0
+ST_CHASE   equ 1
+ST_ATTACK  equ 2
+ST_RETREAT equ 3
+ST_DEATH   equ 4
+
+ai_dispatch:
+    ld   a, (ix+5)        ; 19T  load state byte
+    add  a, a             ; 4T   *2 (each table entry is 2 bytes)
+    ld   e, a             ; 4T
+    ld   d, 0             ; 7T
+    ld   hl, ai_state_table ; 10T
+    add  hl, de           ; 11T  HL = table + state*2
+    ld   e, (hl)          ; 7T   low byte of handler address
+    inc  hl               ; 6T
+    ld   d, (hl)          ; 7T   high byte of handler address
+    ex   de, hl           ; 4T   HL = handler address
+    jp   (hl)             ; 4T   jump to handler
+                           ;      (handler returns via RET)
+
+ai_state_table:
+    dw   ai_patrol         ; state 0
+    dw   ai_chase          ; state 1
+    dw   ai_attack         ; state 2
+    dw   ai_retreat        ; state 3
+    dw   ai_death          ; state 4

@@ -1,0 +1,23 @@
+; Update all active entities
+; Total cost: ~2,500T for 16 entities (most inactive), up to ~8,000T (all active)
+update_entities:
+    ld   ix, entity_array   ; 14T  IX points to first entity
+    ld   b, MAX_ENTITIES    ; 7T   loop counter
+
+.loop:
+    ; Check if entity is active
+    ld   a, (ix + 9)        ; 19T  load flags byte (offset +9)
+    bit  0, a               ; 8T   test ACTIVE flag
+    jr   z, .skip           ; 12/7T skip if inactive
+
+    ; Entity is active -- dispatch by type
+    ld   a, (ix + 3)        ; 19T  load type byte (offset +3)
+    ; Jump table dispatch based on type
+    call update_by_type     ; ~200-500T depending on type
+
+.skip:
+    ; Advance IX to next entity
+    ld   de, ENTITY_SIZE    ; 10T
+    add  ix, de             ; 15T  IX += 10
+    djnz .loop              ; 13/8T
+    ret

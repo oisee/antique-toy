@@ -1,0 +1,9 @@
+; Unrolled version: clear 256 bytes at (HL)
+    xor  a               ; 4 T
+    ld   (hl), a         ; 7 T
+    inc  hl              ; 6 T
+    ld   (hl), a         ; 7 T
+    inc  hl              ; 6 T
+    ld   (hl), a         ; 7 T
+    inc  hl              ; 6 T
+    ; ... repeated 256 times total

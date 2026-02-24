@@ -1,0 +1,9 @@
+; In Z80-compatible mode, calling a MOS API function
+; We need to switch to ADL mode for the call
+
+    ; Method: use RST.LIL $08 (MOS API entry point)
+    ; .LIL means "long instruction, long mode" ---
+    ; pushes a 24-bit return address and enters ADL mode
+    RST.LIL $08        ; call MOS API in ADL mode
+    DB      mos_func   ; MOS function number follows
+    ; MOS returns to us in Z80 mode (matching our caller)

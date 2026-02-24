@@ -1,0 +1,7 @@
+; VDP: draw a filled rectangle at (10, 10)
+    rst  $10 : db 25        ; PLOT command
+    rst  $10 : db 85        ; mode: filled rectangle
+    rst  $10 : db 10        ; x low
+    rst  $10 : db 0         ; x high
+    rst  $10 : db 10        ; y low
+    rst  $10 : db 0         ; y high

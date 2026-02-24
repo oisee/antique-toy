@@ -1,0 +1,3 @@
+; eZ80: LEA IX, IY + offset
+; Compute IX = IY + displacement without changing IY
+    LEA  IX,IY+ENT_SIZE    ; IX points to next entity

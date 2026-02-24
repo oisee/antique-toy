@@ -1,0 +1,13 @@
+; Minimal RLE decompressor — HL = source, DE = destination
+rle_decompress:
+        ld      a, (hl)         ; read count
+        inc     hl
+        or      a
+        ret     z               ; count = 0 means end
+        ld      b, a
+        ld      a, (hl)         ; read value
+        inc     hl
+.fill:  ld      (de), a
+        inc     de
+        djnz    .fill
+        jr      rle_decompress

@@ -1,0 +1,20 @@
+; --- Accumulating 8 source pixels into one screen byte ---
+; HL points into the source image (one byte per pixel)
+; A is the accumulator, building the screen byte bit by bit
+
+    add  a,a          ; shift accumulator left (make room for next pixel)
+    add  a,(hl)       ; add source pixel (0 or 1) into lowest bit
+    inc  l            ; advance to next source pixel
+    ; ... possibly more INC L instructions here,
+    ; depending on how many pixels to skip
+
+    add  a,a          ; shift again
+    add  a,(hl)       ; sample next pixel
+    inc  l
+    inc  l            ; skip one extra pixel (sphere curvature)
+
+    add  a,a
+    add  a,(hl)
+    inc  l
+
+    ; ... six more times, for 8 pixels total ...

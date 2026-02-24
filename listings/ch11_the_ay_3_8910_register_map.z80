@@ -1,0 +1,7 @@
+; Write value E to AY register A
+ay_write:
+    ld   bc, $FFFD
+    out  (c), a       ; select register
+    ld   b, $BF       ; $BFFD high byte (C stays $FD)
+    out  (c), e       ; write data
+    ret

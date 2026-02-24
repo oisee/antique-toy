@@ -1,0 +1,40 @@
+; Compiled sprite for a small arrow shape
+; Input:  HL = screen address of top-left byte
+; The sprite draws itself.
+;
+compiled_arrow:
+    ; Row 0: one pixel byte
+    ld   (hl), $18          ; 10 T   ..##....
+    inc  h                  ;  4 T   next row
+
+    ; Row 1: one pixel byte
+    ld   (hl), $3C          ; 10 T   ..####..
+    inc  h                  ;  4 T
+
+    ; Row 2: one pixel byte
+    ld   (hl), $7E          ; 10 T   .######.
+    inc  h                  ;  4 T
+
+    ; Row 3: one pixel byte
+    ld   (hl), $FF          ; 10 T   ########
+    inc  h                  ;  4 T
+
+    ; Row 4: one pixel byte
+    ld   (hl), $3C          ; 10 T   ..####..
+    inc  h                  ;  4 T
+
+    ; Row 5: one pixel byte
+    ld   (hl), $3C          ; 10 T   ..####..
+    inc  h                  ;  4 T
+
+    ; Row 6: one pixel byte
+    ld   (hl), $3C          ; 10 T   ..####..
+    inc  h                  ;  4 T
+
+    ; Row 7: one pixel byte
+    ld   (hl), $3C          ; 10 T   ..####..
+
+    ret                     ; 10 T
+
+    ; Total: 8 x (10 + 4) + 10 = 122 T-states
+    ; Compare: masked routine for 8x8 = ~600 T-states

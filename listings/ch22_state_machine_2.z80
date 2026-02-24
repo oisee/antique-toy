@@ -1,0 +1,19 @@
+; Agon (ADL mode): dispatch game state
+    ld   a,(game_state)
+    ld   l,a
+    ld   h,0               ; HL = state index
+    ld   e,l
+    ld   d,h               ; DE = copy of state index
+    add  hl,hl             ; HL = state * 2
+    add  hl,de             ; HL = state * 3 (24-bit pointers)
+    ld   de,state_table
+    add  hl,de
+    ld   hl,(hl)           ; load 24-bit pointer
+    jp   (hl)
+
+state_table:
+    dl   state_title       ; DL = define long (24-bit)
+    dl   state_menu
+    dl   state_game
+    dl   state_pause
+    dl   state_gameover

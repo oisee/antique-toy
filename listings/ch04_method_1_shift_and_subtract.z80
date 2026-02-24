@@ -1,0 +1,23 @@
+; DIVU111 -- 8-bit unsigned divide
+; Input:  B = dividend, C = divisor
+; Output: B = quotient, A = remainder
+; Cost:   236-244 T-states (Pentagon)
+;
+; From Dark / X-Trade, Spectrum Expert #01 (1997)
+
+divu111:
+    xor  a               ; clear accumulator (remainder workspace)
+    ld   d, 8            ; 8 bits to process
+
+.loop:
+    sla  b               ; shift dividend left -- MSB into carry
+    rla                  ; shift carry into accumulator
+    cp   c               ; try to subtract divisor
+    jr   c, .too_small   ; if accumulator < divisor, skip
+    sub  c               ; subtract divisor from accumulator
+    inc  b               ; set bit 0 of quotient (B was just shifted,
+                         ;   so bit 0 is free)
+.too_small:
+    dec  d
+    jr   nz, .loop
+    ret                  ; B = quotient, A = remainder

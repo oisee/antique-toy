@@ -12,7 +12,7 @@ These patterns --- unrolled loops, self-modifying code, the stack as a data pipe
 
 Consider the simplest possible inner loop: clearing 256 bytes of memory.
 
-```z80
+```z80 id:ch03_the_cost_of_looping
 ; Looped version: clear 256 bytes at (HL)
     ld   b, 0            ; 7 T   (B=0 means 256 iterations)
     xor  a               ; 4 T
@@ -28,7 +28,7 @@ Each iteration costs 7 + 6 + 13 = 26 T-states to store a single byte. Only 7 of 
 
 The solution is brutal and effective: write out the loop body N times and delete the loop.
 
-```z80
+```z80 id:ch03_unrolling_trade_rom_for_speed
 ; Unrolled version: clear 256 bytes at (HL)
     xor  a               ; 4 T
     ld   (hl), a         ; 7 T
@@ -56,7 +56,7 @@ The Z80 has no instruction cache, no prefetch buffer, no pipeline. When the CPU 
 
 Self-modifying code (SMC) means writing to instruction bytes at runtime. The classic pattern is patching an immediate operand:
 
-```z80
+```z80 id:ch03_self_modifying_code_the_z80_s
 ; Self-modifying code: fill with a runtime-determined value
     ld   a, (fill_value)       ; load the fill byte from somewhere
     ld   (patch + 1), a        ; overwrite the operand of the LD below
@@ -72,7 +72,7 @@ The `ld (patch + 1), a` writes into the immediate operand of the next `ld (hl), 
 
 **Saving and restoring the stack pointer.** This pattern appears constantly when using PUSH tricks (below):
 
-```z80
+```z80 id:ch03_self_modifying_code_the_z80_s_2
     ld   (restore_sp + 1), sp     ; save SP into the operand below
     ; ... do stack tricks ...
 restore_sp:
@@ -112,7 +112,7 @@ The pattern is always the same:
 5. Restore SP and re-enable interrupts (EI).
 
 <!-- figure: ch03_push_fill_pipeline -->
-```mermaid
+```mermaid id:ch03_the_technique
 graph TD
     A["DI — disable interrupts"] --> B["Save SP via self-modifying code"]
     B --> C["Set SP to screen bottom ($5800)"]
@@ -132,7 +132,7 @@ graph TD
 
 Here is the core of the `push_fill.a80` example from this chapter's `examples/` directory:
 
-```z80
+```z80 id:ch03_the_technique_2
 stack_fill:
     di                          ; critical: no interrupts while SP is moved
     ld   (restore_sp + 1), sp   ; self-modifying: save SP
@@ -204,7 +204,7 @@ The sweet spot is copying blocks of known size. A chain of 32 LDIs saves 160 T-s
 
 But the real power emerges when you combine LDI chains with *entry point arithmetic*. If you have a chain of 256 LDIs and want to copy only 100 bytes, jump into the chain at position 156. No loop counter, no setup. This technique is used in Introspec's chaos zoomer in Eager (2015):
 
-```z80
+```z80 id:ch03_when_ldi_chains_shine
 ; Chaos zoomer inner loop (simplified from Eager)
 ; Each line copies a different number of bytes from a source buffer.
 ; Entry point into the LDI chain is calculated per line.
@@ -244,7 +244,7 @@ This is not "cheating." It is the fundamental insight that division of labour be
 
 Sometimes parameters change every frame, so offline generation is not enough. The sphere-mapping routine in X-Trade's Illusion (ENLiGHT'96) generates machine code into a RAM buffer at runtime. The sphere geometry changes as it rotates --- different pixels need different skip distances. Before each frame, the engine emits opcode bytes into a buffer, then executes them:
 
-```z80
+```z80 id:ch03_runtime_the_program_writes
 ; Runtime code generation (conceptual, simplified from Illusion)
 ; Generate an unrolled rendering loop for this frame's sphere slice
 
@@ -287,7 +287,7 @@ The generated code is a straight-line sequence with no branches, no lookups, no 
 
 In 2025, DenisGrachev published a technique on Hype developed for his game Dice Legends. The problem: rendering a tile-based playfield requires drawing dozens of tiles per frame. The naive approach uses CALL:
 
-```z80
+```z80 id:ch03_turning_the_stack_into_a
 ; Naive approach: call each tile renderer
     call draw_tile_0
     call draw_tile_1
@@ -299,7 +299,7 @@ Each CALL costs 17 T-states. For a 30 x 18 playfield (540 tiles), that is 9,180 
 
 DenisGrachev's insight: set SP to a *render list* --- a table of addresses --- and end each tile-drawing procedure with RET. RET pops 2 bytes from (SP) into PC. If SP points to your render list, RET does not return to the caller --- it jumps to the next routine in the list.
 
-```z80
+```z80 id:ch03_turning_the_stack_into_a_2
 ; RET-chaining: zero call overhead
     di
     ld   (restore_sp + 1), sp   ; save SP

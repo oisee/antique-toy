@@ -1,0 +1,8 @@
+; Scene table entry (conceptual structure)
+scene_entry:
+    DB  bank_number          ; which 16K memory bank holds this effect's code
+    DW  entry_address        ; start address of the effect routine
+    DW  frame_duration       ; how many frames this scene runs
+    DB  param_byte_1         ; effect-specific parameter
+    DB  param_byte_2         ; effect-specific parameter
+    ; ... additional parameters as needed

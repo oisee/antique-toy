@@ -1,0 +1,11 @@
+    ALIGN 256
+texture:
+    LUA ALLPASS
+    for i = 0, 255 do
+        if math.floor(i / 8) % 2 == 0 then
+            sj.add_byte(0x03)
+        else
+            sj.add_byte(0x00)
+        end
+    end
+    ENDLUA

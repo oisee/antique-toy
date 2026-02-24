@@ -1,0 +1,10 @@
+; In your main code:
+    ld   hl, song_data
+    call music_init
+
+; In your interrupt handler:
+    call music_play
+
+; At the end of the binary:
+song_data:
+    INCBIN "mysong.pt3"

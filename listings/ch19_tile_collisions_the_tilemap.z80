@@ -1,0 +1,36 @@
+; tile_at -- Look up the tile type at a pixel position
+;
+; Input:  B = pixel X, C = pixel Y
+; Output: A = tile type (0=empty, 1=solid, 2=hazard, 3=ladder, etc.)
+;
+; Map is 32 columns wide, stored row-major at 'tilemap'
+; Cost: ~182 T-states (Pentagon)
+
+tile_at:
+    ld   a, c             ; 4T   pixel Y
+    srl  a                ; 8T   /2
+    srl  a                ; 8T   /4
+    srl  a                ; 8T   /8 = tile row
+    ld   l, a             ; 4T
+
+    ; Multiply row by 32 (shift left 5)
+    ld   h, 0             ; 7T
+    add  hl, hl           ; 11T  *2
+    add  hl, hl           ; 11T  *4
+    add  hl, hl           ; 11T  *8
+    add  hl, hl           ; 11T  *16
+    add  hl, hl           ; 11T  *32
+
+    ld   a, b             ; 4T   pixel X
+    srl  a                ; 8T   /2
+    srl  a                ; 8T   /4
+    srl  a                ; 8T   /8 = tile column
+    ld   e, a             ; 4T
+    ld   d, 0             ; 7T
+    add  hl, de           ; 11T  row*32 + column = tile index
+
+    ld   de, tilemap      ; 10T
+    add  hl, de           ; 11T  absolute address
+
+    ld   a, (hl)          ; 7T   tile type
+    ret                    ; 10T

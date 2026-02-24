@@ -1,0 +1,25 @@
+; 16-bit XORshift PRNG
+; Quality: Mediocre -- visible diagonal patterns in bitmap tests
+; Size:    ~25 bytes
+; Output:  A = pseudo-random byte (H or L)
+; Period:  65535
+
+xorshift_rnd:
+.smc_state:
+    ld   hl, 1              ; 10 T -- state (self-modifying, must not be 0)
+    ld   a, h               ; 4 T
+    rra                     ; 4 T
+    ld   a, l               ; 4 T
+    rra                     ; 4 T
+    xor  h                  ; 4 T
+    ld   h, a               ; 4 T
+    ld   a, l               ; 4 T
+    rra                     ; 4 T
+    ld   a, h               ; 4 T
+    rra                     ; 4 T
+    xor  l                  ; 4 T
+    ld   l, a               ; 4 T
+    xor  h                  ; 4 T
+    ld   h, a               ; 4 T
+    ld   (.smc_state+1), hl ; 16 T -- update state
+    ret                     ; 10 T

@@ -1,0 +1,41 @@
+current_music_bank:
+    db   4              ; bank 4 by default
+
+im2_handler:
+    push af
+    push bc
+    push de
+    push hl
+    push ix
+    push iy              ; IY must be preserved -- BASIC uses it
+                         ; for system variables, and PT3 players
+                         ; typically use IY internally
+
+    ; Save current bank state
+    ld   a, (last_bank_state)
+    push af
+
+    ; Page in music bank
+    ld   a, (current_music_bank)
+    call switch_bank
+
+    ; Update PT3 player -- writes AY registers
+    call pt3_play
+
+    ; Check for pending SFX
+    call sfx_update
+
+    ; Restore previous bank
+    pop  af
+    ld   (last_bank_state), a
+    ld   bc, $7FFD
+    out  (c), a
+
+    pop  iy
+    pop  ix
+    pop  hl
+    pop  de
+    pop  bc
+    pop  af
+    ei
+    reti

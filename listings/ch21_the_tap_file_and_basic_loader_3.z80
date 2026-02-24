@@ -1,0 +1,28 @@
+; Load bank data from tape
+; Called after main code is running
+load_bank_data:
+    ; Bank 0
+    ld   a, 0
+    call switch_bank
+    ld   ix, $C000         ; load address
+    ld   de, BANK0_SIZE    ; data length
+    call load_tape_block
+
+    ; Bank 1
+    ld   a, 1
+    call switch_bank
+    ld   ix, $C000
+    ld   de, BANK1_SIZE
+    call load_tape_block
+
+    ; ... repeat for banks 3, 4, 6 ...
+    ret
+
+; Load one tape block using ROM routine
+; IX = address, DE = length
+load_tape_block:
+    ld   a, $FF            ; data block flag (not header)
+    scf                    ; carry set = LOAD (not VERIFY)
+    call $0556             ; ROM tape loading routine
+    ret  nc                ; carry clear = load error
+    ret

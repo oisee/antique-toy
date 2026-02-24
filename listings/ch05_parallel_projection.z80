@@ -1,0 +1,8 @@
+; Parallel projection: screen coords = rotated X, Y + offset
+    ld   a, (px)
+    add  a, 128             ; center horizontally (128 = half of 256)
+    ld   (screen_x), a
+
+    ld   a, (py)
+    add  a, 96              ; center vertically (96 = half of 192)
+    ld   (screen_y), a

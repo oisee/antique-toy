@@ -1,0 +1,2 @@
+Bit 4: 1 = use envelope generator, 0 = use bits 3-0
+Bits 3-0: Fixed volume level (0-15)

@@ -1,0 +1,30 @@
+; Arpeggio: cycle C-E-G on channel A every frame
+; Called once per frame from the interrupt handler
+arpeggio:
+    ld   a, (arp_pos)
+    inc  a
+    cp   3
+    jr   nz, .no_wrap
+    xor  a
+.no_wrap:
+    ld   (arp_pos), a
+
+    ; Index into note table
+    ld   hl, arp_notes
+    add  a, a            ; x2 (each entry is a 16-bit period)
+    ld   e, a
+    ld   d, 0
+    add  hl, de
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+
+    ; Write period to channel A
+    ld   a, R_TONE_A_LO
+    call ay_write_de_lo
+    ld   a, R_TONE_A_HI
+    call ay_write_de_hi
+    ret
+
+arp_pos:   DB 0
+arp_notes: DW 424, 337, 283    ; C4, E4, G4

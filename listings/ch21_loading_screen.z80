@@ -1,0 +1,23 @@
+show_loading_screen:
+    ; Loading screen is already in screen memory ($4000) from BASIC loader
+    ; If loading from esxDOS, load it explicitly:
+    ld   ix, filename_screen
+    call esx_open
+    ret  c
+    push af
+    ld   ix, $4000
+    ld   bc, 6912
+    pop  af
+    push af
+    call esx_read
+    pop  af
+    call esx_close
+
+    ; Minimum display time: 100 frames (2 seconds)
+    ld   b, 100
+.wait:
+    halt
+    djnz .wait
+    ret
+
+filename_screen: db "IRONCLAW.SCR", 0

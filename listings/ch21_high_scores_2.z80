@@ -1,0 +1,22 @@
+; Add points to score
+; DE = points to add (BCD, 2 bytes, max 9999)
+add_score:
+    ld   hl, player_score
+    ld   a, (hl)
+    add  a, e
+    daa                    ; adjust for BCD
+    ld   (hl), a
+    inc  hl
+    ld   a, (hl)
+    adc  a, d
+    daa
+    ld   (hl), a
+    inc  hl
+    ld   a, (hl)
+    adc  a, 0
+    daa
+    ld   (hl), a
+    ret
+
+player_score:
+    db   0, 0, 0           ; 3 bytes BCD, little-endian

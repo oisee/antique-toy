@@ -1,0 +1,8 @@
+Port $7FFD bit layout:
+  Bit 0-2:  RAM page mapped at $C000 (0-7)
+  Bit 3:    Screen select (0 = normal screen at page 5,
+                           1 = shadow screen at page 7)
+  Bit 4:    ROM select (0 = 128K ROM, 1 = 48K BASIC ROM)
+  Bit 5:    Disable paging (set this and banking is locked
+            until next reset -- used by 48K BASIC)
+  Bits 6-7: Unused

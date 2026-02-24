@@ -1,0 +1,61 @@
+; Trigger a sound effect on the SFX channel
+; HL = pointer to SFX data table
+sfx_trigger:
+    ld   (sfx_pointer), hl
+    ld   a, 1
+    ld   (sfx_active), a
+    ld   a, 0
+    ld   (sfx_frame), a
+    ret
+
+; Called every frame from the interrupt handler, AFTER music_play
+sfx_update:
+    ld   a, (sfx_active)
+    or   a
+    ret  z               ; no active SFX
+
+    ; Read current SFX frame data
+    ld   hl, (sfx_pointer)
+    ld   a, (sfx_frame)
+    ld   e, a
+    ld   d, 0
+
+    ; Each SFX frame: [tone_lo, tone_hi, noise, volume, mixer_mask]
+    ; 5 bytes per frame
+    push hl
+    ld   b, 5
+    call multiply_de_b   ; DE = frame * 5 (or use repeated add)
+    pop  hl
+    add  hl, de
+
+    ld   a, (hl)
+    cp   $FF             ; end marker?
+    jr   z, .sfx_done
+
+    ; Override channel C with SFX data
+    ld   e, (hl) : inc hl
+    ld   a, R_TONE_C_LO
+    call ay_write
+
+    ld   e, (hl) : inc hl
+    ld   a, R_TONE_C_HI
+    call ay_write
+
+    ld   e, (hl) : inc hl
+    ld   a, R_NOISE
+    call ay_write
+
+    ld   e, (hl) : inc hl
+    ld   a, R_VOL_C
+    call ay_write
+
+    ; Advance frame counter
+    ld   a, (sfx_frame)
+    inc  a
+    ld   (sfx_frame), a
+    ret
+
+.sfx_done:
+    xor  a
+    ld   (sfx_active), a ; deactivate SFX
+    ret

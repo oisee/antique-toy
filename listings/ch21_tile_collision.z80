@@ -1,0 +1,28 @@
+; Check tile at pixel position (B=x, C=y)
+; Returns: A = tile type (0=empty, 1=solid, 2=hazard, 3=platform)
+check_tile:
+    ; Convert pixel X to tile column: x / 8
+    ld   a, b
+    srl  a
+    srl  a
+    srl  a                 ; A = column (0-31)
+    ld   l, a
+
+    ; Convert pixel Y to tile row: y / 8
+    ld   a, c
+    srl  a
+    srl  a
+    srl  a                 ; A = row (0-23)
+
+    ; Tile index = row * level_width + column
+    ld   h, 0
+    ld   d, h
+    ld   e, a
+    ; Multiply row by level_width (e.g., 256 = trivial: just use E as high byte)
+    ; For level_width = 256: address = level_map + row * 256 + column
+    ld   d, e              ; D = row = high byte of offset
+    ld   e, l              ; E = column = low byte of offset
+    ld   hl, level_collision_map
+    add  hl, de
+    ld   a, (hl)           ; A = tile type
+    ret

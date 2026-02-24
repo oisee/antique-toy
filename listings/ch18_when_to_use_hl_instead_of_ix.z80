@@ -1,0 +1,7 @@
+    ; Copy entity fields to registers for fast rendering
+    ld   l, (ix + 0)        ; 19T  X lo
+    ld   h, (ix + 1)        ; 19T  X hi
+    ld   c, (ix + 2)        ; 19T  Y
+    ld   a, (ix + 5)        ; 19T  anim_frame
+    ; Now render using H (X pixel), C (Y), A (frame)
+    ; All subsequent accesses are register-to-register: 4T each

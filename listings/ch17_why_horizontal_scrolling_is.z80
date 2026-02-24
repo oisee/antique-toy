@@ -1,0 +1,16 @@
+; Scroll one pixel row left by 1 pixel
+; HL points to byte 31 (rightmost) of the row
+;
+; Process right to left. Each byte rotates left; carry propagates.
+;
+    or   a                    ; 4 T   clear carry (no pixel entering from right)
+
+    ; Byte 31 (rightmost)
+    rl   (hl)                 ; 15 T  shift left, bit 7 -> carry, carry -> bit 0
+    dec  hl                   ; 6 T
+    ; Byte 30
+    rl   (hl)                 ; 15 T
+    dec  hl                   ; 6 T
+    ; ...repeat for bytes 29 down to 0...
+    ; Byte 0 (leftmost)
+    rl   (hl)                 ; 15 T  bit 7 of byte 0 is lost (scrolled off screen)

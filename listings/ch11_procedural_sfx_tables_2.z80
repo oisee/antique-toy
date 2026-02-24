@@ -1,0 +1,9 @@
+sfx_laser:
+    DB 10, 0, 0, 14, 0    ; frame 0: high tone
+    DB 30, 0, 0, 13, 0    ; frame 1: sweeping down
+    DB 60, 0, 0, 12, 0    ; frame 2
+    DB 100,0, 0, 10, 0    ; frame 3
+    DB 160,0, 0, 8,  0    ; frame 4
+    DB 240,0, 0, 5,  0    ; frame 5
+    DB 200,1, 0, 3,  0    ; frame 6: into low range
+    DB $FF                 ; end

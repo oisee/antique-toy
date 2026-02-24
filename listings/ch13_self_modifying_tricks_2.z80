@@ -1,0 +1,7 @@
+effect_jump:
+    jr   effect_1               ; this offset gets patched
+    ; ...
+effect_1:
+    ; render effect 1, then:
+    ld   a, effect_2 - effect_jump - 2
+    ld   (effect_jump + 1), a   ; next frame jumps to effect 2

@@ -1,0 +1,13 @@
+; For each screen pixel:
+; DE = texture pointer, HL = screen pointer
+    ld   a,(de)           ;  7T  -- read texture byte
+    and  n                ;  7T  -- test texture bit at current coords
+    jr   z,.pixel_off     ; 12/7T
+    set  m,(hl)           ; 15T  -- set screen bit
+    jr   .pixel_done      ; 12T
+.pixel_off:
+    res  m,(hl)           ; 15T  -- clear screen bit
+.pixel_done:
+    ; advance texture coords (inc e / dec d / etc.)
+    ; advance screen bit position
+    ; ... next pixel

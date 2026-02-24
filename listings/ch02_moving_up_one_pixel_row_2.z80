@@ -1,0 +1,22 @@
+; UP_HL: move HL one pixel row up on the Spectrum screen
+; Input:  HL = current screen address
+; Output: HL = screen address one row above
+;
+; Classic version:
+up_hl:
+    dec  h             ; 4T   try moving one scan line up
+    ld   a, h          ; 4T
+    and  7             ; 7T   did we cross a character boundary?
+    cp   7             ; 7T
+    ret  nz            ; 11/5T  no: done
+
+    ; Crossed a character cell boundary upward.
+    ld   a, l          ; 4T
+    sub  32            ; 7T   previous character row (L -= 32)
+    ld   l, a          ; 4T
+    ret  c             ; 11/5T  if carry, crossed into prev third
+
+    ld   a, h          ; 4T
+    add  a, 8          ; 7T   compensate H
+    ld   h, a          ; 4T
+    ret                ; 10T

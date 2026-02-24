@@ -21,7 +21,7 @@ The AY has 14 registers, addressed R0 through R13. On the ZX Spectrum 128K, you 
 
 Always select the register first, then write the data. This two-step process is fundamental:
 
-```z80
+```z80 id:ch11_the_ay_3_8910_register_map
 ; Write value E to AY register A
 ay_write:
     ld   bc, $FFFD
@@ -59,13 +59,13 @@ Note the trick: we only change the high byte of BC between the two OUT instructi
 
 Each of the three tone channels produces a square wave. The frequency is controlled by a 12-bit period value split across two registers:
 
-```
+```text
 Frequency = AY_clock / (16 x period)
 ```
 
 On the Spectrum 128K, the AY clock is 1.7734 MHz (half the CPU clock of 3.5469 MHz). So for middle C (approximately 262 Hz):
 
-```
+```text
 period = 1,773,400 / (16 x 262) = 423
 ```
 
@@ -103,7 +103,7 @@ Useful ranges:
 
 Register R7 is the heart of the AY. Six bits control which channels receive tone, noise, or both. Two more bits control the I/O port direction (irrelevant for sound, leave them as inputs = 1).
 
-```
+```z80 id:ch11_r7_the_mixer_the_most
 Bit 7: I/O port B direction (1 = input)
 Bit 6: I/O port A direction (1 = input)
 Bit 5: Noise C enable (0 = ON, 1 = off)
@@ -132,12 +132,13 @@ Here is a table of useful mixer combinations:
 
 A common pattern for music: tones A+B for melody and harmony, tone C + noise C for drums:
 
-```
+```z80 id:ch11_r7_the_mixer_the_most_2
 ; Mixer: tone A on, tone B on, tone C on, noise C on
-; Binary: 10 0 000 = noise C on + all tones on
-; = $28
+; Binary: 00 011 000 = noise C on (bit5=0) + all tones on (bits0-2=0)
+;         noise A,B off (bits3,4=1), I/O bits=0
+; = $18
 ld   a, R_MIXER
-ld   e, $28
+ld   e, $18
 call ay_write
 ```
 
@@ -145,7 +146,7 @@ call ay_write
 
 Each channel has a 4-bit volume control (0-15, where 15 is loudest). But bit 4 is special: setting it switches that channel to **envelope mode**, where the volume is controlled automatically by the envelope generator instead of the fixed value.
 
-```
+```z80 id:ch11_volume_registers_r8_r10
 Bit 4: 1 = use envelope generator, 0 = use bits 3-0
 Bits 3-0: Fixed volume level (0-15)
 ```
@@ -158,7 +159,7 @@ The AY has one envelope generator -- shared across all channels that use it. It 
 
 **R11-R12: Envelope Period** -- A 16-bit value controlling the envelope speed:
 
-```
+```text
 Envelope_frequency = AY_clock / (256 x period)
 ```
 
@@ -181,7 +182,7 @@ At period = 1, the envelope cycles at about 6,927 Hz. At period = 65535, it cycl
 
 Waveform diagrams (volume over time):
 
-```
+```text
 $00-$03, $09:  |\        $04-$07, $0F:    /|
                | \                        / |
                |  \___                   /  |___
@@ -214,7 +215,7 @@ Three channels is not a lot. A real band has bass, drums, melody, and harmony as
 
 An arpeggio rapidly cycles through the notes of a chord -- one note per frame. At 50 Hz (PAL), cycling through C4, E4, and G4 every frame produces an effect that the ear perceives as a C major chord, even though only one note sounds at any instant.
 
-```z80
+```z80 id:ch11_arpeggios_fake_chords
 ; Arpeggio: cycle C-E-G on channel A every frame
 ; Called once per frame from the interrupt handler
 arpeggio:
@@ -253,7 +254,7 @@ In a tracker, arpeggios are notated as effects applied to notes. Vortex Tracker 
 
 Here is the most distinctive chiptune bass sound: the "buzz." It works by abusing the envelope generator. Set the envelope to a short repeating sawtooth ($08 or $0C), set the envelope period to match the desired bass note frequency, and restart the envelope every frame. The result is a buzzing, thick bass tone that sounds nothing like a simple square wave.
 
-```z80
+```z80 id:ch11_buzz_bass_the_envelope_trick
 ; Buzz-bass: play bass note using envelope generator
 ; DE = envelope period for desired note
 buzz_bass:
@@ -278,7 +279,7 @@ buzz_bass:
 
 The envelope period for a given bass note is:
 
-```
+```text
 envelope_period = AY_clock / (256 x desired_frequency)
 ```
 
@@ -290,7 +291,7 @@ The buzz-bass gives you a bass instrument that sounds fundamentally different fr
 
 There is a catch with buzz-bass that equal-tempered note tables hide from you. Look at the formula again:
 
-```
+```text
 tone_period    = AY_clock / (16 x frequency)
 envelope_period = tone_period / 16
 ```
@@ -320,7 +321,7 @@ In June 2001, Ivan Roshin published "Частотная таблица с нул
 
 The natural scale for C major / A minor uses these intervals:
 
-```
+```text
 C [9/8] D [10/9] E [16/15] F [9/8] G [10/9] A [9/8] B [16/15] C
 ```
 
@@ -331,7 +332,7 @@ This gives pure fifths (3:2 ratio) for C--G, E--B, A--E. Chromatic notes (sharps
 
 The resulting periods, computed for a *non-standard* AY clock of 1,520,640 Hz:
 
-```z80
+```z80 id:ch11_natural_tuning_table_5_2
 ; Table #5: Natural tuning for AY clock = 1,520,640 Hz
 ; 96 notes (8 octaves), C major / A minor
 ; Ivan Roshin (concept, 2001), oisee/siril (VTi implementation, 2009)
@@ -371,12 +372,12 @@ The key insight is that most main-scale periods are now divisible by 16. Here is
 | D2   | 1280   | 0      | 80                   | Yes |
 | D#2  | 1200   | 0      | 75                   | Yes |
 | E2   | 1152   | 0      | 72                   | Yes |
-| F2   | 1080   | 0      | 67.5 → 68            | ~   |
+| F2   | 1080   | 8      | 67.5 → 68            | ~   |
 | F#2  | 1013   | 5      | 63.3 → 63            | No  |
 | G2   |  960   | 0      | 60                   | Yes |
 | G#2  |  900   | 4      | 56.25 → 56           | No  |
 | A2   |  864   | 0      | 54                   | Yes |
-| A#2  |  810   | 2      | 50.6 → 51            | No  |
+| A#2  |  810   | 10     | 50.6 → 51            | No  |
 | B2   |  768   | 0      | 48                   | Yes |
 
 Seven of twelve notes divide cleanly -- all the natural notes of C major. Compare to the equal-tempered table where *none* do. On those seven notes the envelope and tone generators lock in phase, and the buzz-bass sounds pure.
@@ -410,7 +411,7 @@ With only one noise generator, drums need to share. The standard approach:
 
 **Snare drum:** Noise channel + rapid envelope decay.
 
-```z80
+```z80 id:ch11_drum_synthesis
 ; Snare: noise burst with fast decay
 drum_snare:
     ; Noise period: mid-range
@@ -420,7 +421,7 @@ drum_snare:
 
     ; Mixer: enable noise on channel C
     ld   a, R_MIXER
-    ld   e, $28          ; tones A+B on, tone C on, noise C on
+    ld   e, $18          ; tones A+B+C on, noise C on
     call ay_write
 
     ; Short envelope: fast decay
@@ -445,7 +446,7 @@ drum_snare:
 
 **Kick drum:** Rapid tone sweep downward. Set channel C to a low tone period, then increase the period over several frames:
 
-```z80
+```z80 id:ch11_drum_synthesis_2
 ; Kick: tone sweep down over 4 frames
 ; Call once per frame while kick_counter > 0
 kick_update:
@@ -481,7 +482,7 @@ kick_period:  DW 0
 
 An ornament is a table of per-frame offsets applied to the pitch or volume of a note. Ornaments give life to otherwise static square waves: vibrato, pitch slides, tremolo, attack/decay envelopes -- all accomplished by table lookup.
 
-```z80
+```z80 id:ch11_ornaments_per_frame
 ; Example ornament: pitch vibrato
 ; Table of signed semitone offsets, applied once per frame
 ornament_vibrato:
@@ -501,7 +502,7 @@ Pentagon and Scorpion clones introduced TurboSound -- two AY chips in one machin
 
 On the NedoPC TurboSound card (the most common modern design), chip selection works through port $FFFD:
 
-```z80
+```z80 id:ch11_chip_selection
 ; Select chip 0 (primary)
 ld   bc, $FFFD
 ld   a, $FF          ; bit pattern: select chip 0
@@ -536,7 +537,7 @@ What TurboSound changes musically is significant: on a single AY, the composer i
 
 Adapting a single-AY engine to TurboSound is straightforward. Your interrupt handler becomes:
 
-```z80
+```z80 id:ch11_engine_modification
 music_frame:
     ; Update chip 0
     ld   a, $FF
@@ -552,7 +553,7 @@ music_frame:
     ret
 ```
 
-The register write loop writes all 14 registers from a buffer in RAM. For two chips, you maintain two 14-byte buffers and blast them out sequentially. Total cost: about 28 OUT instructions, roughly 400 T-states.
+The register write loop writes all 14 registers from a buffer in RAM. For two chips, you maintain two 14-byte buffers and blast them out sequentially. Each register write requires selecting the register (LD A,reg + OUT) then writing the value (LD A,val + OUT), costing about 36 T-states per register. For 28 registers total: approximately 1,008 T-states, plus chip selection overhead.
 
 ---
 
@@ -594,7 +595,7 @@ A music engine is the code that reads pattern data and writes AY registers at th
 
 The ZX Spectrum's IM2 (Interrupt Mode 2) fires once per frame -- every 1/50th of a second on PAL systems. The music engine hooks into this:
 
-```z80
+```z80 id:ch11_the_interrupt_driven_player
 ; Setup: install IM2 handler
 setup_im2:
     di
@@ -649,7 +650,7 @@ The player routine, called 50 times per second, does the following:
 
 A simplified skeleton:
 
-```z80
+```z80 id:ch11_the_player_loop
 music_play:
     ; Decrement speed counter
     ld   a, (speed_counter)
@@ -708,7 +709,7 @@ The modern standard for AY music on the Spectrum is **Vortex Tracker II** (.pt3 
 5. Call `music_init` at startup (passing the address of the song data)
 6. Call `music_play` from your interrupt handler every frame
 
-```z80
+```z80 id:ch11_formats_and_trackers
 ; In your main code:
     ld   hl, song_data
     call music_init
@@ -731,7 +732,7 @@ Games need sound effects, and sound effects need channels. The standard approach
 
 ### Channel Stealing
 
-```z80
+```z80 id:ch11_channel_stealing
 ; Trigger a sound effect on the SFX channel
 ; HL = pointer to SFX data table
 sfx_trigger:
@@ -801,7 +802,7 @@ Sound effects are defined as tables of per-frame register values. Here are four 
 
 **Explosion:** Noise with decaying volume.
 
-```z80
+```z80 id:ch11_procedural_sfx_tables
 sfx_explosion:
     ; tone_lo, tone_hi, noise_period, volume, (unused)
     DB 0, 0, 15, 15, 0    ; frame 0: loud low noise
@@ -817,7 +818,7 @@ sfx_explosion:
 
 **Laser:** Fast tone sweep downward.
 
-```z80
+```z80 id:ch11_procedural_sfx_tables_2
 sfx_laser:
     DB 10, 0, 0, 14, 0    ; frame 0: high tone
     DB 30, 0, 0, 13, 0    ; frame 1: sweeping down
@@ -831,7 +832,7 @@ sfx_laser:
 
 **Jump:** Short tone sweep upward.
 
-```z80
+```z80 id:ch11_procedural_sfx_tables_3
 sfx_jump:
     DB 200,0, 0, 12, 0    ; frame 0: mid tone
     DB 150,0, 0, 11, 0    ; frame 1: rising
@@ -843,11 +844,8 @@ sfx_jump:
 
 **Pickup:** Rapid arpeggio upward.
 
-```z80
+```z80 id:ch11_procedural_sfx_tables_4
 sfx_pickup:
-    DB $D4,0, 0, 14, 0    ; frame 0: C5
-    DB $A8,0, 0, 14, 0    ; frame 1: C4 (wrong dir? no:)
-    ; Actually, let's go up:
     DB $FC,0, 0, 14, 0    ; frame 0: A4
     DB $D4,0, 0, 13, 0    ; frame 1: C5
     DB $A0,0, 0, 12, 0    ; frame 2: E5 (approx)
@@ -931,7 +929,7 @@ To extend this example into a real music player, you would replace the linear me
 
 ## Summary
 
-The AY-3-8910 is deceptively simple: 14 registers, 3 channels, basic waveforms. But the gap between "simple" and "limited" is filled by technique. Arpeggios fake chords. Envelope abuse creates bass. Noise shaping synthesizes drums. Ornaments breathe life into static tones. And when three channels are genuinely not enough, TurboSound doubles them and the Next triples them.
+The AY-3-8910 is simple on paper: 14 registers, 3 channels, basic waveforms. But the gap between "simple" and "limited" is filled by technique. Arpeggios fake chords. Envelope abuse creates bass. Noise shaping synthesizes drums. Ornaments breathe life into static tones. And when three channels are genuinely not enough, TurboSound doubles them and the Next triples them.
 
 The architecture pattern is consistent across all configurations: an interrupt fires 50 times per second, a player routine reads pattern data and calculates register values, and those values are blasted to the AY in a tight loop. Whether you are writing your own player or integrating Vortex Tracker, the flow is the same. Understanding the registers means understanding the sound.
 

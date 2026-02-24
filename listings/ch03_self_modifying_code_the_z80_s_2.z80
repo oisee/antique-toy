@@ -1,0 +1,4 @@
+    ld   (restore_sp + 1), sp     ; save SP into the operand below
+    ; ... do stack tricks ...
+restore_sp:
+    ld   sp, $0000                ; self-modified: the $0000 was overwritten

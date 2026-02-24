@@ -1,0 +1,7 @@
+For each third (3 iterations):
+    For each character row within the third (8 iterations):
+        For each scan line within the character cell (8 iterations):
+            process this row
+            INC H                  ; next scan line
+        undo 8 INC H's, ADD 32 to L   ; next character row
+    undo 8 ADD 32's, advance to next third

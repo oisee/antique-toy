@@ -1,0 +1,34 @@
+; Iterate all 192 screen rows using split counters
+; HL = $4000 at entry (top-left of screen)
+;
+iterate_screen:
+    ld   hl, $4000          ; 10T  start of screen
+    ld   c, 3               ; 7T   3 thirds
+
+.third_loop:
+    ld   b, 8               ; 7T   8 character rows per third
+
+.row_loop:
+    push hl                 ; 11T  save start of this char row
+
+    ; --- Process 8 scan lines within this character cell ---
+    REPT 7
+        ; ... your per-row code here, using HL ...
+        inc  h              ; 4T   next scan line
+    ENDR
+    ; ... process the 8th (last) scan line ...
+
+    pop  hl                 ; 10T  restore char row start
+    ld   a, l               ; 4T
+    add  a, 32              ; 7T   next character row
+    ld   l, a               ; 4T
+
+    djnz .row_loop          ; 13T/8T
+
+    ; Advance to next third
+    ld   a, h               ; 4T
+    add  a, 8               ; 7T   next third ($0800 higher)
+    ld   h, a               ; 4T
+
+    dec  c                  ; 4T
+    jr   nz, .third_loop    ; 12T/7T

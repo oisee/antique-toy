@@ -1,0 +1,19 @@
+graph TD
+    IDEA["Idea\n(visual concept, mood, music)"] --> PROTO["Prototype\n(verify/ HTML/JS, or\nquick Z80 test)"]
+    PROTO --> IMPL["Z80 Implementation\n(sjasmplus, effect code)"]
+    IMPL --> TIME{"Fits in\nframe budget?"}
+    TIME -- No --> OPT["Optimise\n(unroll, precompute,\nreduce scope)"]
+    OPT --> IMPL
+    TIME -- Yes --> POLISH["Polish\n(transitions, sync to music,\ncolour palette)"]
+    POLISH --> PARTY["Party Version\n(submit to compo)"]
+    PARTY --> FINAL["Final Version\n(fix bugs, add credits,\ntest on hardware)"]
+
+    IMPL -.-> |"border-colour timing"| TIME
+    POLISH -.-> |"scene table reorder"| POLISH
+
+    style IDEA fill:#ffd,stroke:#993
+    style PROTO fill:#ddf,stroke:#339
+    style IMPL fill:#dfd,stroke:#393
+    style OPT fill:#fdd,stroke:#933
+    style PARTY fill:#fdf,stroke:#939
+    style FINAL fill:#dff,stroke:#399

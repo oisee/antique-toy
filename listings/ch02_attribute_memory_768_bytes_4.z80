@@ -1,0 +1,4 @@
+; Build an attribute byte: bright white ink on blue paper
+; Bright = 1, Paper = 001 (blue), Ink = 111 (white)
+; = 01 001 111 = $4F
+    ld   a, $4F

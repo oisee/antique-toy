@@ -1,0 +1,16 @@
+; Apply gravity to entity at IX
+; velocity_y is 16-bit signed, 8.8 fixed-point
+apply_gravity:
+    ld   l, (ix + ENT_VY)
+    ld   h, (ix + ENT_VY + 1)
+    ld   de, GRAVITY       ; e.g., $0040 = 0.25 pixels/frame/frame
+    add  hl, de
+    ; Clamp to terminal velocity
+    ld   a, h
+    cp   MAX_FALL_SPEED    ; e.g., 4 pixels/frame
+    jr   c, .no_clamp
+    ld   hl, MAX_FALL_SPEED * 256
+.no_clamp:
+    ld   (ix + ENT_VY), l
+    ld   (ix + ENT_VY + 1), h
+    ret

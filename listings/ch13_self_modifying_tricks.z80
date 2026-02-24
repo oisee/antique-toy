@@ -1,0 +1,4 @@
+frame_ld:
+    ld   a, 0               ; this 0 is the frame counter
+    inc  a
+    ld   (frame_ld + 1), a  ; update the counter in place

@@ -1,0 +1,33 @@
+; ai_patrol_swooper -- Vertical sine wave patrol
+;
+; Input:  IX = swooper entity
+; Output: Position updated with vertical oscillation
+;
+; Uses anim_frame as the sine table index, incrementing each AI tick
+;
+; Cost: ~80 T-states (Pentagon)
+
+ai_patrol_swooper:
+    ; Vertical oscillation
+    ld   a, (ix+6)        ; 19T  anim_frame = sine index
+    inc  (ix+6)           ; 23T  advance for next frame
+    ld   h, sine_table >> 8 ; 7T  sine table base (page-aligned, per Ch.4)
+    ld   l, a             ; 4T   index
+    ld   a, (hl)          ; 7T   signed sine value (-128..+127)
+    sra  a                ; 8T   /2 (reduce amplitude)
+    sra  a                ; 8T   /4
+    add  a, (ix+3)        ; 19T  base Y + oscillation
+    ld   (ix+3), a        ; 19T
+
+    ; Check for dive: is player directly below?
+    ld   a, (player_x)
+    sub  (ix+1)
+    jr   nc, .pos
+    neg
+.pos:
+    cp   8                ; within 8 pixels horizontally?
+    ret  nc               ; not aligned -- stay patrolling
+
+    ; Player below and aligned -- switch to dive (CHASE)
+    ld   (ix+5), ST_CHASE
+    ret

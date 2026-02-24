@@ -1,0 +1,11 @@
+; update_physics -- Full physics update for one entity
+;
+; Input:  IX = entity pointer
+; Call order matters: gravity first, then move, then collide
+
+update_entity_physics:
+    call apply_gravity         ; accumulate downward velocity
+    call apply_friction        ; decay horizontal velocity
+    call move_entity           ; apply velocity to position
+    call check_player_tiles    ; resolve tile collisions
+    ret

@@ -1,0 +1,3 @@
+    ld   hl, compressed_screen    ; source: compressed data
+    ld   de, $4000                ; destination: screen memory
+    call dzx0_standard            ; decompress

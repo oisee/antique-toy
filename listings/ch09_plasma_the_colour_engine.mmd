@@ -1,0 +1,15 @@
+graph TD
+    A["For each attribute cell (row, col)"] --> B["Look up sin(col × freq1 + phase1)\nfrom 256-byte sine table"]
+    B --> C["Look up sin(row × freq2 + phase2)"]
+    C --> D["Look up sin(col+row + phase3)"]
+    D --> E["Sum the three sine values"]
+    E --> F["Index into colour map\n(sum → attribute byte)"]
+    F --> G["Write attribute to buffer"]
+    G --> H{More cells\nin quadrant?}
+    H -- Yes --> A
+    H -- No --> I["4-fold symmetry copy:\ntop-left → top-right,\nbottom-left, bottom-right"]
+    I --> J["Increment phase1, phase2, phase3\n→ next frame"]
+    J --> A
+
+    style F fill:#f9f,stroke:#333
+    style I fill:#bfb,stroke:#333

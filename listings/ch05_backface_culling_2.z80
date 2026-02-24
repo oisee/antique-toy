@@ -1,0 +1,39 @@
+; Backface culling test for one face
+; Input: three projected vertices (x0,y0), (x1,y1), (x2,y2)
+; Output: carry flag set if face is back-facing (should be culled)
+
+backface_test:
+    ; V = v1 - v0
+    ld   a, (x1)
+    sub  (ix+x0)
+    ld   d, a               ; D = Vx = x1 - x0
+
+    ld   a, (y1)
+    sub  (ix+y0)
+    ld   e, a               ; E = Vy = y1 - y0
+
+    ; W = v2 - v0
+    ld   a, (x2)
+    sub  (ix+x0)
+    ld   b, a               ; B = Wx = x2 - x0
+
+    ld   a, (y2)
+    sub  (ix+y0)
+    ld   c, a               ; C = Wy = y2 - y0
+
+    ; Normal Z = Vx * Wy - Vy * Wx
+    ld   a, d
+    call mul_signed_c        ; HL = Vx * Wy (D * C)
+    push hl
+
+    ld   a, e
+    ld   c, b
+    call mul_signed_c        ; HL = Vy * Wx (E * B)
+
+    pop  de
+    ex   de, hl
+    or   a
+    sbc  hl, de             ; HL = Vx*Wy - Vy*Wx
+
+    bit  7, h               ; check sign
+    ret                     ; carry/sign indicates facing

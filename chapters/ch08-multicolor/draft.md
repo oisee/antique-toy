@@ -49,11 +49,11 @@ Here is how it works.
 
 ### LD DE,nn / PUSH DE
 
-The instruction `LD DE,nn` loads a 16-bit immediate value into register pair DE. It takes 10 T-states and is 3 bytes long: the opcode byte `$11`, followed by two data bytes (the value to load, low byte first). The instruction `PUSH DE` writes the contents of DE to the address pointed to by SP, then decrements SP by 2. It takes 11 T-states.
+The instruction `LD DE,nn` loads a 16-bit immediate value into register pair DE. It takes 10 T-states and is 3 bytes long: the opcode byte `$11`, followed by two data bytes (the value to load, low byte first). The instruction `PUSH DE` decrements SP by 1, writes the high byte of DE, decrements SP by 1 again, then writes the low byte. The result: SP ends up 2 lower, with the high byte at the higher address and the low byte at the lower address. It takes 11 T-states.
 
 Together, `LD DE,nn : PUSH DE` costs 21 T-states, is 4 bytes long, and writes 2 bytes of data to the screen. The "data" is the immediate operand of the LD instruction. To change what gets drawn, you do not rewrite a display buffer --- you patch the operand bytes inside the LD instructions themselves.
 
-```z80
+```z80 id:ch08_ld_de_nn_push_de
 ; One LDPUSH pair: writes 2 bytes to screen memory
     ld   de,$AA55       ; 10 T  load pixel data
     push de             ; 11 T  write to (SP), SP = SP - 2
@@ -161,7 +161,7 @@ Ringo's sprites are 12x10 "pixels" in the 64x48 grid, which means 12 attribute b
 
 Tile rendering is more involved. DenisGrachev pre-generates tile rendering code in memory pages, using `pop af : or (hl)` patterns:
 
-```z80
+```z80 id:ch08_where_the_t_states_go
 ; Tile rendering fragment (conceptual)
     pop  af             ; 10 T  load tile data from stack-based source
     or   (hl)           ;  7 T  combine with existing screen data
@@ -200,7 +200,7 @@ The technique works like this:
 The timing is brutal. Each scanline takes 224 T-states on Pentagon. The ULA reads 32 attribute bytes early in each scanline, and the CPU must change all 32 bytes in the gap before the next read. With `LD (HL),A : INC L` at 11 T-states per byte, writing 32 bytes takes 352 T-states --- more than one entire scanline. You cannot change every scanline. At best, you can change every other scanline (8x2 resolution) if you use the fastest possible output method (PUSH-based), and even then the timing margins are razor-thin.
 
 <!-- figure: ch08_multicolor_beam_racing -->
-```mermaid
+```mermaid id:ch08_traditional_multicolor_the
 sequenceDiagram
     participant CPU
     participant ULA as ULA (electron beam)
@@ -268,7 +268,7 @@ Let us build a simplified multicolor renderer. The goal: a 24-character-wide gam
 
 First, we need a block of memory filled with LDPUSH instruction pairs. For each scanline in the 24-character game area, we need 12 pairs of `LD DE,nn : PUSH DE` (each pair outputs 2 bytes, 12 pairs output 24 bytes = the full game area width).
 
-```z80
+```z80 id:ch08_step_1_the_display_code
 ; Structure of one scanline's display code (conceptual)
 ; SP is pre-set to the right edge of this scanline in screen memory
 
@@ -293,7 +293,7 @@ The total display code for 128 scanlines (16 character rows x 8 scanlines each) 
 
 Every two scanlines, the display code must include attribute writes. Between the LDPUSH sequences for scanlines N and N+2, insert code that overwrites the 32 attribute bytes for the current character row:
 
-```z80
+```z80 id:ch08_step_2_attribute_changes
 ; After outputting scanline N...
 ; Attribute change for the next 2-scanline band
 
@@ -314,7 +314,7 @@ The attribute changes are embedded directly in the display code stream. They exe
 
 To draw a tile into the game area, you must patch the operand bytes of the LD instructions in the display code buffer. A 16x16 pixel tile covers 2 bytes wide and 16 scanlines tall. In the display code, those 2 bytes are the operand of a specific LD DE instruction. To update the tile:
 
-```z80
+```z80 id:ch08_step_3_tile_rendering_via
 ; Patch one scanline of a 16x16 tile into the display buffer
 ; IX points to the LD DE instruction for this position in the buffer
 ; HL points to the tile's pixel data for this scanline
@@ -337,7 +337,7 @@ This is why GLUF splits rendering across two frames. Frame 1 handles the time-cr
 
 Sprites are rendered on top of tiles using the same operand-patching technique, but with an additional step: save the original operand bytes before overwriting them, so the sprite can be erased on the next frame by restoring the saved data.
 
-```z80
+```z80 id:ch08_step_4_sprite_overlay
 ; Sprite rendering: save background, patch sprite data
     ld   a,(ix+1)           ; read current (background) byte
     ld   (save_buffer),a    ; save for later restoration
@@ -349,7 +349,7 @@ The save/restore mechanism is the multicolor equivalent of dirty-rectangle sprit
 
 ### Step 5: The main loop
 
-```z80
+```z80 id:ch08_step_5_the_main_loop
 main_loop:
     halt                    ; synchronise with frame
 
@@ -389,17 +389,7 @@ This skeleton captures the essential rhythm: two frames per logical game frame, 
 
 ## What DenisGrachev's Work Means
 
-The demoscene has always been about pushing hardware past its limits. But there is a distinction --- sometimes overlooked, sometimes intentional --- between pushing hardware for a ten-second demo and pushing it for a playable game.
-
-Demos are performance art. They run once, they impress, they end. There is no input handling. There is no collision detection. There is no state that persists from one frame to the next (beyond what the effect needs internally). A demo can spend 100% of its T-states on visual spectacle because spectacle is all it needs to produce.
-
-Games are engineering. They must read the keyboard, update entity positions, check collisions, play sound, manage game state, and render the screen --- every frame, forever, while remaining responsive to the player. Each of these systems competes for the same 70,000-cycle budget. A technique that works in a demo but consumes 90% of the CPU is useless for games.
-
-DenisGrachev's achievement is solving the engineering problem. Multicolor was known. The visual potential was known. The LDPUSH instruction pattern was arguably implicit in the demoscene's long history of stack-based output tricks (Chapter 3). What was not known was how to fit multicolor rendering, tile engines, sprite overlay, double buffering, sound, input, and game logic into the same frame budget. The two-frame architecture, the merged code-as-data display buffer, the 25 Hz sound compromise, the careful budget allocation --- these are game engine decisions, not demo tricks.
-
-The Ringo engine pushes further in a different direction. By using dual-screen switching instead of beam-synchronised attribute changes, it trades colour resolution (64x48 instead of GLUF's 192x128 pixel grid) for a radically cheaper rendering path. The CPU overhead of screen switching is a handful of `OUT` instructions per frame. What you gain is cycle budget. What you spend it on is game logic.
-
-Both engines represent a philosophy: the demoscene's techniques are not museum exhibits. They are engineering tools, applicable to real products, if you are willing to do the work of making them practical. DenisGrachev's multicolor games do not look like ZX Spectrum games. They look like games that happen to run on a ZX Spectrum. That distinction is the whole point.
+DenisGrachev's achievement was not inventing multicolor --- the technique was known. It was solving the engineering problem of fitting multicolor rendering, tile engines, sprite overlay, double buffering, sound, and game logic into the same frame budget. The two-frame architecture, the merged code-as-data display buffer, and the 25 Hz sound compromise are game engine decisions, not demo tricks. Ringo pushed further by trading colour resolution (64x48 vs GLUF's 192x128 pixel grid) for a cheaper rendering path via dual-screen switching.
 
 ---
 

@@ -1,0 +1,10 @@
+; Spectrum: read keyboard
+    ld   a,$FD             ; half-row: Q W E R T
+    in   a,($FE)
+    bit  0,a               ; bit 0 = Q
+    ; ...
+
+; Agon: read keyboard via MOS
+    ld   a,mos_getkey      ; MOS: get key state
+    rst  $08
+    ; A = key code, or 0 if no key pressed

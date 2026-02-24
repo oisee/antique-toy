@@ -1,0 +1,8 @@
+; Scroll one scan line of the play area left by 1 character column
+; Play area is 20 columns wide (columns 2-21, for example)
+; Source: column 3, Dest: column 2, count: 19
+;
+    ld   hl, row_addr + 3    ; source = byte 3 of this scan line
+    ld   de, row_addr + 2    ; dest   = byte 2
+    ld   bc, 19              ; 19 bytes to copy
+    ldir                     ; 18*21 + 16 = 394 T

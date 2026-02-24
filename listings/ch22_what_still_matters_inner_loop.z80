@@ -1,0 +1,14 @@
+; Tight entity scan: same optimization principles on both platforms
+; Prefer: register-to-register ops, direct addressing, DJNZ
+; Avoid: IX-indexed loads in hot inner loops when possible
+
+scan_entities_fast:
+    ld   hl,entity_flags    ; pointer to flags array
+    ld   b,MAX_ENTITIES
+.loop:
+    ld   a,(hl)
+    bit  0,a
+    call nz,process_entity
+    inc  hl                 ; next entity flag (assume 1-byte stride)
+    djnz .loop
+    ret

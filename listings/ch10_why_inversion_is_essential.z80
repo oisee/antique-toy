@@ -1,0 +1,19 @@
+; Swap ink and paper in attribute byte (A)
+; Input:  A = F B P2 P1 P0 I2 I1 I0
+; Output: A = F B I2 I1 I0 P2 P1 P0
+    ld   b, a
+    and  $C0           ; isolate Flash + Bright bits
+    ld   c, a          ; save FB------
+    ld   a, b
+    and  $38           ; isolate paper (--PPP---)
+    rrca
+    rrca
+    rrca               ; paper now in ink position (-----PPP)
+    ld   d, a          ; save ink-from-paper
+    ld   a, b
+    and  $07           ; isolate ink (-----III)
+    rlca
+    rlca
+    rlca               ; ink now in paper position (--III---)
+    or   d             ; combine: --IIIPPP
+    or   c             ; combine: FBIIIPPP = swapped attribute

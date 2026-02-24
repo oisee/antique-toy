@@ -1,0 +1,89 @@
+; Side-scroller engine — ZX Spectrum 128K
+; Uses combined character + pixel method with shadow screen.
+;
+    ORG $8000
+
+PLAY_X      EQU 2           ; play area starts at column 2
+PLAY_Y      EQU 2           ; play area starts at char row 2
+PLAY_W      EQU 20          ; play area width in characters
+PLAY_H      EQU 20          ; play area height in characters
+
+scroll_pixel_x:   DB 0      ; pixel offset 0-7
+scroll_tile_x:    DW 0      ; tile column at left edge
+screen_flag:      DB 0      ; which screen is visible
+current_bank:     DB 0      ; current $7FFD value
+
+; --- Main loop ---
+main:
+    halt                     ; 4 T   sync to frame
+
+    ; Advance scroll
+    ld   a, (scroll_pixel_x) ; 13 T
+    inc  a                   ; 4 T
+    cp   8                   ; 7 T
+    jr   c, .pixel_only      ; 12/7 T
+
+    ; Character scroll frame
+    xor  a
+    ld   (scroll_pixel_x), a
+
+    ; Advance tile position
+    ld   hl, (scroll_tile_x)
+    inc  hl
+    ld   (scroll_tile_x), hl
+
+    ; Get back buffer address
+    call get_back_buffer     ; HL = $4000 or $C000
+
+    ; Redraw full play area from tilemap into back buffer
+    call render_play_area    ; ~50,000 T
+
+    ; Flip screens
+    call flip_screens        ; ~30 T
+
+    jr   .frame_done
+
+.pixel_only:
+    ld   (scroll_pixel_x), a
+
+    ; Shift edge columns in current (non-displayed) buffer
+    call get_back_buffer
+    call shift_edge_columns  ; ~9,600 T
+
+    call flip_screens
+
+.frame_done:
+    call update_player       ; ~2,000 T
+    call draw_sprites        ; ~5,000 T
+    call play_music          ; ~3,000 T (IM2 handler)
+
+    jr   main
+
+; --- Render full play area from tilemap ---
+; Input: HL = base address of target screen ($4000 or $C000)
+;
+render_play_area:
+    ; For each tile in the play area:
+    ;   Look up tile index from tilemap
+    ;   Copy 8 bytes of tile data to screen, navigating interleave
+    ;
+    ; 20 columns x 20 rows = 400 tiles
+    ; Each tile: 8 scan lines x 1 byte = 8 LDI operations
+    ; Per tile: lookup (20 T) + 8 x (LDI 16 T + INC H 4 T) = 180 T
+    ; Total: 400 x 180 = 72,000 T
+    ;
+    ; (Actual implementation uses PUSH tricks and
+    ;  pre-computed screen address tables for ~55,000 T)
+    ret
+
+; --- Shift edge columns by 1 pixel ---
+; Shifts the 2 rightmost columns of the play area left by 1 pixel
+;
+shift_edge_columns:
+    ; For each of 160 pixel rows in the play area:
+    ;   Navigate to the correct screen address
+    ;   RL (HL) on the 2 edge bytes, right to left
+    ;
+    ; Per row: 40 T (2 bytes shifted) + 20 T (navigation)
+    ; Total: 160 x 60 = 9,600 T
+    ret

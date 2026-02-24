@@ -1,0 +1,9 @@
+; Select chip 0 (primary)
+ld   bc, $FFFD
+ld   a, $FF          ; bit pattern: select chip 0
+out  (c), a
+
+; Select chip 1 (secondary)
+ld   bc, $FFFD
+ld   a, $FE          ; bit pattern: select chip 1
+out  (c), a

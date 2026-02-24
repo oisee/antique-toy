@@ -1,0 +1,8 @@
+    ; Unrolled chaos zoomer fragment
+    ld hl,src_addr_0    ; source for output cell 0
+    ldi                 ; copy to output, advance DE
+    ld hl,src_addr_1    ; source for output cell 1
+    ldi
+    ld hl,src_addr_2    ; source for output cell 2
+    ldi
+    ; ... repeated for all 768 cells (or one quarter, with symmetry)

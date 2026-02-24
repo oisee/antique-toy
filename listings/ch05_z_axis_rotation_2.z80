@@ -1,0 +1,47 @@
+; Rotate point around Z axis
+; Input:  (px), (py) = coordinates; (angle_z) = rotation angle
+; Output: (px), (py) updated
+; Uses:   cos_table, sin_table (page-aligned, signed 8-bit)
+
+rotate_z:
+    ld   a, (angle_z)
+    ld   l, a
+    ld   h, cos_table >> 8
+    ld   d, (hl)            ; D = cos(Az)
+    ld   h, sin_table >> 8
+    ld   e, (hl)            ; E = sin(Az)
+
+    ; X' = X*cos(Az) + Y*sin(Az)
+    ld   a, (px)
+    ld   b, a
+    ld   c, d               ; B=X, C=cos
+    call mul_signed          ; HL = X * cos(Az)
+    push hl
+
+    ld   a, (py)
+    ld   b, a
+    ld   c, e               ; B=Y, C=sin
+    call mul_signed          ; HL = Y * sin(Az)
+    pop  de
+    add  hl, de             ; HL = X*cos + Y*sin
+    ld   a, h               ; take high byte as new X'
+    ld   (px), a
+
+    ; Y' = -X*sin(Az) + Y*cos(Az)
+    ld   a, (px_original)   ; need the original X, not the updated one
+    neg
+    ld   b, a
+    ld   c, e               ; B=-X, C=sin
+    call mul_signed          ; HL = -X * sin(Az)
+    push hl
+
+    ld   a, (py)
+    ld   b, a
+    ld   c, d               ; B=Y, C=cos
+    call mul_signed          ; HL = Y * cos(Az)
+    pop  de
+    add  hl, de             ; HL = -X*sin + Y*cos
+    ld   a, h
+    ld   (py), a
+
+    ret

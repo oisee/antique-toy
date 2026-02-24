@@ -1,0 +1,14 @@
+; Agon: Move sprite 0 to (x, y)
+; Input: BC = x, DE = y
+;
+move_sprite:
+    ld   a, 23 : rst $10
+    ld   a, 27 : rst $10
+    ld   a, 4  : rst $10    ; move command
+    ld   a, 0  : rst $10    ; sprite number
+
+    ld   a, c  : rst $10    ; x low
+    ld   a, b  : rst $10    ; x high
+    ld   a, e  : rst $10    ; y low
+    ld   a, d  : rst $10    ; y high
+    ret

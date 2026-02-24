@@ -1,0 +1,7 @@
+; Self-modifying code: fill with a runtime-determined value
+    ld   a, (fill_value)       ; load the fill byte from somewhere
+    ld   (patch + 1), a        ; overwrite the operand of the LD below
+patch:
+    ld   (hl), $00             ; this $00 gets replaced at runtime
+    inc  hl
+    ; ...

@@ -1,0 +1,12 @@
+; Seed Patrik Rak CMWC from FRAMES system variable
+    ld   hl, $5C78            ; FRAMES (3 bytes, increments at 50 Hz)
+    ld   a, (hl)              ; low byte -- most variable
+    ld   de, patrik_rak_cmwc_rnd.table
+    ld   b, 8
+.seed_loop:
+    xor  (hl)                 ; mix with FRAMES
+    ld   (de), a              ; write to table
+    inc  de
+    rlca                      ; rotate for variety
+    add  a, b                 ; add loop counter
+    djnz .seed_loop

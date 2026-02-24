@@ -1,0 +1,6 @@
+; ADL mode: 24-bit addressing, full 512KB accessible
+    ld   hl, $040000       ; point to a buffer 256KB into RAM
+    ld   (hl), $FF         ; write directly -- no banking needed
+    ld   bc, 1024
+    ld   de, $040001
+    ldir                   ; fill 1KB in one shot

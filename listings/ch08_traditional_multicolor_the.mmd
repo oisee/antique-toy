@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant CPU
+    participant ULA as ULA (electron beam)
+    participant ATTR as Attribute RAM ($5800)
+
+    Note over ULA: Scanline N begins (224T)
+    ULA->>ATTR: Read 32 attribute bytes for row
+    Note over ULA: Display scanline N using attrs
+
+    rect rgb(200, 230, 255)
+        Note over CPU: ← Window: CPU rewrites attributes
+        CPU->>ATTR: Write 32 new attribute bytes
+        Note over CPU: (must complete before next read!)
+    end
+
+    Note over ULA: Scanline N+2 begins
+    ULA->>ATTR: Read 32 attribute bytes (sees NEW values)
+    Note over ULA: Display scanline N+2 with new colours
+
+    rect rgb(200, 230, 255)
+        Note over CPU: ← Window: CPU rewrites again
+        CPU->>ATTR: Write 32 more attribute bytes
+    end
+
+    Note over ULA: Scanline N+4 begins
+    ULA->>ATTR: Read attrs (sees NEWEST values)
+    Note over ULA: Display with third colour band

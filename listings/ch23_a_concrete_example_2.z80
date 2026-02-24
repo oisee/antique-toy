@@ -1,0 +1,23 @@
+fill_diagonal:
+    ld   hl, $5800
+    ld   d, 0               ; row index
+
+.row_loop:
+    ld   e, 0               ; column index
+    ld   b, 32
+
+.col_loop:
+    ld   a, d
+    add  a, e               ; diagonal = row + col
+    and  7
+    or   $40                ; BRIGHT + INK colour
+    ld   (hl), a
+    inc  hl
+    inc  e
+    djnz .col_loop
+
+    inc  d
+    ld   a, d
+    cp   24
+    jr   nz, .row_loop
+    ret

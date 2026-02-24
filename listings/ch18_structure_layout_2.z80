@@ -1,0 +1,7 @@
+Bit 0: ACTIVE      -- entity is alive and should be updated/rendered
+Bit 1: VISIBLE     -- entity should be rendered (active but invisible = logic only)
+Bit 2: COLLIDABLE  -- entity participates in collision detection
+Bit 3: FACING_LEFT -- horizontal facing direction
+Bit 4: INVINCIBLE  -- temporary invulnerability (player after being hit)
+Bit 5: ON_GROUND   -- entity is standing on solid ground (set by physics)
+Bit 6-7: reserved

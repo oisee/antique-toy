@@ -1,0 +1,4 @@
+; Deactivate entity at IX
+deactivate_entity:
+    ld   (ix + 9), 0        ; 19T  clear all flags (ACTIVE=0)
+    ret

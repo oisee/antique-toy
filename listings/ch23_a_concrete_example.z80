@@ -1,0 +1,26 @@
+; Fill attributes with diagonal stripes
+; Pattern: alternating INK colours along diagonals
+    ORG $8000
+
+fill_diagonal:
+    ld   hl, $5800          ; attribute memory start
+    ld   b, 24              ; 24 rows
+
+.row_loop:
+    ld   c, 32              ; 32 columns per row
+    ld   a, 24
+    sub  b                  ; A = row index (0-23)
+
+.col_loop:
+    push af
+    add  a, c               ; A = row + column
+    and  7                  ; clamp to 0-7 (INK colours)
+    or   $40                ; set BRIGHT bit
+    ld   (hl), a            ; write attribute
+    inc  hl
+    pop  af
+    dec  c
+    jr   nz, .col_loop
+
+    djnz .row_loop
+    ret

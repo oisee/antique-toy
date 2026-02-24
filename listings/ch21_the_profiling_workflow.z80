@@ -1,0 +1,10 @@
+; At the end of the gameplay frame, before HALT:
+    ; Check if we're still in the current frame
+    ; (a simple approach: read the raster line via floating bus
+    ;  or use a frame counter incremented by IM2)
+    ld   a, (frame_overflow_flag)
+    or   a
+    jr   z, .ok
+    ; Frame overflowed -- set debug breakpoint trigger
+    nop                    ; <-- set DeZog breakpoint here
+.ok:

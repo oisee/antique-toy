@@ -1,0 +1,9 @@
+; Shift mask and graphic right by A bits
+; This adds significant cost per byte
+    ld   a, (de)            ;  7 T   load mask byte
+    ld   c, a               ;  4 T
+    ld   a, b               ;  4 T   shift count
+.shift:
+    srl  c                  ;  8 T   \
+    dec  a                  ;  4 T    | per-bit shift loop
+    jr   nz, .shift         ; 12 T   /

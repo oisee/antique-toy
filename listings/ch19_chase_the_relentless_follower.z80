@@ -1,0 +1,55 @@
+; ai_chase -- Move toward the player
+;
+; Input:  IX = enemy entity
+; Output: Position updated, state may transition to ATTACK or RETREAT
+;
+; Cost: ~100 T-states (Pentagon)
+
+CHASE_SPEED equ 2         ; faster than patrol
+
+ai_chase:
+    ; --- Move toward player ---
+    ld   a, (player_x)    ; 13T
+    sub  (ix+1)           ; 19T  dx = player.x - enemy.x
+    jr   z, .vertical     ; 12/7T  same column -- skip horizontal
+
+    ; Sign of dx determines direction
+    jr   c, .chase_left   ; 12/7T  player is to the left (dx negative)
+
+.chase_right:
+    ld   a, (ix+1)        ; 19T
+    add  a, CHASE_SPEED   ; 7T
+    ld   (ix+1), a        ; 19T
+    res  1, (ix+12)       ; 23T  face right
+    jr   .check_attack    ; 12T
+
+.chase_left:
+    ld   a, (ix+1)        ; 19T
+    sub  CHASE_SPEED      ; 7T
+    ld   (ix+1), a        ; 19T
+    set  1, (ix+12)       ; 23T  face left
+
+.vertical:
+.check_attack:
+    ; --- Close enough to attack? ---
+    ld   a, (player_x)
+    sub  (ix+1)
+    jr   nc, .pos_atk
+    neg
+.pos_atk:
+    cp   ATTACK_RANGE     ; 7T   e.g., 16 pixels
+    jr   nc, .check_retreat ; 12/7T  not close enough
+
+    ; In attack range -- transition to ATTACK
+    ld   (ix+5), ST_ATTACK
+    ret
+
+.check_retreat:
+    ; --- Low health? Retreat. ---
+    ld   a, (ix+11)       ; 19T  health
+    cp   RETREAT_THRESHOLD ; 7T   e.g., 2 out of 8
+    ret  nc               ; 11/5T  health OK -- stay in CHASE
+
+    ; Health critical -- retreat
+    ld   (ix+5), ST_RETREAT
+    ret

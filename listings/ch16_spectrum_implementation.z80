@@ -1,0 +1,15 @@
+; Sprite structure (12 bytes per sprite)
+;
+SPRITE_X        EQU 0       ; x coordinate (0-255)
+SPRITE_Y        EQU 1       ; y coordinate (0-191)
+SPRITE_OLD_X    EQU 2       ; previous x (for erase)
+SPRITE_OLD_Y    EQU 3       ; previous y
+SPRITE_FRAME    EQU 4       ; current animation frame (0-3)
+SPRITE_DIR      EQU 5       ; direction / flags
+SPRITE_DX       EQU 6       ; x velocity (signed)
+SPRITE_DY       EQU 7       ; y velocity (signed)
+SPRITE_GFX      EQU 8       ; pointer to sprite graphic data (2 bytes)
+SPRITE_SAVE     EQU 10      ; pointer to background save buffer (2 bytes)
+
+SPRITE_SIZE     EQU 12
+NUM_SPRITES     EQU 8

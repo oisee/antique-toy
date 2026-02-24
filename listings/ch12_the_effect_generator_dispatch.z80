@@ -1,0 +1,21 @@
+; Generate one frame of the current effect
+; Writes attribute data to the ring buffer
+generate_frame:
+    ld   a, (current_effect)
+    or   a
+    jr   z, .do_plasma
+    cp   1
+    jr   z, .do_bars
+    cp   2
+    jr   z, .do_scroller
+    ret
+
+.do_plasma:
+    call calc_plasma          ; from Chapter 9 -- writes 768 bytes
+    ret
+.do_bars:
+    call calc_colour_bars     ; horizontal attribute stripes
+    ret
+.do_scroller:
+    call calc_text_scroll     ; text rendering into attributes
+    ret

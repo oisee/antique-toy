@@ -1,0 +1,9 @@
+; Simplified depth sort: compute average Z for each visible face,
+; sort face indices by descending Z (farthest first)
+
+sort_faces:
+    ; For each visible face:
+    ;   average_z = (z[v0] + z[v1] + z[v2] + z[v3]) / 4
+    ;   store (average_z, face_index) in sort buffer
+    ; Then insertion-sort the buffer by average_z
+    ; ...

@@ -22,7 +22,7 @@ Axis-Aligned Bounding Boxes. Every entity gets a rectangle defined by its positi
 If any one of these conditions fails, the boxes do not overlap. This is the **early exit** that makes AABB fast: on average, most entity pairs are *not* colliding, so most checks bail out after one or two comparisons rather than doing all four.
 
 <!-- figure: ch19_aabb_collision -->
-```mermaid
+```mermaid id:ch19_aabb_the_only_shape_you_need
 graph TD
     START["Check collision\nbetween Entity A and Entity B"] --> X1{"A.left < B.right?\n(A.x < B.x + B.width)"}
     X1 -- No --> MISS["No collision\n(clear carry, return)"]
@@ -42,11 +42,11 @@ graph TD
     style Y2 fill:#fee,stroke:#933
 ```
 
-> **Early exit saves cycles:** Most entity pairs are far apart. The first X-overlap test rejects them in ~82 T-states. Only pairs that pass all four tests (worst case: ~156 T-states) are collisions. Test horizontal overlap first in side-scrollers — entities are more spread out on X than Y.
+> **Early exit saves cycles:** Most entity pairs are far apart. The first X-overlap test rejects them in ~91 T-states. Only pairs that pass all four tests (worst case: ~270 T-states) are actual collisions. Test horizontal overlap first in side-scrollers -- entities are more spread out on X than Y.
 
 On the Z80, we store entity positions as 8.8 fixed-point values, but for collision detection we only need the integer part -- the high byte of each coordinate. Pixel-level precision is more than enough. Here is a complete AABB collision routine:
 
-```z80
+```z80 id:ch19_aabb_the_only_shape_you_need_2
 ; check_aabb -- Test whether two entities overlap
 ;
 ; Input:  IX = pointer to entity A
@@ -71,8 +71,8 @@ On the Z80, we store entity positions as 8.8 fixed-point values, but for collisi
 ;   +14 height    (bounding box height in pixels)
 ;   +15 (reserved)
 ;
-; Cost: 70-156 T-states (Pentagon), depending on early exit
-; Average case (no collision): ~90 T-states
+; Cost: 91-270 T-states (Pentagon), depending on early exit
+; Average case (no collision): ~120 T-states
 
 check_aabb:
     ; --- Test 1: A.left < B.right ---
@@ -84,7 +84,7 @@ check_aabb:
     ld   a, (ix+1)        ; 19T  A.x_int = A.left
     cp   b                ; 4T   A.left - B.right
     jr   nc, .no_collision ; 12/7T  if A.left >= B.right, no collision
-                           ; --- early exit: 82T (taken) ---
+                           ; --- early exit: 91T (taken, incl. .no_collision) ---
 
     ; --- Test 2: A.right > B.left ---
     ; A.right = A.x_int + A.width
@@ -119,13 +119,15 @@ check_aabb:
     ret                    ; 10T
 ```
 
-The IX/IY indexed addressing is convenient but expensive -- 19 T-states per access versus 7 for `ld a, (hl)`. For a game with 8 enemies and 7 bullets, it is acceptable. Worst case (all four tests pass): approximately 156 T-states. Best case (first test fails): approximately 82 T-states. For 8 enemies checked against the player, the average case is about 8 x 90 = 720 T-states -- 1% of the Pentagon frame budget. Collisions are cheap.
+The IX/IY indexed addressing is convenient but expensive -- 19 T-states per access versus 7 for `ld a, (hl)`. For a game with 8 enemies and 7 bullets, it is acceptable. Worst case (all four tests pass, collision detected): approximately 270 T-states. Best case (first test fails): approximately 91 T-states. For 8 enemies checked against the player, the average case is about 8 x 120 = 960 T-states -- 1.3% of the Pentagon frame budget. Collisions are cheap.
+
+**Overflow warning:** The `ADD A, (ix+13)` instructions compute `x + width` in an 8-bit register. If an entity is positioned at X=240 with width=24, the result wraps around to 8, producing incorrect comparisons. Ensure that entity positions are clamped so that `x + width` and `y + height` never exceed 255 -- typically by limiting the play area to leave a margin at the right and bottom edges. Alternatively, promote the comparison to 16-bit arithmetic at the cost of additional instructions.
 
 ### Ordering the Tests for Fastest Rejection
 
 The order matters. In a side-scroller, entities far apart horizontally are the common case. Testing horizontal overlap first rejects these after two comparisons. You can go further with a quick pre-rejection:
 
-```z80
+```z80 id:ch19_ordering_the_tests_for
 ; Quick X-distance rejection before calling check_aabb
 ; If the horizontal distance between entities exceeds
 ; MAX_WIDTH (the widest entity), they cannot collide.
@@ -149,14 +151,14 @@ In a platformer, the player collides with the world -- floors, walls, ceilings, 
 
 Assume a 32x24 tilemap with 8x8 pixel tiles (the natural Spectrum character grid):
 
-```z80
+```z80 id:ch19_tile_collisions_the_tilemap
 ; tile_at -- Look up the tile type at a pixel position
 ;
 ; Input:  B = pixel X, C = pixel Y
 ; Output: A = tile type (0=empty, 1=solid, 2=hazard, 3=ladder, etc.)
 ;
 ; Map is 32 columns wide, stored row-major at 'tilemap'
-; Cost: ~40 T-states (Pentagon)
+; Cost: ~182 T-states (Pentagon)
 
 tile_at:
     ld   a, c             ; 4T   pixel Y
@@ -190,7 +192,7 @@ tile_at:
 
 Now check the corners and edges of the entity against the tilemap:
 
-```z80
+```z80 id:ch19_tile_collisions_the_tilemap_2
 ; check_player_tiles -- Check player against tilemap
 ;
 ; Input: IX = player entity
@@ -301,7 +303,7 @@ check_player_tiles:
     ret
 ```
 
-The critical insight: point-in-tile lookups are O(1) array accesses. The entire tile collision system costs roughly 200-400 T-states per entity, regardless of map size.
+The critical insight: point-in-tile lookups are O(1) array accesses. Each `tile_at` call costs ~182 T-states. The entire tile collision system (checking feet, head, left, and right) costs roughly 800-1,200 T-states per entity, regardless of map size.
 
 ### Sliding Collision Response
 
@@ -322,7 +324,7 @@ What we are building is not a rigid-body simulation -- it is a small set of rule
 
 Every frame, add a constant to the entity's vertical velocity:
 
-```z80
+```z80 id:ch19_gravity_falling_convincingly
 ; apply_gravity -- Add gravity to an entity's vertical velocity
 ;
 ; Input:  IX = entity pointer
@@ -341,7 +343,7 @@ MAX_FALL_INT equ 04h     ; terminal velocity: 4 pixels/frame
 apply_gravity:
     ; Skip if entity is on the ground
     bit  0, (ix+12)       ; 20T  check on_ground flag
-    ret  nz               ; 10T  on ground -- no gravity
+    ret  nz               ; 11/5T  on ground -- no gravity
 
     ; dy += gravity (16-bit fixed-point add)
     ld   a, (ix+9)        ; 19T  dy_frac
@@ -354,7 +356,7 @@ apply_gravity:
 
     ; Clamp to terminal velocity
     cp   MAX_FALL_INT     ; 7T
-    ret  c                ; 10T  below terminal velocity, done
+    ret  c                ; 11/5T  below terminal velocity, done
     ld   (ix+10), MAX_FALL_INT ; 19T  clamp integer part
     xor  a                ; 4T
     ld   (ix+9), a        ; 19T  zero fractional part (exact clamp)
@@ -373,7 +375,7 @@ Without fixed-point, gravity is either 0 or 1 pixel per frame -- float or stone,
 
 Jumping is the simplest physics operation in the game: set the vertical velocity to a large negative value (upward). Gravity will decelerate it, bring it to zero at the apex, and pull it back down. The jump arc is a natural parabola -- no explicit arc calculation needed.
 
-```z80
+```z80 id:ch19_jump_the_anti_gravity_impulse
 ; try_jump -- Initiate a jump if the player is on the ground
 ;
 ; Input:  IX = player entity
@@ -391,14 +393,14 @@ JUMP_INT  equ 0FCh       ; integer part (-4 signed + 0.5 frac = -3.5)
 try_jump:
     ; Must be on ground to jump
     bit  0, (ix+12)       ; 20T  on_ground flag
-    ret  z                ; 10T  in air -- cannot jump
+    ret  z                ; 11/5T  in air -- cannot jump
 
     ; Set upward velocity
     ld   (ix+9), JUMP_FRAC  ; 19T  dy_frac
     ld   (ix+10), JUMP_INT  ; 19T  dy_int = -3.5 (upward)
 
     ; Clear on_ground flag
-    res  0, (ix+12)       ; 19T
+    res  0, (ix+12)       ; 23T
 
     ; (Optional: play jump sound effect here)
     ret                    ; 10T
@@ -410,7 +412,7 @@ With gravity at 0.25/frame^2 and jump force at -3.5/frame, the player rises for 
 
 If the player releases the jump button while ascending, cut the upward velocity in half. A tap produces a short hop, a hold produces a full jump.
 
-```z80
+```z80 id:ch19_variable_height_jumps
 ; check_jump_release -- Cut jump short if button released
 ;
 ; Input:  IX = player entity
@@ -421,12 +423,12 @@ If the player releases the jump button while ascending, cut the upward velocity 
 check_jump_release:
     ; Only relevant while ascending
     bit  7, (ix+10)       ; 20T  check sign of dy_int
-    ret  z                ; 10T  not ascending (dy >= 0), skip
+    ret  z                ; 11/5T  not ascending (dy >= 0), skip
 
     ; Check if jump button is still held
     ; (assume A contains current input state from input handler)
     bit  4, a             ; 8T   bit 4 = fire/jump
-    ret  nz               ; 10T  still held, do nothing
+    ret  nz               ; 11/5T  still held, do nothing
 
     ; Button released -- halve upward velocity
     ; Arithmetic right shift of 16-bit dy (preserves sign)
@@ -445,7 +447,7 @@ This is a 16-bit arithmetic right shift: `SRA` preserves the sign on the high by
 
 When the player releases the direction keys, they should decelerate, not stop dead. The operation is a single right-shift of horizontal velocity.
 
-```z80
+```z80 id:ch19_friction_slowing_down_on_the
 ; apply_friction -- Decelerate horizontal movement
 ;
 ; Input:  IX = entity pointer
@@ -460,7 +462,7 @@ When the player releases the direction keys, they should decelerate, not stop de
 apply_friction:
     ; Only apply friction on the ground
     bit  0, (ix+12)       ; 20T  on_ground flag
-    ret  z                ; 10T  in air -- no ground friction
+    ret  z                ; 11/5T  in air -- no ground friction
 
     ; 16-bit arithmetic right shift of dx (signed)
     ld   a, (ix+8)        ; 19T  dx_int
@@ -474,7 +476,7 @@ apply_friction:
 
 Shifting right by 1 divides velocity by 2 every frame -- the player stops within a few frames. For ice, apply friction less frequently:
 
-```z80
+```z80 id:ch19_friction_slowing_down_on_the_2
 ; apply_friction_ice -- Light friction, every other frame
 ;
     ld   a, (frame_counter)
@@ -485,7 +487,7 @@ Shifting right by 1 divides velocity by 2 every frame -- the player stops within
 
 Vary friction by surface type -- look up the tile under the entity's feet and branch:
 
-```z80
+```z80 id:ch19_friction_slowing_down_on_the_3
     ; Determine surface type
     ld   b, (ix+1)        ; player X
     ld   a, (ix+3)        ; player Y
@@ -507,7 +509,7 @@ Vary friction by surface type -- look up the tile under the entity's feet and br
 
 The final step: move the entity by its velocity via 16-bit fixed-point addition on each axis:
 
-```z80
+```z80 id:ch19_applying_velocity_to_position
 ; move_entity -- Apply velocity to position
 ;
 ; Input:  IX = entity pointer
@@ -540,7 +542,7 @@ move_entity:
 
 Putting it all together, the per-frame physics update for one entity looks like this:
 
-```z80
+```z80 id:ch19_the_physics_loop
 ; update_physics -- Full physics update for one entity
 ;
 ; Input:  IX = entity pointer
@@ -554,7 +556,7 @@ update_entity_physics:
     ret
 ```
 
-The order is deliberate: forces first, then move, then collide. This is the standard for platformers. Total cost per entity: approximately 500-700 T-states. For 16 entities: 8,000-11,200 T-states, about 15% of the Pentagon frame budget.
+The order is deliberate: forces first, then move, then collide. This is the standard for platformers. Total cost per entity: approximately 1,000-1,500 T-states (dominated by tile collision lookups at ~182T each). For 16 entities: 16,000-24,000 T-states, about 25-33% of the Pentagon frame budget. In practice, only the player and gravity-affected enemies need full tile collision checks -- bullets and effects can use simpler bounds tests.
 
 ---
 
@@ -580,7 +582,7 @@ Transitions are simple conditions: proximity checks, cooldown timers, health thr
 
 The core of the AI dispatcher is a **jump table** indexed by the state byte. O(1) dispatch regardless of how many states you have:
 
-```z80
+```z80 id:ch19_the_jp_table
 ; ai_dispatch -- Run the AI for one enemy entity
 ;
 ; Input:  IX = enemy entity pointer
@@ -629,7 +631,7 @@ The `jp (hl)` instruction costs only 4 T-states -- the entire dispatch overhead 
 
 The simplest AI behaviour: walk in one direction until you reach a boundary, then turn around.
 
-```z80
+```z80 id:ch19_patrol_the_dumb_walk
 ; ai_patrol -- Walk back and forth between two points
 ;
 ; Input:  IX = enemy entity
@@ -662,7 +664,7 @@ ai_patrol:
     cp   PATROL_RIGHT_LIMIT ; 7T  (or use spawn_x + PATROL_RANGE)
     jr   c, .check_player ; 12/7T  not at edge yet
     ; Hit right edge -- turn left
-    set  1, (ix+12)       ; 19T  set direction = left
+    set  1, (ix+12)       ; 23T  set direction = left
     jr   .check_player    ; 12T
 
 .move_left:
@@ -673,7 +675,7 @@ ai_patrol:
     cp   PATROL_LEFT_LIMIT ; 7T
     jr   nc, .check_player ; 12/7T
     ; Hit left edge -- turn right
-    res  1, (ix+12)       ; 19T
+    res  1, (ix+12)       ; 23T
 
 .check_player:
     ; --- Detection: is the player nearby? ---
@@ -684,7 +686,7 @@ ai_patrol:
     neg                   ; 8T   absolute value
 .pos_dx:
     cp   DETECT_RANGE     ; 7T   e.g., 48 pixels
-    ret  nc               ; 10T  too far -- stay in PATROL
+    ret  nc               ; 11/5T  too far -- stay in PATROL
 
     ; Player detected -- transition to CHASE
     ld   (ix+5), ST_CHASE ; 19T  set state = CHASE
@@ -695,9 +697,9 @@ A patrol enemy costs about 120 T-states per frame. That is trivial. Eight patrol
 
 ### Chase: The Relentless Follower
 
-The chase behaviour is deceptively simple: compute the sign of the horizontal distance between the enemy and the player, and move in that direction.
+The chase behaviour is simple: compute the sign of the horizontal distance between the enemy and the player, and move in that direction.
 
-```z80
+```z80 id:ch19_chase_the_relentless_follower
 ; ai_chase -- Move toward the player
 ;
 ; Input:  IX = enemy entity
@@ -720,14 +722,14 @@ ai_chase:
     ld   a, (ix+1)        ; 19T
     add  a, CHASE_SPEED   ; 7T
     ld   (ix+1), a        ; 19T
-    res  1, (ix+12)       ; 19T  face right
+    res  1, (ix+12)       ; 23T  face right
     jr   .check_attack    ; 12T
 
 .chase_left:
     ld   a, (ix+1)        ; 19T
     sub  CHASE_SPEED      ; 7T
     ld   (ix+1), a        ; 19T
-    set  1, (ix+12)       ; 19T  face left
+    set  1, (ix+12)       ; 23T  face left
 
 .vertical:
 .check_attack:
@@ -748,7 +750,7 @@ ai_chase:
     ; --- Low health? Retreat. ---
     ld   a, (ix+11)       ; 19T  health
     cp   RETREAT_THRESHOLD ; 7T   e.g., 2 out of 8
-    ret  nc               ; 10T  health OK -- stay in CHASE
+    ret  nc               ; 11/5T  health OK -- stay in CHASE
 
     ; Health critical -- retreat
     ld   (ix+5), ST_RETREAT
@@ -761,7 +763,7 @@ The sign-of-dx technique: subtract, check carry. Carry set means player is to th
 
 The ATTACK state fires a projectile, then waits for a cooldown timer. We reuse the `anim_frame` field (offset +6) as a countdown.
 
-```z80
+```z80 id:ch19_attack_fire_and_cooldown
 ; ai_attack -- Fire projectile, then cool down
 ;
 ; Input:  IX = enemy entity
@@ -778,7 +780,7 @@ ai_attack:
     jr   z, .fire         ; 12/7T  timer expired -- fire
 
     ; Decrement cooldown
-    dec  (ix+6)           ; 19T
+    dec  (ix+6)           ; 23T
     ret                    ; 10T  wait
 
 .fire:
@@ -823,7 +825,7 @@ The `find_free_entity` routine (from Chapter 18) scans for an inactive slot. If 
 
 The mirror of chase -- compute sign of dx, move the other way:
 
-```z80
+```z80 id:ch19_retreat_the_reverse_chase
 ; ai_retreat -- Move away from the player
 ;
 ; Input:  IX = enemy entity
@@ -871,7 +873,7 @@ ai_retreat:
 
 Health reaches zero, state becomes DEATH. The handler plays an animation, then deactivates the entity.
 
-```z80
+```z80 id:ch19_death_animate_and_remove
 ; ai_death -- Play death animation, then deactivate
 ;
 ; Input:  IX = enemy entity
@@ -889,11 +891,11 @@ ai_death:
     or   a                ; 4T
     jr   z, .deactivate   ; 12/7T
 
-    dec  (ix+6)           ; 19T  count down
+    dec  (ix+6)           ; 23T  count down
     ret                    ; 10T
 
 .deactivate:
-    res  7, (ix+12)       ; 19T  clear "active" flag (bit 7 of flags)
+    res  7, (ix+12)       ; 23T  clear "active" flag (bit 7 of flags)
     ret                    ; 10T
 ```
 
@@ -903,7 +905,7 @@ Once bit 7 is cleared, the entity vanishes from rendering and its slot becomes a
 
 **Players cannot tell the difference between 50 Hz AI and 25 Hz AI.** The screen and player input run at 50 fps, but enemy decisions at 25 fps (every 2nd frame) or 16.7 fps (every 3rd) are indistinguishable. Velocity carries the entity smoothly between AI ticks.
 
-```z80
+```z80 id:ch19_optimisation_update_ai_every
 ; update_all_ai -- Update enemy AI on alternate frames
 ;
 ; Input:  frame_counter = current frame number
@@ -912,7 +914,7 @@ Once bit 7 is cleared, the entity vanishes from rendering and its slot becomes a
 update_all_ai:
     ld   a, (frame_counter) ; 13T
     and  1                  ; 7T   check bit 0
-    ret  nz                 ; 10T  odd frame -- skip AI entirely
+    ret  nz                 ; 11/5T  odd frame -- skip AI entirely
 
     ; Even frame -- run AI for all active enemies
     ld   ix, entity_array + ENTITY_SIZE  ; skip player (entity 0)
@@ -935,7 +937,7 @@ update_all_ai:
 
 This halves the AI cost. For 3rd-frame updating, use a modulo-3 check:
 
-```z80
+```z80 id:ch19_optimisation_update_ai_every_2
     ld   a, (frame_counter)
     ld   b, 3
     ; A mod 3: subtract 3 repeatedly
@@ -975,7 +977,7 @@ Four enemy types, each with distinct behaviour, wired into the entity system fro
 
 **3. The Swooper** -- moves vertically in a sine pattern (or simple up/down), dives toward the player when aligned.
 
-```z80
+```z80 id:ch19_part_4_practical_four_enemy
 ; ai_patrol_swooper -- Vertical sine wave patrol
 ;
 ; Input:  IX = swooper entity
@@ -988,7 +990,7 @@ Four enemy types, each with distinct behaviour, wired into the entity system fro
 ai_patrol_swooper:
     ; Vertical oscillation
     ld   a, (ix+6)        ; 19T  anim_frame = sine index
-    inc  (ix+6)           ; 19T  advance for next frame
+    inc  (ix+6)           ; 23T  advance for next frame
     ld   h, sine_table >> 8 ; 7T  sine table base (page-aligned, per Ch.4)
     ld   l, a             ; 4T   index
     ld   a, (hl)          ; 7T   signed sine value (-128..+127)
@@ -1015,7 +1017,7 @@ The Swooper uses the sine table from Chapter 4 for vertical oscillation. When th
 
 **4. The Ambusher** -- sits dormant until the player is very close, then activates aggressively.
 
-```z80
+```z80 id:ch19_part_4_practical_four_enemy_2
 ; ai_patrol_ambusher -- Dormant until player is adjacent
 ;
 ; Input:  IX = ambusher entity
@@ -1055,7 +1057,7 @@ Manhattan distance (|dx| + |dy|) costs about 30 T-states versus ~200 for Euclide
 
 The complete per-frame update, building on Chapter 18:
 
-```z80
+```z80 id:ch19_wiring_it_into_the_game_loop
 game_frame:
     halt                       ; wait for VBlank
 
@@ -1085,7 +1087,7 @@ game_frame:
 
 The `check_all_collisions` routine tests player vs enemies and bullets vs entities:
 
-```z80
+```z80 id:ch19_wiring_it_into_the_game_loop_2
 ; check_all_collisions -- Test player vs enemies, bullets vs enemies
 ;
 ; Cost: ~2,000-3,000 T-states depending on active entity count
@@ -1164,7 +1166,7 @@ Play-test constantly. Change one number, play for thirty seconds, feel the diffe
 
 ## Summary
 
-- **AABB collision** uses four comparisons with early exit. Most pairs are rejected after one or two tests. Cost: 70-156 T-states per pair on the Z80. Order the tests to reject the most common non-collision case first (usually horizontal).
+- **AABB collision** uses four comparisons with early exit. Most pairs are rejected after one or two tests. Cost: 91-270 T-states per pair on the Z80 (IX/IY indexed addressing dominates). Order the tests to reject the most common non-collision case first (usually horizontal). Watch for 8-bit overflow when computing `x + width` near screen edges.
 - **Tile collision** converts pixel coordinates to a tile index via right-shift and lookup. O(1) per point checked, regardless of map size. Check the four corners and edge midpoints of the entity's bounding box.
 - **Sliding collision response** resolves collisions on each axis independently. Apply X velocity then check X collisions; apply Y velocity then check Y collisions. Diagonal motion against a wall naturally becomes sliding.
 - **Gravity** is a fixed-point addition to vertical velocity every frame: `dy += gravity`. With 8.8 format, sub-pixel values like 0.25 pixels/frame^2 produce smooth, natural-feeling acceleration curves.
@@ -1174,7 +1176,7 @@ Play-test constantly. Change one number, play for thirty seconds, feel the diffe
 - **Chase** uses the sign of `player.x - enemy.x` for direction. Two instructions, zero trigonometry.
 - **Update AI every 2nd or 3rd frame** to halve or third the CPU cost. Physics runs every frame for smooth movement; AI decisions can lag by 1-2 frames without the player noticing.
 - **Four enemy types** (Walker, Shooter, Swooper, Ambusher) demonstrate how the same state machine framework produces varied behaviours by changing a few constants and one or two state handlers.
-- **Total cost** for a 16-entity game (physics + collisions + AI): approximately 12,000-15,000 T-states per frame on the Spectrum (about 20% of the Pentagon budget), leaving ample room for rendering and sound.
+- **Total cost** for a 16-entity game (physics + collisions + AI): approximately 15,000-20,000 T-states per frame on the Spectrum (about 25-28% of the Pentagon budget), leaving room for rendering and sound.
 
 ---
 

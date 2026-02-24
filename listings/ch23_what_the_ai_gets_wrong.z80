@@ -1,0 +1,13 @@
+down_hl:
+    inc  h              ; 4T   move down one pixel row
+    ld   a, h           ; 4T
+    and  7              ; 7T
+    ret  nz             ; 11T/5T  still within the character row
+    ld   a, l           ; 4T
+    add  a, 32          ; 7T   next character row
+    ld   l, a           ; 4T
+    ret  c              ; 11T/5T  if carry, crossed into next third
+    ld   a, h           ; 4T
+    sub  8              ; 7T
+    ld   h, a           ; 4T
+    ret                 ; 10T

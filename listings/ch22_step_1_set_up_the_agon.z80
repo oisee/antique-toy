@@ -1,0 +1,9 @@
+; Agon: application entry point
+    .ASSUME ADL=1          ; we are in ADL mode
+    ORG  $040000
+
+    JP   main              ; standard entry
+
+main:
+    ; Your game starts here
+    ; ... initialize VDP, load assets, enter game loop

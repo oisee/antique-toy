@@ -1,0 +1,60 @@
+menu_selection:
+    db   0                 ; 0=Start, 1=Options, 2=HiScores
+
+state_menu:
+    ; Draw menu (only redraw on selection change)
+    call draw_menu
+
+    ; Read input
+    call read_input
+    ld   a, (input_state)
+
+    ; Up
+    bit  3, a
+    jr   z, .not_up
+    ld   a, (menu_selection)
+    or   a
+    jr   z, .not_up
+    dec  a
+    ld   (menu_selection), a
+    call play_menu_beep
+.not_up:
+
+    ; Down
+    ld   a, (input_state)
+    bit  2, a
+    jr   z, .not_down
+    ld   a, (menu_selection)
+    cp   2
+    jr   z, .not_down
+    inc  a
+    ld   (menu_selection), a
+    call play_menu_beep
+.not_down:
+
+    ; Fire / Enter
+    ld   a, (input_state)
+    bit  4, a
+    jr   z, .no_fire
+    ld   a, (menu_selection)
+    or   a
+    jr   nz, .not_start
+    ; Start game
+    call init_game
+    ld   a, STATE_GAMEPLAY
+    ld   (current_state), a
+    jp   main_loop
+.not_start:
+    cp   1
+    jr   nz, .not_options
+    ; Options (toggle sound, controls, etc.)
+    call show_options
+    jp   main_loop
+.not_options:
+    ; High scores
+    ld   a, STATE_HISCORE
+    ld   (current_state), a
+    jp   main_loop
+
+.no_fire:
+    jp   main_loop

@@ -1,0 +1,31 @@
+; ai_patrol_ambusher -- Dormant until player is adjacent
+;
+; Input:  IX = ambusher entity
+; Output: Activates if player within 16 pixels
+;
+; Cost: ~50 T-states (Pentagon)
+
+AMBUSH_RANGE equ 16
+
+ai_patrol_ambusher:
+    ; Check proximity (Manhattan distance for cheapness)
+    ld   a, (player_x)
+    sub  (ix+1)
+    jr   nc, .px
+    neg
+.px:
+    ld   b, a              ; |dx|
+
+    ld   a, (player_y)
+    sub  (ix+3)
+    jr   nc, .py
+    neg
+.py:
+    add  a, b              ; Manhattan distance = |dx| + |dy|
+    cp   AMBUSH_RANGE
+    ret  nc                ; too far -- stay dormant
+
+    ; Player is close -- activate!
+    ld   (ix+5), ST_CHASE  ; go straight to aggressive chase
+    ; (Could also play an activation sound/animation here)
+    ret

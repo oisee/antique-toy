@@ -1,0 +1,17 @@
+; Spectrum: Update all entities
+; IX points to entity array, B = entity count
+update_entities:
+    ld   ix,entities
+    ld   b,MAX_ENTITIES
+.loop:
+    ld   a,(ix+ENT_FLAGS)
+    bit  0,a               ; bit 0 = active?
+    jr   z,.skip
+
+    call update_entity      ; process this entity
+
+.skip:
+    ld   de,ENT_SIZE        ; size of one entity struct
+    add  ix,de              ; advance to next entity
+    djnz .loop
+    ret

@@ -1,0 +1,34 @@
+; Patrik Rak's CMWC PRNG
+; Quality: Excellent -- passes visual bitmap tests
+; Size:    ~30 bytes code + 8 bytes table
+; Output:  A = pseudo-random byte
+; Period:  ~2^66
+
+patrik_rak_cmwc_rnd:
+    ld   hl, .table
+.smc_idx:
+    ld   bc, 0              ; 10 T -- i (self-modifying)
+    add  hl, bc             ; 11 T
+    ld   a, c               ; 4 T
+    inc  a                  ; 4 T
+    and  7                  ; 7 T -- wrap index to 0-7
+    ld   (.smc_idx+1), a    ; 13 T -- store new index
+    ld   c, (hl)            ; 7 T -- y = q[i]
+    ex   de, hl             ; 4 T
+    ld   h, c               ; 4 T -- t = 256 * y
+    ld   l, b               ; 4 T
+    sbc  hl, bc             ; 15 T -- t = 255 * y
+    sbc  hl, bc             ; 15 T -- t = 254 * y
+    sbc  hl, bc             ; 15 T -- t = 253 * y
+.smc_car:
+    ld   c, 0               ; 7 T -- carry (self-modifying)
+    add  hl, bc             ; 11 T -- t = 253 * y + c
+    ld   a, h               ; 4 T
+    ld   (.smc_car+1), a    ; 13 T -- c = t / 256
+    ld   a, l               ; 4 T -- x = t % 256
+    cpl                     ; 4 T -- x = ~x (complement)
+    ld   (de), a            ; 7 T -- q[i] = x
+    ret                     ; 10 T
+
+.table:
+    DB   82, 97, 120, 111, 102, 116, 20, 12

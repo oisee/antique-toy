@@ -1,0 +1,26 @@
+; check_jump_release -- Cut jump short if button released
+;
+; Input:  IX = player entity
+; Output: dy halved if ascending and jump button not held
+;
+; Cost: ~40 T-states (Pentagon)
+
+check_jump_release:
+    ; Only relevant while ascending
+    bit  7, (ix+10)       ; 20T  check sign of dy_int
+    ret  z                ; 11/5T  not ascending (dy >= 0), skip
+
+    ; Check if jump button is still held
+    ; (assume A contains current input state from input handler)
+    bit  4, a             ; 8T   bit 4 = fire/jump
+    ret  nz               ; 11/5T  still held, do nothing
+
+    ; Button released -- halve upward velocity
+    ; Arithmetic right shift of 16-bit dy (preserves sign)
+    ld   a, (ix+10)       ; 19T  dy_int
+    sra  a                ; 8T   shift right arithmetic (sign-extending)
+    ld   (ix+10), a       ; 19T
+    ld   a, (ix+9)        ; 19T  dy_frac
+    rra                   ; 4T   rotate right through carry (carry from SRA above)
+    ld   (ix+9), a        ; 19T
+    ret                    ; 10T

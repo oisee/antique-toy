@@ -1,0 +1,21 @@
+; SwitchThread: save current thread, resume next thread
+; Called from within the IM2 interrupt handler
+SwitchThread:
+    ; Save current thread's stack pointer
+    ld   (thread_sp_save), sp
+
+    ; Save current memory page configuration
+    ld   a, (current_7ffd)
+    ld   (thread_page_save), a
+
+    ; Load next thread's state
+    ld   a, (next_thread_page)
+    ld   (current_7ffd), a
+    ld   bc, $7FFD
+    out  (c), a               ; switch memory page
+
+    ld   sp, (next_thread_sp)  ; switch stack pointer
+
+    ; Execution continues in the next thread's context
+    ; (it was previously suspended at this same point)
+    ret

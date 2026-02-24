@@ -1,0 +1,36 @@
+; Update player entity
+; IX = entity pointer (slot 0)
+update_player:
+    ; Read horizontal input
+    ld   a, (input_flags)    ; 13T
+    bit  INPUT_RIGHT, a      ; 8T
+    jr   z, .not_right       ; 12/7T
+    ; Move right: add dx to X
+    ld   a, 2               ; 7T   dx = 2 subpixels per frame (~1 pixel/frame)
+    add  a, (ix + 0)        ; 19T  add to X fractional
+    ld   (ix + 0), a        ; 19T
+    jr   nc, .no_carry_r    ; 12/7T
+    inc  (ix + 1)           ; 23T  carry into X pixel
+.no_carry_r:
+    res  3, (ix + 9)        ; 23T  clear FACING_LEFT flag
+    jr   .horiz_done        ; 12T
+.not_right:
+    bit  INPUT_LEFT, a       ; 8T
+    jr   z, .horiz_done      ; 12/7T
+    ; Move left: subtract dx from X
+    ld   a, (ix + 0)        ; 19T  load X fractional
+    sub  2                   ; 7T   subtract dx
+    ld   (ix + 0), a        ; 19T
+    jr   nc, .no_borrow_l   ; 12/7T
+    dec  (ix + 1)           ; 23T  borrow from X pixel
+.no_borrow_l:
+    set  3, (ix + 9)        ; 23T  set FACING_LEFT flag
+.horiz_done:
+
+    ; Update animation frame (cycle every 8 frames)
+    ld   a, (ix + 5)        ; 19T  anim_frame
+    inc  a                   ; 4T
+    and  7                   ; 7T   wrap 0-7
+    ld   (ix + 5), a        ; 19T
+    ret
+    ; Total: ~250-350T depending on input

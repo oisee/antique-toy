@@ -1,0 +1,49 @@
+; Draw all active entities
+; Assumes bank 3 (sprite graphics) is paged in at $C000
+render_entities:
+    ld   ix, entity_array
+    ld   b, MAX_ENTITIES
+
+.loop:
+    push bc
+
+    ; Check if entity is active
+    ld   a, (ix + ENT_FLAGS)
+    bit  FLAG_ACTIVE, a
+    jr   z, .skip
+
+    ; Calculate screen position from world position and viewport
+    ld   l, (ix + ENT_X)
+    ld   h, (ix + ENT_X + 1)
+    ld   de, (viewport_x)
+    or   a                 ; clear carry
+    sbc  hl, de            ; screen_x = world_x - viewport_x
+    ; Check if on screen (0-239)
+    bit  7, h
+    jr   nz, .skip         ; off-screen left (negative)
+    ld   a, h
+    or   a
+    jr   nz, .skip         ; off-screen right (> 255)
+    ld   a, l
+    cp   240
+    jr   nc, .skip         ; off-screen right (240-255)
+
+    ; Store screen X for sprite routine
+    ld   (sprite_screen_x), a
+
+    ; Y position (already in screen coordinates for simplicity)
+    ld   a, (ix + ENT_Y)
+    ld   (sprite_screen_y), a
+
+    ; Look up sprite graphic address from type + frame + shift
+    call get_sprite_address ; returns HL = address in bank 3
+
+    ; Draw masked sprite at (sprite_screen_x, sprite_screen_y)
+    call draw_sprite_masked
+
+.skip:
+    pop  bc
+    ld   de, ENT_SIZE
+    add  ix, de            ; next entity
+    djnz .loop
+    ret

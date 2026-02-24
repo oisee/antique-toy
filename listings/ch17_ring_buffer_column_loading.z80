@@ -1,0 +1,24 @@
+; Ring-buffer column loading (Agon, conceptual)
+;
+; tilemap is 40 columns wide, screen shows 32
+; scroll_col tracks which column is at the left edge
+;
+ring_buffer_load:
+    ld   a, (scroll_col)
+    add  a, 32              ; column about to appear on right
+    and  39                  ; wrap to tilemap width (mod 40)
+    ld   c, a               ; C = column index to update
+
+    ; Load new tile data for this column from the level map
+    ; (level_map is a wider array of tile indices)
+    ld   hl, (level_ptr)     ; pointer into the level data
+    ld   b, 20               ; 20 rows
+.load_col:
+    ld   a, (hl)             ; read tile index from level
+    inc  hl
+    ; Write tile index to tilemap at (C, row)
+    call set_tilemap_cell    ; VDP command to set one cell
+    djnz .load_col
+
+    ld   (level_ptr), hl
+    ret

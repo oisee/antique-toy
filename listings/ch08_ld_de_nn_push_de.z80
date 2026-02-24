@@ -1,0 +1,5 @@
+; One LDPUSH pair: writes 2 bytes to screen memory
+    ld   de,$AA55       ; 10 T  load pixel data
+    push de             ; 11 T  write to (SP), SP = SP - 2
+                        ; ---
+                        ; 21 T total, 2 bytes output

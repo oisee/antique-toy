@@ -1,0 +1,9 @@
+; Game states (byte values, used as table offsets)
+STATE_TITLE     EQU  0
+STATE_MENU      EQU  2      ; x2 because each table entry is 2 bytes
+STATE_GAME      EQU  4
+STATE_PAUSE     EQU  6
+STATE_GAMEOVER  EQU  8
+
+; Current state variable
+game_state:     DB   STATE_TITLE

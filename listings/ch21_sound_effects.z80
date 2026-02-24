@@ -1,0 +1,39 @@
+; SFX priority levels
+SFX_JUMP       equ  1     ; low priority
+SFX_PICKUP     equ  2
+SFX_SHOOT      equ  3
+SFX_HIT        equ  4
+SFX_EXPLODE    equ  5     ; high priority
+SFX_BOSS_DIE   equ  6     ; highest priority
+
+; Trigger a sound effect
+; A = SFX id
+play_sfx:
+    ; Check priority -- only play if higher than current SFX
+    ld   hl, current_sfx_priority
+    cp   (hl)
+    ret  c                 ; current SFX has higher priority, ignore
+
+    ; Set up SFX playback
+    ld   (hl), a           ; update priority
+    ; Look up SFX descriptor table
+    add  a, a              ; x2 for word index
+    ld   l, a
+    ld   h, 0
+    ld   de, sfx_table
+    add  hl, de
+    ld   a, (hl)
+    inc  hl
+    ld   h, (hl)
+    ld   l, a              ; HL = SFX descriptor address
+
+    ; SFX descriptor: duration (byte), channel (byte),
+    ;                 then per-frame: freq_lo, freq_hi, volume, noise
+    ld   a, (hl)
+    ld   (sfx_frames_left), a
+    inc  hl
+    ld   a, (hl)
+    ld   (sfx_channel), a
+    inc  hl
+    ld   (sfx_data_ptr), hl
+    ret

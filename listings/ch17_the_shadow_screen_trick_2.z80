@@ -1,0 +1,29 @@
+; Flip displayed screen and return back buffer address in HL
+;
+; screen_flag:  0 = showing page 5, drawing to page 7
+;               1 = showing page 7, drawing to page 5
+;
+flip_screens:
+    ld   a, (screen_flag)
+    xor  1                   ; 7 T   toggle (XOR with immediate)
+    ld   (screen_flag), a
+
+    ld   hl, $C000           ; assume drawing to page 7
+    or   a
+    jr   z, .show_page5
+
+    ; Now showing page 7, draw to page 5
+    ld   hl, $4000
+    ld   a, (current_bank)
+    or   %00001000           ; bit 3 set: display page 7
+    jr   .do_flip
+
+.show_page5:
+    ld   a, (current_bank)
+    and  %11110111           ; bit 3 clear: display page 5
+
+.do_flip:
+    ld   bc, $7FFD
+    out  (c), a
+    ld   (current_bank), a
+    ret                      ; HL = back buffer address

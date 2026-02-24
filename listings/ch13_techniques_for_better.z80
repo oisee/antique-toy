@@ -1,0 +1,9 @@
+    ld   a, (frame)
+    call .write_ch_a      ; channel A: raw formula
+    ld   a, (frame)
+    rrca
+    rrca                  ; channel B: frame >> 2
+    call .write_ch_b
+    ld   a, (frame)
+    add  a, a             ; channel C: frame << 1
+    call .write_ch_c

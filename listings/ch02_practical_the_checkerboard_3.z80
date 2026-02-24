@@ -1,0 +1,8 @@
+    ; --- Fill attributes: white ink on blue paper ---
+    ; Attribute byte: flash=0, bright=1, paper=001 (blue), ink=111 (white)
+    ; = 01 001 111 = $4F
+    ld   hl, ATTRS
+    ld   de, ATTRS + 1
+    ld   bc, ATTLEN - 1
+    ld   (hl), $4F
+    ldir

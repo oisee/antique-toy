@@ -1,0 +1,23 @@
+; Midpoint program for a 12-vertex object
+; Cells 0-3: basis vertices (rotated by main code)
+; Cells 4-7: mirrored vertices (negated by main code)
+; Cells 8-11: derived via midpoint averaging
+
+midpoint_program:
+    DB  0               ; LOAD v0
+    DB  128+1           ; AVG  v1           -> register = (v0+v1)/2
+    DB  64+8            ; STORE v8
+
+    DB  2               ; LOAD v2
+    DB  128+3           ; AVG  v3           -> register = (v2+v3)/2
+    DB  64+9            ; STORE v9
+
+    DB  4               ; LOAD v4
+    DB  128+5           ; AVG  v5           -> register = (v4+v5)/2
+    DB  64+10           ; STORE v10
+
+    DB  6               ; LOAD v6
+    DB  128+7           ; AVG  v7           -> register = (v6+v7)/2
+    DB  64+11           ; STORE v11
+
+    DB  192             ; END               (%11000000)

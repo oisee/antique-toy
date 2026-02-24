@@ -1,0 +1,35 @@
+; Spawn explosion at the enemy's position
+; IX currently points to the dying enemy
+spawn_explosion_at_entity:
+    ld   b, (ix + 1)        ; enemy's X pixel
+    ld   c, (ix + 2)        ; enemy's Y
+
+    ; Find a free projectile/effect slot
+    push ix
+    ld   ix, entity_array + (SLOT_PROJ_FIRST * ENTITY_SIZE)
+    ld   d, SLOT_PROJ_LAST - SLOT_PROJ_FIRST + 1
+
+.find:
+    ld   a, (ix + 9)
+    bit  0, a
+    jr   z, .got_slot
+    ld   e, ENTITY_SIZE
+    add  ix, de
+    dec  d
+    jr   nz, .find
+    pop  ix
+    ret                      ; no free slot -- skip explosion
+
+.got_slot:
+    ld   (ix + 0), 0        ; X fractional
+    ld   (ix + 1), b        ; X pixel
+    ld   (ix + 2), c        ; Y
+    ld   (ix + 3), TYPE_EXPLOSION
+    ld   (ix + 4), 1        ; state = active
+    ld   (ix + 5), 0        ; anim_frame = 0
+    ld   (ix + 6), 0        ; dx = 0 (stationary)
+    ld   (ix + 7), 0        ; dy = 0
+    ld   (ix + 8), 0        ; health = 0 (not collidable in a meaningful way)
+    ld   (ix + 9), %00000011 ; ACTIVE + VISIBLE, not COLLIDABLE
+    pop  ix
+    ret

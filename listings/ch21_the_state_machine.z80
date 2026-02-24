@@ -1,0 +1,42 @@
+; Game states
+STATE_LOADER    equ  0
+STATE_TITLE     equ  1
+STATE_MENU      equ  2
+STATE_GAMEPLAY  equ  3
+STATE_PAUSE     equ  4
+STATE_GAMEOVER  equ  5
+STATE_HISCORE   equ  6
+STATE_LEVELWIN  equ  7
+
+; State handler table -- each entry is a 2-byte address
+state_table:
+    dw   state_loader       ; 0: loading screen + init
+    dw   state_title        ; 1: title screen with animation
+    dw   state_menu         ; 2: main menu (start, options, hiscores)
+    dw   state_gameplay     ; 3: in-game
+    dw   state_pause        ; 4: paused
+    dw   state_gameover     ; 5: game over sequence
+    dw   state_hiscore      ; 6: high score entry
+    dw   state_levelwin     ; 7: level complete, advance
+
+current_state:
+    db   STATE_LOADER
+
+; Main loop -- called once per frame after HALT
+main_loop:
+    halt                    ; wait for frame interrupt
+
+    ; Dispatch to current state handler
+    ld   a, (current_state)
+    add  a, a              ; x2 for word index
+    ld   l, a
+    ld   h, 0
+    ld   de, state_table
+    add  hl, de
+    ld   a, (hl)
+    inc  hl
+    ld   h, (hl)
+    ld   l, a              ; HL = handler address
+    jp   (hl)              ; jump to handler
+
+; Each handler ends with:  jp main_loop

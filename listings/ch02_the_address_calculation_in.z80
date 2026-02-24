@@ -1,0 +1,32 @@
+; Input:  B = y (0-191), C = x (0-255)
+; Output: HL = screen address, A = bit mask
+;
+pixel_addr:
+    ld   a, b          ; 4T   A = y
+    and  $07           ; 7T   A = SSS (scan line within char)
+    or   $40           ; 7T   A = 010 00 SSS (add screen base)
+    ld   h, a          ; 4T   H = high byte (partial)
+
+    ld   a, b          ; 4T   A = y again
+    rra                ; 4T   \
+    rra                ; 4T    | shift bits 5-3 of y
+    rra                ; 4T   /  down to bits 2-0
+    and  $E0           ; 7T   mask to get LLL 00000
+    ld   l, a          ; 4T   L = LLL 00000 (partial)
+
+    ld   a, b          ; 4T   A = y again
+    and  $C0           ; 7T   A = TT 000000
+    rra                ; 4T   \
+    rra                ; 4T    | shift bits 7-6 of y
+    rra                ; 4T   /  to bits 4-3
+    or   h             ; 4T   combine with SSS
+    ld   h, a          ; 4T   H = 010 TT SSS (complete)
+
+    ld   a, c          ; 4T   A = x
+    rra                ; 4T   \
+    rra                ; 4T    | x / 8
+    rra                ; 4T   /
+    and  $1F           ; 7T   mask to CCCCC
+    or   l             ; 4T   combine with LLL 00000
+    ld   l, a          ; 4T   L = LLL CCCCC (complete)
+                       ; --- Total: ~91 T-states

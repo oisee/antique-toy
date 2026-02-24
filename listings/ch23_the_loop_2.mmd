@@ -1,0 +1,20 @@
+graph LR
+    A["Prompt\n(describe what you want)"] --> B["Generate Code\n(AI writes Z80 asm)"]
+    B --> C["Assemble\n(sjasmplus / mza)"]
+    C --> D{"Errors?"}
+    D -- Yes --> E["Paste errors\nback to AI"]
+    E --> B
+    D -- No --> F["Run in Emulator"]
+    F --> G{"Output\ncorrect?"}
+    G -- No --> H["Describe what's wrong\n(or paste DeZog state)"]
+    H --> B
+    G -- Yes --> I{"Optimise?"}
+    I -- Yes --> J["Profile with DeZog\n(measure T-states)"]
+    J --> A
+    I -- No --> K["Done ✓"]
+
+    style A fill:#ffd,stroke:#993
+    style B fill:#ddf,stroke:#339
+    style K fill:#dfd,stroke:#393
+    style D fill:#fee,stroke:#933
+    style G fill:#fee,stroke:#933

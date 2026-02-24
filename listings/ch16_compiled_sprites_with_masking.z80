@@ -1,0 +1,7 @@
+; Compiled sprite with masking: one byte
+; Instead of ld (hl),n, we do:
+    ld   a, (hl)            ;  7 T   read screen
+    and  $C3                ;  7 T   mask: clear sprite pixels
+    or   $3C                ;  7 T   graphic: stamp sprite
+    ld   (hl), a            ;  7 T   write back
+                            ;        per-byte cost: 28 T

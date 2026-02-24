@@ -1,0 +1,15 @@
+; Shadow screen double-buffer scroll
+; Frame N: display screen is bank 5, draw screen is bank 7
+; 1. Draw the shifted background into bank 7
+; 2. Flip: set bit 3 of $7FFD to display bank 7
+; Frame N+1: display screen is bank 7, draw screen is bank 5
+; 3. Draw the shifted background into bank 5
+; 4. Flip: clear bit 3 of $7FFD to display bank 5
+
+flip_screen:
+    ld   a, (last_bank_state)
+    xor  %00001000          ; toggle screen bit (bit 3)
+    ld   (last_bank_state), a
+    ld   bc, $7FFD
+    out  (c), a
+    ret

@@ -43,7 +43,7 @@ The hybrid approach: play the attack as a digital sample (consuming CPU time for
 
 In practice, the implementation works like this:
 
-```z80
+```z80 id:ch12_n1k_o_s_insight_the_hybrid
 ; Play hybrid kick drum
 ; 1. Start digital sample playback for attack phase
 ; 2. When sample ends, configure AY envelope for decay
@@ -101,7 +101,7 @@ kick_sample:
 
 The sample data itself -- those 400-800 bytes of 4-bit PCM -- comes from a real drum recording, downsampled and quantised to 4 bits. The attack transient preserves the character of the original instrument: the beater hitting the drum head, the initial compression of air, the sharp onset that our ears use to identify the sound. The AY's envelope then provides a clean, smooth decay that our ears accept as the natural resonance of the drum body.
 
-The result is startlingly convincing. On a chip that has no sample playback capability at all, you hear something that sounds like a real kick drum. Not studio quality, not even Amiga quality, but worlds better than pure AY synthesis.
+The result is convincing. On a chip that has no sample playback capability at all, you hear something that sounds like a real kick drum. Not studio quality, not even Amiga quality, but worlds better than pure AY synthesis.
 
 ### The Frame Budget: Two Frames Per Hit
 
@@ -143,7 +143,7 @@ Introspec's architecture in Eager decouples frame generation from frame display.
 
 The mechanism is double-buffered attribute frames. Two pages of attribute data exist in memory. While one page is being displayed (the ULA reads from it during the screen refresh), the generator writes the next frame into the other page. When a new frame is ready, the engine flips the pages: the newly generated frame becomes the display page, and the old display page becomes the new generation target.
 
-```
+```text
 Time ──────────────────────────────────────────────────►
 
 Display:   [Frame 1] [Frame 2] [Frame 3] [Frame 4] [Frame 5]
@@ -199,7 +199,7 @@ You could hardcode all of this in a monolithic main loop. Some demos do. But Int
 
 The outer script is a linear sequence of commands that control the overall structure of the demo. Think of it as a setlist for a concert:
 
-```
+```text
 ; Outer script (conceptual, not exact syntax)
 EFFECT  tunnel, params_set_1     ; start the tunnel effect
 WAIT    200                       ; run for 200 frames (4 seconds)
@@ -216,7 +216,7 @@ Each `EFFECT` command loads the generator function and its parameter block. Each
 
 Within a single effect, parameters change over time. The tunnel's plasma frequencies shift, the colour palette rotates, the zoom speed accelerates. These variations are controlled by the inner script -- a per-effect sequence of parameter changes keyed to frame numbers:
 
-```
+```text
 ; Inner script for tunnel effect (conceptual)
 FRAME  0:   plasma_freq = 3, palette = warm
 FRAME  50:  plasma_freq = 5                   ; frequency shift
@@ -240,7 +240,7 @@ This decoupling -- generate now, display later -- is the fundamental enabler for
 
 In practice, the engine calls kWORK repeatedly, generating small batches of frames (4-8 at a time). Between batches, it checks whether a drum trigger is pending. If so, it lets the drum play, knowing that the display system has enough buffered frames to continue smoothly. After the drum finishes, it generates the next batch to replenish the buffer.
 
-```z80
+```z80 id:ch12_kwork_the_key_command
 ; Simplified engine loop (conceptual)
 engine_loop:
     ; Check if drum is pending
@@ -292,7 +292,7 @@ The workflow:
 
 4. **Once the timing was right in the editor**, he extracted the frame numbers for each transition and effect change, and wrote those numbers into the Z80 script data.
 
-The insight is deceptively simple: use the right tool for the job. A video editor is purpose-built for frame-level multimedia synchronisation. Z80 assembly is not. By doing the creative synchronisation work in the editor and the implementation work in assembly, diver4d separated the artistic decisions from the engineering constraints.
+The insight is straightforward: use the right tool for the job. A video editor is purpose-built for frame-level multimedia synchronisation. Z80 assembly is not. By doing the creative synchronisation work in the editor and the implementation work in assembly, diver4d separated the artistic decisions from the engineering constraints.
 
 ### What This Changes
 
@@ -320,7 +320,7 @@ It can, after a fashion. The Z80's IM2 interrupt provides a natural context swit
 
 Robus's `SwitchThread` procedure does exactly this:
 
-```z80
+```z80 id:ch12_im2_based_context_switching
 ; SwitchThread: save current thread, resume next thread
 ; Called from within the IM2 interrupt handler
 SwitchThread:
@@ -361,7 +361,7 @@ The result: the text scroller runs at a steady 25 Hz (every other frame), and th
 
 The model is simple:
 
-```
+```text
 Frame 1: Interrupt → save Thread 2 → restore Thread 1 → Thread 1 runs
 Frame 2: Interrupt → save Thread 1 → restore Thread 2 → Thread 2 runs
 Frame 3: Interrupt → save Thread 2 → restore Thread 1 → Thread 1 runs
@@ -394,7 +394,7 @@ Let us build a minimal demo engine that ties together the concepts from this cha
 
 ### The Memory Map
 
-```
+```text
 $6000-$7FFF   Engine code + effect routines
 $8000-$9FFF   Music player + song data
 $A000-$AFFF   Sine tables, colour maps, sample data
@@ -409,7 +409,7 @@ Bank 7:       Shadow screen ($C000-$DAFF display)
 
 ### The Timeline Script
 
-```z80
+```z80 id:ch12_the_timeline_script
 ; Timeline script: sequence of (effect_id, duration_frames, param_ptr)
 timeline:
     DB  EFFECT_PLASMA,   0, 150   ; plasma for 150 frames (3 sec)
@@ -429,7 +429,7 @@ EFFECT_SCROLLER EQU 2
 
 ### The Main Engine Loop
 
-```z80
+```z80 id:ch12_the_main_engine_loop
 ; Main engine loop
 ; Assumes IM2 is set up and music player runs in the ISR
 
@@ -508,7 +508,7 @@ engine_main:
 
 ### The Display ISR
 
-```z80
+```z80 id:ch12_the_display_isr
 ; IM2 interrupt handler: runs every frame (50 Hz)
 frame_isr:
     push af
@@ -562,7 +562,7 @@ BUF_CAPACITY EQU 8           ; 8 frames of buffer (8 x 768 = 6,144 bytes)
 
 ### The Effect Generator Dispatch
 
-```z80
+```z80 id:ch12_the_effect_generator_dispatch
 ; Generate one frame of the current effect
 ; Writes attribute data to the ring buffer
 generate_frame:

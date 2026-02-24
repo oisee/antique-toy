@@ -103,7 +103,7 @@ Say you want to fill the entire screen with a calculated colour every frame -- a
 
 If your inner loop per attribute byte looks like this:
 
-```z80
+```z80 id:ch01_thinking_in_budgets
     ld   a,c        ; 4T   column index
     add  a,b        ; 4T   add row index (diagonal pattern)
     add  a,d        ; 4T   add frame counter (animation)
@@ -149,7 +149,7 @@ Before we write our first timing harness, you need a working toolchain. The setu
 
 Create a directory for your Chapter 1 experiments. A minimal project looks like this:
 
-```
+```text
 ch01/
   main.a80          -- your source file
   build.bat         -- (Windows) sjasmplus main.a80
@@ -213,7 +213,7 @@ The idea: change the border colour to red immediately before the code you want t
 
 Here is the complete harness:
 
-```z80
+```z80 id:ch01_practical_the_timing_harness
     ORG $8000
 
 start:
@@ -255,7 +255,7 @@ Each scanline takes 224 T-states (on Pentagon). So if your red stripe is N scanl
 
 Now try replacing the NOP loop with something heavier. Replace the four NOPs with:
 
-```z80
+```z80 id:ch01_reading_the_stripe
 .loop:
     ld   a,(hl)        ; 7T
     add  a,(hl)        ; 7T
@@ -273,7 +273,7 @@ This is how Spectrum demo coders have profiled their effects since the 1980s. Th
 
 You can use different colours to mark different phases of your code:
 
-```z80
+```z80 id:ch01_variations
     ld   a, 2          ; red
     out  ($FE), a
     call render_sprites

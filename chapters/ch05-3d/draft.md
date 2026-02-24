@@ -17,7 +17,7 @@ Take the shift-and-add multiply from Chapter 4, which costs roughly 200 T-states
 
 Now try something more interesting. A sphere approximated by 20 vertices and 36 faces:
 
-```
+```text
 20 vertices x 2,400 T-states = 48,000 T-states
 ```
 
@@ -35,7 +35,7 @@ The insight is geometric. Not every vertex in an object carries independent info
 
 Consider a cube centered at the origin. It has 8 vertices, but they are not 8 independent points. They are 4 pairs of diametrically opposite vertices. If you know one vertex of a pair, the other is its negation through the center:
 
-```
+```text
 v0 = ( x,  y,  z)    →    v7 = (-x, -y, -z)
 v1 = ( x,  y, -z)    →    v6 = (-x, -y,  z)
 v2 = ( x, -y,  z)    →    v5 = (-x,  y, -z)
@@ -50,13 +50,13 @@ But the midpoint method goes much further than mirroring.
 
 The key operation is the average: given two already-computed points, their midpoint is simply the mean of their coordinates.
 
-```
+```text
 v_new = (v_a + v_b) / 2
 ```
 
 On the Z80, this is an addition and a shift:
 
-```z80
+```z80 id:ch05_deriving_vertices_by_2
 ; Average two signed 8-bit coordinates
 ; A = first coordinate, B = second coordinate
 ; Result in A = (A + B) / 2
@@ -69,7 +69,7 @@ On the Z80, this is an addition and a shift:
 
 `SRA` (Shift Right Arithmetic) preserves the sign bit, so this works correctly for negative coordinates. For all three coordinates (x, y, z), averaging costs 36 T-states per derived vertex. Compare that to 2,400 T-states for a full rotation.
 
-The ratio is staggering: averaging is **66 times cheaper** than rotation.
+The ratio: averaging is **66 times cheaper** than rotation.
 
 This means you can build complex objects from a small set of "basis" vertices that you rotate fully, then derive all remaining vertices through chains of averages. The more vertices you can derive, the more time you save.
 
@@ -88,7 +88,7 @@ The constraint is topological: you can only derive a vertex by averaging if it g
 
 Dark and STS give examples of the derivation chains:
 
-```
+```text
 v8  = (v4 + v5) / 2
 v9  = (v3 + v7) / 2
 v10 = (v2 + v6) / 2
@@ -122,9 +122,9 @@ Each instruction is encoded in a single byte: 2 bits for the opcode, 6 bits for 
 
 ### Execution
 
-The interpreter loop is remarkably compact:
+The interpreter loop is compact:
 
-```z80
+```z80 id:ch05_execution
 ; Virtual processor main loop
 ; IX points to the program (sequence of 1-byte instructions)
 ; Point RAM at a fixed address, 3 bytes per cell
@@ -152,7 +152,7 @@ The **Load** instruction copies a cell's x, y, z values into the working registe
 
 A vertex derivation chain becomes a simple sequence of bytes. Dark uses a compact notation in the article:
 
-```z80
+```z80 id:ch05_writing_programs
 ; Example: derive v8 = (v4 + v5) / 2, then store it
 ; Cell 4 = v4, Cell 5 = v5, Cell 8 = destination
 
@@ -165,7 +165,7 @@ The notation `128+5` encodes `%10000101` --- opcode 10 (Average) with cell numbe
 
 A complete object description might look like:
 
-```z80
+```z80 id:ch05_writing_programs_2
 ; Midpoint program for a 12-vertex object
 ; Cells 0-3: basis vertices (rotated by main code)
 ; Cells 4-7: mirrored vertices (negated by main code)
@@ -199,7 +199,7 @@ You might ask: why not just write the averaging code directly in Z80 assembly? I
 
 The answer is flexibility. The virtual processor separates the *description* of an object's topology from the *execution* of the vertex computation. Change the object? Write a new program --- a new sequence of data bytes. The interpreter code stays the same. You can store programs for multiple objects and switch between them at zero code cost. You can even generate programs algorithmically.
 
-This is, in essence, a domain-specific bytecode interpreter --- a pattern that modern programmers would recognize from game engines, shader compilers, and scripting languages. Dark designed it in 1998, on a ZX Spectrum, to save T-states on vertex computation. The architecture is remarkably clean.
+This is, in essence, a domain-specific bytecode interpreter --- a pattern that modern programmers would recognize from game engines, shader compilers, and scripting languages. Dark designed it in 1998, on a ZX Spectrum, to save T-states on vertex computation. The architecture is clean.
 
 ---
 
@@ -211,14 +211,14 @@ With the midpoint method handling most vertices, you still need to rotate the ba
 
 Rotation around Z affects only X and Y:
 
-```
+```text
 X' = X * cos(Az) + Y * sin(Az)
 Y' = -X * sin(Az) + Y * cos(Az)
 ```
 
 In Z80 assembly, using the 8x8 signed multiply and 256-entry sine/cosine tables:
 
-```z80
+```z80 id:ch05_z_axis_rotation_2
 ; Rotate point around Z axis
 ; Input:  (px), (py) = coordinates; (angle_z) = rotation angle
 ; Output: (px), (py) updated
@@ -276,7 +276,7 @@ Note the detail about preserving the original X value. The second formula uses t
 
 Each axis rotation requires 4 multiplications and 2 additions. At 200 T-states per multiply and 11 T-states per 16-bit add:
 
-```
+```text
 Per axis:  4 x 200 + 2 x 11 = 822 T-states
 Three axes: 3 x 822 = 2,466 T-states per vertex
 ```
@@ -293,7 +293,7 @@ Once all vertices are rotated in 3D space, you need to project them onto the 2D 
 
 The simplest approach: ignore the Z coordinate entirely. Just use X and Y as screen coordinates (with appropriate offset to center the object on screen).
 
-```z80
+```z80 id:ch05_parallel_projection
 ; Parallel projection: screen coords = rotated X, Y + offset
     ld   a, (px)
     add  a, 128             ; center horizontally (128 = half of 256)
@@ -310,7 +310,7 @@ Cost: essentially zero. The result looks flat --- objects do not appear to reced
 
 Perspective makes near objects larger and far objects smaller, producing the depth cue that makes 3D convincing:
 
-```
+```text
 Xscreen = (X * Scale) / (Z + Zdistance) + Xoffset
 Yscreen = (Y * Scale) / (Z + Zdistance) + Yoffset
 ```
@@ -319,7 +319,7 @@ Yscreen = (Y * Scale) / (Z + Zdistance) + Yoffset
 
 The expensive operation here is the division. One divide per coordinate, two coordinates per vertex. Using the logarithmic division from Chapter 4 (~60 T-states per divide), the cost is modest:
 
-```z80
+```z80 id:ch05_perspective_projection_2
 ; Perspective projection for one vertex
 ; Input:  (px), (py), (pz) = rotated 3D coordinates
 ; Output: (screen_x), (screen_y)
@@ -365,7 +365,7 @@ A closed 3D object has faces that point toward the viewer and faces that point a
 
 The test is geometric. For each face, compute the Z-component of the surface normal using the cross product of two edge vectors:
 
-```
+```text
 Given three vertices of a face: v0, v1, v2
 
 Edge vectors:
@@ -377,7 +377,7 @@ Z-component of normal = Vx * Wy - Vy * Wx
 
 If the result is positive, the face is oriented toward the viewer and should be drawn. If negative, the face points away --- cull it. If zero, the face is edge-on and invisible.
 
-```z80
+```z80 id:ch05_backface_culling_2
 ; Backface culling test for one face
 ; Input: three projected vertices (x0,y0), (x1,y1), (x2,y2)
 ; Output: carry flag set if face is back-facing (should be culled)
@@ -429,7 +429,7 @@ For a convex object (a cube, a tetrahedron), backface culling alone produces cor
 
 Dark and STS compute a depth value for each visible face (typically the average Z of its vertices) and sort the face list accordingly. A simple insertion sort is adequate for the small face counts involved --- sorting 6--12 faces takes negligible time compared to filling them.
 
-```z80
+```z80 id:ch05_z_sorting
 ; Simplified depth sort: compute average Z for each visible face,
 ; sort face indices by descending Z (farthest first)
 
@@ -451,7 +451,7 @@ Once you know which faces to draw and in what order, you need to fill them. A co
 
 The edge-walking uses Bresenham-style incremental stepping --- no division needed per scanline, just additions and conditional increments. The horizontal fill itself is a tight loop of byte writes:
 
-```z80
+```z80 id:ch05_convex_polygon_filling
 ; Fill one scan line from x_left to x_right at screen row Y
 ; Screen address already computed in HL
 
@@ -482,7 +482,7 @@ The complete frame loop for a spinning 3D solid object follows this sequence:
 <!-- figure: ch05_3d_pipeline -->
 ![3D rendering pipeline: model, rotation, projection, screen](illustrations/output/ch05_3d_pipeline.png)
 
-```
+```text
 1. Update rotation angles (Az, Ay, Ax)
 2. For each basis vertex:
      Rotate through Z, Y, X axes         [~2,400 T per vertex]
@@ -523,7 +523,7 @@ A good midpoint object begins with a small basis. Four fully rotated points defi
 
 Consider building a 14-vertex object from scratch:
 
-```
+```text
 Basis:    v0, v1, v2, v3         (4 fully rotated)
 Mirrors:  v4, v5, v6, v7         (4 negated)
 Derived:
@@ -537,7 +537,7 @@ Derived:
 
 The virtual processor program for this is 19 bytes:
 
-```z80
+```z80 id:ch05_the_shape_of_objects_2
 object_14v_program:
     DB  0, 128+1, 64+8      ; v8  = avg(v0, v1)
     DB  2, 128+3, 64+9      ; v9  = avg(v2, v3)
@@ -564,7 +564,7 @@ Here is the outline for building a complete spinning 3D solid using everything i
 
 Start with basis vertices. A truncated octahedron works well with the midpoint method:
 
-```z80
+```z80 id:ch05_step_1_define_the_object
 ; 4 basis vertices in signed 8-bit coordinates
 basis_vertices:
     DB   30,   0,  30     ; v0 (x, y, z)
@@ -575,7 +575,7 @@ basis_vertices:
 
 ### Step 2: Write the Midpoint Program
 
-```z80
+```z80 id:ch05_step_2_write_the_midpoint
 midpoint_prog:
     ; Mirrors: cells 4-7 are pre-negated by the main loop
     ; Derive additional vertices:
@@ -588,7 +588,7 @@ midpoint_prog:
 
 ### Step 3: Define Faces
 
-```z80
+```z80 id:ch05_step_3_define_faces
 ; Face table: each face is a list of vertex indices + attribute byte
 ; Vertex order must be consistent (clockwise when front-facing)
 face_table:
@@ -600,7 +600,7 @@ face_table:
 
 ### Step 4: The Frame Loop
 
-```z80
+```z80 id:ch05_step_4_the_frame_loop
 main_loop:
     halt                       ; wait for vsync (IM1)
 

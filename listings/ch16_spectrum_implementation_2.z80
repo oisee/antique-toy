@@ -1,0 +1,37 @@
+main_loop:
+    halt                    ; wait for VBLANK
+    halt                    ; wait again (25 fps = every 2nd frame)
+
+    ; Phase 1: Restore all backgrounds (reverse order)
+    ld   ix, sprites + (NUM_SPRITES - 1) * SPRITE_SIZE
+    ld   b, NUM_SPRITES
+.restore_loop:
+    call restore_sprite_bg
+    ld   de, -SPRITE_SIZE
+    add  ix, de
+    djnz .restore_loop
+
+    ; Phase 2: Update positions
+    ld   ix, sprites
+    ld   b, NUM_SPRITES
+.update_loop:
+    call update_sprite_position
+    ld   de, SPRITE_SIZE
+    add  ix, de
+    djnz .update_loop
+
+    ; Phase 3: Save backgrounds and draw (forward order)
+    ld   ix, sprites
+    ld   b, NUM_SPRITES
+.draw_loop:
+    call save_and_draw_sprite
+    ld   de, SPRITE_SIZE
+    add  ix, de
+    djnz .draw_loop
+
+    ; Phase 4: Game logic, input, sound
+    call process_input
+    call update_game_logic
+    call update_sound
+
+    jr   main_loop

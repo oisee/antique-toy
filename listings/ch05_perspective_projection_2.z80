@@ -1,0 +1,29 @@
+; Perspective projection for one vertex
+; Input:  (px), (py), (pz) = rotated 3D coordinates
+; Output: (screen_x), (screen_y)
+
+perspective:
+    ; Compute denominator: Z + Zdistance
+    ld   a, (pz)
+    add  a, ZDISTANCE       ; Z + viewing distance
+    ld   c, a               ; C = denominator
+
+    ; Xscreen = (X * Scale) / (Z + Zdist) + Xoffset
+    ld   a, (px)
+    ld   b, SCALE
+    call mul_signed          ; HL = X * Scale
+    ld   a, h               ; take high byte as numerator
+    call log_divide          ; A = A / C (using log tables)
+    add  a, XOFFSET
+    ld   (screen_x), a
+
+    ; Yscreen = (Y * Scale) / (Z + Zdist) + Yoffset
+    ld   a, (py)
+    ld   b, SCALE
+    call mul_signed          ; HL = Y * Scale
+    ld   a, h
+    call log_divide          ; A = A / C
+    add  a, YOFFSET
+    ld   (screen_y), a
+
+    ret

@@ -1,0 +1,21 @@
+; Stack sprite: 16x16 with explicit SP per row
+; This is the practical version --- each row gets SP set independently
+;
+stack_sprite_16x16:
+    di                           ;  4 T
+    ld   (restore_sp + 1), sp    ; 20 T
+
+    ld   hl, (sprite_data + 0)   ; 16 T   row 0 data
+    ld   sp, (row_addrs + 0)     ; 20 T   SP = screen addr for row 0 + 2
+    push hl                      ; 11 T   write row 0
+                                 ;        total per row: 47 T
+
+    ld   hl, (sprite_data + 2)   ; 16 T   row 1 data
+    ld   sp, (row_addrs + 2)     ; 20 T
+    push hl                      ; 11 T
+    ; ... repeated for all 16 rows ...
+
+restore_sp:
+    ld   sp, $0000               ; 10 T   self-modified
+    ei                           ;  4 T
+    ret                          ; 10 T

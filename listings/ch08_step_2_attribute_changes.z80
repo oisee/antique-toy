@@ -1,0 +1,12 @@
+; After outputting scanline N...
+; Attribute change for the next 2-scanline band
+
+    ld   sp,attr_row_end       ; point SP at end of attribute row
+    ld   de,attr_data_0        ; 10 T  rightmost 2 attribute bytes
+    push de                    ; 11 T
+    ld   de,attr_data_1        ; 10 T
+    push de                    ; 11 T
+    ; ... 16 pairs for 32 attribute bytes ...
+
+    ld   sp,next_scanline_end  ; point SP at next scanline's right edge
+    ; Continue with pixel LDPUSH pairs for scanlines N+2, N+3

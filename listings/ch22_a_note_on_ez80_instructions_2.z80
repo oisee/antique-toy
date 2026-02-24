@@ -1,0 +1,4 @@
+; eZ80: TST A, mask
+; Test bits without destroying A
+    TST  A,$80             ; test sign bit
+    jr   nz,.negative      ; branch if bit 7 set, A unchanged

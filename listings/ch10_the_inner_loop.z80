@@ -1,0 +1,20 @@
+; Dotfield scroller inner loop (unrolled for one font byte)
+; BC = pointer to font/texture data, SP = pre-built address table
+
+    ld   a,(bc)      ;  7 T  read font byte (once per 8 pixels)
+    inc  bc          ;  6 T  advance to next font byte
+
+    ; Pixel 7 (MSB)
+    pop  hl          ; 10 T  get screen address from stack
+    rla              ;  4 T  shift texture bit into carry
+    jr   nc,.skip7   ; 12/7 T  skip if transparent
+    set  7,(hl)      ; 15 T  plot the dot
+.skip7:
+    ; Pixel 6
+    pop  hl          ; 10 T
+    rla              ;  4 T
+    jr   nc,.skip6   ; 12/7 T
+    set  6,(hl)      ; 15 T
+.skip6:
+    ; ... pixels 5 through 0 follow the same pattern,
+    ; with SET 5 through SET 0 ...

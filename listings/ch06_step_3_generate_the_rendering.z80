@@ -1,0 +1,54 @@
+; Code generator pseudocode (in Z80 assembly, this would be
+; a loop that writes opcodes into a buffer)
+
+generate_sphere_code:
+    ld   iy,skip_table        ; pointer to skip distances
+    ld   ix,code_buffer       ; pointer to output code buffer
+
+.line_loop:
+    ; For each scan line...
+    ld   b,bytes_this_line    ; number of output bytes (e.g. 7 at equator)
+
+.byte_loop:
+    ; For each output byte, emit code for 8 pixels:
+    ld   c,8                  ; 8 pixels per byte
+
+.pixel_loop:
+    ; Emit: ADD A,A
+    ld   (ix+0),$87           ; opcode for ADD A,A
+    inc  ix
+
+    ; Emit: ADD A,(HL)
+    ld   (ix+0),$86           ; opcode for ADD A,(HL)
+    inc  ix
+
+    ; Emit INC L instructions based on skip distance
+    ld   a,(iy+0)             ; read skip distance
+    inc  iy
+
+.emit_inc_l:
+    or   a
+    jr   z,.pixel_done
+    ld   (ix+0),$2C           ; opcode for INC L
+    inc  ix
+    dec  a
+    jr   nz,.emit_inc_l
+
+.pixel_done:
+    dec  c
+    jr   nz,.pixel_loop
+
+    ; Emit: LD (DE),A  (write byte to screen)
+    ld   (ix+0),$12           ; opcode for LD (DE),A
+    inc  ix
+    ; Emit: INC E
+    ld   (ix+0),$1C           ; opcode for INC E
+    inc  ix
+
+    dec  b
+    jr   nz,.byte_loop
+
+    ; Emit line transition code here (advance DE to next screen line)
+    ; ...
+
+    jr   .line_loop

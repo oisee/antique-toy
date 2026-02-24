@@ -1,0 +1,28 @@
+; Runtime code generation (conceptual, simplified from Illusion)
+; Generate an unrolled rendering loop for this frame's sphere slice
+
+    ld   hl, code_buffer
+    ld   de, sphere_table       ; per-frame skip distances
+
+    ld   b, SPHERE_WIDTH
+.gen_loop:
+    ld   a, (de)                ; load skip distance for this pixel
+    inc  de
+
+    ; Emit: ld a, (hl) -- opcode $7E
+    ld   (hl), $7E
+    inc  hl
+
+    ; Emit: add a, N   -- opcodes $C6, N
+    ld   (hl), $C6
+    inc  hl
+    ld   (hl), a                ; the skip distance, as immediate operand
+    inc  hl
+
+    djnz .gen_loop
+
+    ; Emit: ret -- opcode $C9
+    ld   (hl), $C9
+
+    ; Now execute the generated code
+    call code_buffer

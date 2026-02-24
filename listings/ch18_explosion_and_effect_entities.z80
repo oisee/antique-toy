@@ -1,0 +1,16 @@
+; Update an explosion entity
+; IX = entity pointer
+update_explosion:
+    ; Advance animation frame
+    ld   a, (ix + 5)        ; 19T  anim_frame
+    inc  a                   ; 4T
+    cp   8                   ; 7T   8 frames of animation
+    jr   nc, .done          ; 12/7T animation complete
+
+    ld   (ix + 5), a        ; 19T  store new frame
+    ret
+
+.done:
+    ; Animation complete -- deactivate
+    ld   (ix + 9), 0        ; 19T  clear flags
+    ret

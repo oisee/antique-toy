@@ -39,7 +39,7 @@ At the equator, the skip distances are roughly uniform --- the source image maps
 
 The generated inner loop has a repeating structure. For each screen byte (eight packed pixels), it executes a sequence like this:
 
-```z80
+```z80 id:ch06_inside_the_disassembly
 ; --- Accumulating 8 source pixels into one screen byte ---
 ; HL points into the source image (one byte per pixel)
 ; A is the accumulator, building the screen byte bit by bit
@@ -66,7 +66,7 @@ The key detail: between each `add a,(hl)`, the number of `inc l` instructions va
 
 Let us look more carefully at what happens with a single pixel:
 
-```z80
+```z80 id:ch06_inside_the_disassembly_2
     add  a,a          ;  4 T-states  (shift A left by 1)
     add  a,(hl)       ;  7 T-states  (add source pixel into bit 0)
     inc  l            ;  4 T-states  (advance source pointer)
@@ -97,7 +97,7 @@ The fixed cost per pixel is:
 
 For 8 pixels, the fixed cost is 8 x 15 = 120 T-states. But there is additional overhead per byte: the code must write the completed byte to screen memory and set up for the next. Let us assume the output sequence looks something like:
 
-```z80
+```z80 id:ch06_counting_t_states
     ld   (de),a       ;  7 T-states  (write screen byte)
     inc  e            ;  4 T-states  (advance screen pointer)
 ```
@@ -132,7 +132,7 @@ And they are, quite precisely, the building blocks used in Illusion.
 
 The sphere requires: trigonometric lookup tables for computing the projection (sine/cosine, the parabolic approximation from Dark's article). Fixed-point multiplication for scaling. Careful memory layout for speed (the same cycle-counting discipline that Dark teaches throughout the articles). The skip-table approach to encoding sphere geometry is a direct application of the kind of precomputation-driven thinking that Dark advocates.
 
-Dark published the textbook. Then he wrote the demo that demonstrates every technique in it. Twenty years later, Introspec reverse-engineered the demo and found exactly the patterns Dark had taught. We have both sides of the story: the teacher explaining his methods, and the analyst confirming that those methods are precisely what the finished product contains.
+Dark wrote the demo first --- Illusion won at ENLiGHT'96. Then, in 1997--98, he published the textbook that explained every technique he had used. Twenty years later, Introspec reverse-engineered the demo and found exactly the algorithms Dark had documented. We have both sides of the story: the practitioner explaining his methods after the fact, and the analyst confirming that those methods are precisely what the finished product contains.
 
 ## The Hype Debate: Inner Loops vs. Mathematics
 
@@ -154,13 +154,13 @@ Let us sketch how you would build a simplified version of this effect. We will t
 
 For each scanline *y* (from -28 to +27, centered on the sphere), compute the visible arc:
 
-```
+```text
 radius_at_y = sqrt(R^2 - y^2)    ; where R = 28 (sphere radius in pixels)
 ```
 
 This gives the half-width of the sphere at that scanline. For each pixel position *x* within that arc, compute the corresponding longitude and latitude on the sphere surface:
 
-```
+```text
 latitude  = arcsin(y / R)
 longitude = arcsin(x / radius_at_y) + rotation_angle
 ```
@@ -181,7 +181,7 @@ For animation, you need skip tables for multiple rotation angles. With 32 rotati
 
 For each frame, read the skip table for the current rotation angle and generate Z80 code:
 
-```z80
+```z80 id:ch06_step_3_generate_the_rendering
 ; Code generator pseudocode (in Z80 assembly, this would be
 ; a loop that writes opcodes into a buffer)
 
@@ -244,7 +244,7 @@ This is simplified --- the actual Illusion code is more tightly integrated, and 
 
 Once the code buffer is filled, call it as a subroutine:
 
-```z80
+```z80 id:ch06_step_4_execute_and_display
     ld   hl,source_image      ; source texture (page-aligned, 1 byte/pixel)
     ld   de,screen_address    ; start of sphere area in video memory
     call code_buffer          ; execute the generated rendering code
@@ -285,7 +285,7 @@ Dark understood this in 1996. He encoded it in his Spectrum Expert articles in 1
 - The inner loop uses `ADD A,A` and `ADD A,(HL)` to accumulate pixels into screen bytes, with variable numbers of `INC L` instructions to advance through the source data.
 - Performance: 101 + 32x T-states per output byte, where x depends on position.
 - The approach exemplifies a general demoscene pattern: precompute geometry, generate code, access memory sequentially.
-- Dark wrote the building-block algorithms in Spectrum Expert (1997) and applied them in Illusion (1996). Introspec reverse-engineered the result twenty years later, confirming the techniques.
+- Dark applied these algorithms in Illusion (1996), then documented them in Spectrum Expert (1997--98). Introspec reverse-engineered the result twenty years later, confirming the techniques.
 
 ---
 

@@ -1,0 +1,6 @@
+; 4 basis vertices in signed 8-bit coordinates
+basis_vertices:
+    DB   30,   0,  30     ; v0 (x, y, z)
+    DB    0,  30,  30     ; v1
+    DB   30,  30,   0     ; v2
+    DB    0,   0,   0     ; v3 (at origin for center reference)

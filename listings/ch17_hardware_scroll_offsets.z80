@@ -1,0 +1,13 @@
+; Agon: set horizontal scroll offset
+; VDU 23, 0, &C3, x_low, x_high
+;
+    ld   a, 23
+    call vdu_write      ; VDU command prefix
+    ld   a, 0
+    call vdu_write
+    ld   a, $C3         ; set scroll offset command
+    call vdu_write
+    ld   a, (scroll_x)
+    call vdu_write      ; x offset low byte
+    ld   a, (scroll_x+1)
+    call vdu_write      ; x offset high byte

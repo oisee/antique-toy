@@ -1,0 +1,7 @@
+; Mixer: tone A on, tone B on, tone C on, noise C on
+; Binary: 00 011 000 = noise C on (bit5=0) + all tones on (bits0-2=0)
+;         noise A,B off (bits3,4=1), I/O bits=0
+; = $18
+ld   a, R_MIXER
+ld   e, $18
+call ay_write

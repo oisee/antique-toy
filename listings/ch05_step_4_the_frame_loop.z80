@@ -1,0 +1,45 @@
+main_loop:
+    halt                       ; wait for vsync (IM1)
+
+    ; Clear the screen area (or use double buffering)
+    call clear_viewport
+
+    ; Update angles
+    ld   hl, angle_z
+    inc  (hl)
+    ld   hl, angle_x
+    ld   a, (hl)
+    add  a, 2
+    ld   (hl), a
+
+    ; Rotate basis vertices
+    ld   b, 4                  ; 4 basis vertices
+    ld   ix, basis_vertices
+    ld   iy, point_ram         ; cell 0 onwards
+.rotate_basis:
+    push bc
+    call rotate_xyz            ; rotate point at (IX) by current angles
+                               ; store result at (IY)
+    ld   bc, 3
+    add  ix, bc
+    add  iy, bc
+    pop  bc
+    djnz .rotate_basis
+
+    ; Negate for mirrors (cells 4-7 = negation of cells 0-3)
+    call negate_basis
+
+    ; Run midpoint program
+    ld   ix, midpoint_prog
+    call virtual_processor
+
+    ; Project all vertices
+    call project_all
+
+    ; Backface cull and sort
+    call cull_and_sort
+
+    ; Draw visible faces
+    call draw_faces
+
+    jr   main_loop

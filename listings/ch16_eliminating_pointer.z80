@@ -1,0 +1,27 @@
+; Save background using LDI (partial unroll, 2 bytes per row)
+; HL = screen address, DE = save buffer
+;
+save_bg_ldi:
+    ld   b, 16              ;  7 T
+.row:
+    ldi                     ; 16 T   copy left byte
+    ldi                     ; 16 T   copy right byte
+    dec  l                  ;  4 T   \
+    dec  l                  ;  4 T   /  LDI advanced L by 2, undo it
+
+    ; DOWN_HL
+    inc  h                  ;  4 T
+    ld   a, h               ;  4 T
+    and  7                  ;  7 T
+    jr   nz, .no_boundary   ; 12/7T
+    ld   a, l               ;  4 T
+    add  a, 32              ;  7 T
+    ld   l, a               ;  4 T
+    jr   c, .no_fix         ; 12/7T
+    ld   a, h               ;  4 T
+    sub  8                  ;  7 T
+    ld   h, a               ;  4 T
+.no_fix:
+.no_boundary:
+    djnz .row               ; 13 T
+    ret                     ; 10 T

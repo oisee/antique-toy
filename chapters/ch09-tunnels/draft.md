@@ -38,7 +38,7 @@ On the Z80, this means table lookups. A 256-byte sine table, page-aligned so you
 The tunnel shape is implicit, not explicit. There is no distance-from-centre calculation, no angle table, no polar coordinate transform. Instead, the frequency and phase parameters of the plasma are arranged so that the resulting colour pattern naturally forms concentric rings when viewed on screen. The rings emerge from the interference of the sine waves, just as Moire patterns emerge from overlapping grids. Adjust the parameters and the rings contract toward the centre, creating the illusion of depth -- of looking down a tunnel.
 
 <!-- figure: ch09_tunnel_plasma_computation -->
-```mermaid
+```mermaid id:ch09_plasma_the_colour_engine
 graph TD
     A["For each attribute cell (row, col)"] --> B["Look up sin(col × freq1 + phase1)\nfrom 256-byte sine table"]
     B --> C["Look up sin(row × freq2 + phase2)"]
@@ -68,9 +68,9 @@ Even at 32x24, calculating plasma for all 768 cells every frame is expensive on 
 
 A tunnel viewed head-on is symmetric about both the horizontal and vertical axes. If you calculate one quarter of the screen -- the top-left 16x12 block -- you can copy it to the other three quarters by mirroring. Top-left to top-right is a horizontal flip. Top-left to bottom-left is a vertical flip. Top-left to bottom-right is both.
 
-The copy routine is remarkably tight. In Introspec's implementation, HL points to the source byte in the top-left quarter, and the three destination addresses (top-right, bottom-left, bottom-right) are maintained in a combination of absolute addresses and register pair BC:
+The copy routine is tight. In Introspec's implementation, HL points to the source byte in the top-left quarter, and the three destination addresses (top-right, bottom-left, bottom-right) are maintained in a combination of absolute addresses and register pair BC:
 
-```z80
+```z80 id:ch09_four_fold_symmetry_divide_and
     ld a,(hl)      ; read source byte from top-left quarter
     ld (nn),a      ; write to upper-right quarter (mirrored)
     ld (mm),a      ; write to lower-left quarter (mirrored)
@@ -94,7 +94,7 @@ The "chaos" comes from the visual result, not the algorithm. The effect zooms in
 
 The implementation relies on unrolled `ld hl,nn : ldi` sequences. Each `ld hl,nn` loads a new source address -- the position in the source buffer to sample for this particular output cell. The following `ldi` copies from (HL) to (DE), advancing DE to the next output position. The source addresses are arranged so that cells near the centre of the screen sample from nearby positions in the source data (magnification), while cells near the edges sample from widely spaced positions (compression). Vary the mapping over time and the zoom animates.
 
-```z80
+```z80 id:ch09_the_chaos_zoomer
     ; Unrolled chaos zoomer fragment
     ld hl,src_addr_0    ; source for output cell 0
     ldi                 ; copy to output, advance DE
@@ -105,7 +105,7 @@ The implementation relies on unrolled `ld hl,nn : ldi` sequences. Each `ld hl,nn
     ; ... repeated for all 768 cells (or one quarter, with symmetry)
 ```
 
-The key optimisation: since `ldi` auto-increments DE, you never need to calculate or load the destination address. The output is always written sequentially into attribute RAM. Only the source addresses vary, and they are embedded directly in the instruction stream as immediate operands. This makes the zoomer a long sequence of `ld hl,nn : ldi` pairs -- conceptually simple, but each pair is just 6 bytes and 26 T-states. For a full quarter-screen of 192 cells, that is roughly 5,000 T-states of pure copying, plus the four-way symmetry copy on top.
+The key optimisation: since `ldi` auto-increments DE, you never need to calculate or load the destination address. The output is always written sequentially into attribute RAM. Only the source addresses vary, and they are embedded directly in the instruction stream as immediate operands. This makes the zoomer a long sequence of `ld hl,nn : ldi` pairs -- conceptually simple, but each pair is just 5 bytes (3 for `ld hl,nn` + 2 for `ldi`) and 26 T-states. For a full quarter-screen of 192 cells, that is roughly 5,000 T-states of pure copying, plus the four-way symmetry copy on top.
 
 The complication is that the source addresses change every frame as the zoom progresses. Updating 192 two-byte addresses embedded in the code would cost nearly as much as the copy itself. This is where code generation enters the picture.
 
@@ -172,7 +172,7 @@ This will not match Eager's visual sophistication -- we are omitting the pseudo-
 
 We need a fixed pixel pattern so that ink and paper colours are both visible. A simple checkerboard works:
 
-```z80
+```z80 id:ch09_step_1_fill_pixel_memory_with
 ; Fill bitmap memory ($4000-$57FF) with checkerboard pattern
     ld hl,$4000
     ld de,$4001
@@ -188,7 +188,7 @@ Every 8x8 cell will now display alternating ink and paper pixels. When we change
 
 Page-align a 256-byte sine table for fast indexing. This can be generated at assembly time using sjasmplus's Lua scripting, or pre-calculated and included as binary data:
 
-```z80
+```z80 id:ch09_step_2_sine_table
     ALIGN 256
 sin_table:
     LUA ALLPASS
@@ -203,7 +203,7 @@ sin_table:
 
 Calculate the plasma value for each cell in the top-left 16x12 quarter. The result is an index into a colour table that produces the attribute byte:
 
-```z80
+```z80 id:ch09_step_3_plasma_for_one_quarter
 ; Calculate plasma for top-left quarter (16 columns x 12 rows)
 ; Input: frame_phase is incremented each frame
 ; Output: attr_buffer filled with 192 attribute bytes
@@ -266,7 +266,7 @@ The simplified approach copies row by row, mirroring horizontally for the right 
 
 ### Step 5: Main Loop
 
-```z80
+```z80 id:ch09_step_5_main_loop
 main_loop:
     halt                     ; wait for vsync
 

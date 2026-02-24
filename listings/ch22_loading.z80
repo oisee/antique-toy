@@ -1,0 +1,16 @@
+; Spectrum + esxDOS: load a file
+    ld   a,'*'             ; current drive
+    ld   ix,filename
+    ld   b,$01             ; read-only
+    rst  $08               ; esxDOS call
+    DB   $9A               ; F_OPEN
+    ; A = file handle
+
+    ld   ix,buffer
+    ld   bc,size
+    rst  $08
+    DB   $9D               ; F_READ
+    ; Data loaded
+
+    rst  $08
+    DB   $9B               ; F_CLOSE

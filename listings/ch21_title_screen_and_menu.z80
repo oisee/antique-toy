@@ -1,0 +1,14 @@
+state_title:
+    ; Animate background (e.g., scrolling starfield, colour cycling)
+    call title_animate
+
+    ; Check for keypress
+    xor  a
+    in   a, ($FE)          ; read all keyboard half-rows at once
+    cpl                    ; invert (keys are active low)
+    and  $1F               ; mask 5 key bits
+    jr   z, .no_key
+    ld   a, STATE_MENU
+    ld   (current_state), a
+.no_key:
+    jp   main_loop

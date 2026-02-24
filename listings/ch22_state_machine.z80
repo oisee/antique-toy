@@ -1,0 +1,19 @@
+; Spectrum: dispatch game state
+    ld   a,(game_state)
+    add  a,a               ; multiply by 2 (16-bit pointers)
+    ld   e,a
+    ld   d,0
+    ld   hl,state_table
+    add  hl,de
+    ld   a,(hl)
+    inc  hl
+    ld   h,(hl)
+    ld   l,a
+    jp   (hl)
+
+state_table:
+    dw   state_title
+    dw   state_menu
+    dw   state_game
+    dw   state_pause
+    dw   state_gameover

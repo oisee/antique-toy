@@ -1,0 +1,17 @@
+graph LR
+    SRC["Source Data\n(raw bytes)"] --> EXO["Exomizer\n48.3% ratio\n~250 T/byte\n170B decompressor"]
+    SRC --> APL["ApLib\n49.2% ratio\n~105 T/byte\n199B decompressor"]
+    SRC --> PLT["Pletter 5\n51.5% ratio\n~69 T/byte\n~120B decompressor"]
+    SRC --> ZX0["ZX0\n~52% ratio\n~100 T/byte\n~70B decompressor"]
+    SRC --> LZ4["LZ4\n58.6% ratio\n~34 T/byte\n~100B decompressor"]
+
+    EXO --> T1["Best ratio\nSlowest decompression"]
+    LZ4 --> T2["Worst ratio\nFastest decompression"]
+    ZX0 --> T3["Smallest decompressor\nGood all-around"]
+
+    style EXO fill:#fdd,stroke:#333
+    style LZ4 fill:#ddf,stroke:#333
+    style ZX0 fill:#dfd,stroke:#333
+    style T1 fill:#fdd,stroke:#933
+    style T2 fill:#ddf,stroke:#339
+    style T3 fill:#dfd,stroke:#393

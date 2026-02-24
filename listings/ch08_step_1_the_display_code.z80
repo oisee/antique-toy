@@ -1,0 +1,16 @@
+; Structure of one scanline's display code (conceptual)
+; SP is pre-set to the right edge of this scanline in screen memory
+
+    ld   de,$0000       ; 10 T  rightmost 2 bytes (will be patched)
+    push de             ; 11 T
+    ld   de,$0000       ; 10 T  next 2 bytes leftward
+    push de             ; 11 T
+    ld   de,$0000       ; 10 T
+    push de             ; 11 T
+    ; ... 12 pairs total ...
+    ld   de,$0000       ; 10 T  leftmost 2 bytes
+    push de             ; 11 T
+    ; --- 252 T per scanline (12 x 21) ---
+
+    ; Then: adjust SP for the next scanline
+    ; Then: change attributes (every 2nd scanline)

@@ -1,0 +1,17 @@
+; Calculate entity address from index in A
+; Input: A = entity index (0-15)
+; Output: HL = address of entity structure
+; Destroys: DE
+get_entity_addr:
+    ld   l, a               ; 4T
+    ld   h, 0               ; 7T
+    add  hl, hl             ; 11T  x2
+    ld   d, h               ; 4T
+    ld   e, l               ; 4T   DE = index x 2
+    add  hl, hl             ; 11T  x4
+    add  hl, hl             ; 11T  x8
+    add  hl, de             ; 11T  x8 + x2 = x10
+    ld   de, entity_array   ; 10T
+    add  hl, de             ; 11T  HL = entity_array + index * 10
+    ret                     ; 10T
+    ; Total: 94T

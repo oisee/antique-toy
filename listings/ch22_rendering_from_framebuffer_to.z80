@@ -1,0 +1,45 @@
+; Agon: Create and position a hardware sprite
+; Step 1: Upload sprite bitmap (done once at init)
+;   VDU 23, 27, 4, spriteNum   ; select sprite
+;   VDU 23, 27, 0, w, h        ; set dimensions
+;   followed by pixel data
+
+; Step 2: Move sprite (done every frame)
+; VDU 23, 27, 4, spriteNum     ; select sprite
+; VDU 23, 27, 13, x.lo, x.hi, y.lo, y.hi  ; set position
+
+move_sprite:
+    ; Send VDU command to move sprite
+    ld   a,23
+    rst  $10                ; MOS: output byte to VDP
+    ld   a,27
+    rst  $10
+    ld   a,4               ; command: select sprite
+    rst  $10
+    ld   a,(sprite_num)
+    rst  $10
+
+    ld   a,23
+    rst  $10
+    ld   a,27
+    rst  $10
+    ld   a,13              ; command: move sprite to
+    rst  $10
+
+    ld   a,(sprite_x)      ; X low byte
+    rst  $10
+    ld   a,(sprite_x+1)    ; X high byte
+    rst  $10
+    ld   a,(sprite_y)      ; Y low byte
+    rst  $10
+    ld   a,(sprite_y+1)    ; Y high byte
+    rst  $10
+
+    ; VDU 23, 27, 15        ; show sprite (update display)
+    ld   a,23
+    rst  $10
+    ld   a,27
+    rst  $10
+    ld   a,15
+    rst  $10
+    ret

@@ -1,0 +1,8 @@
+sfx_pickup:
+    DB $FC,0, 0, 14, 0    ; frame 0: A4
+    DB $D4,0, 0, 13, 0    ; frame 1: C5
+    DB $A0,0, 0, 12, 0    ; frame 2: E5 (approx)
+    DB $6A,0, 0, 11, 0    ; frame 3: C6 (approx)
+    DB $6A,0, 0, 8,  0    ; frame 4: sustain
+    DB $6A,0, 0, 4,  0    ; frame 5: fade
+    DB $FF                 ; end

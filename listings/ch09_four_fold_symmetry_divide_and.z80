@@ -1,0 +1,5 @@
+    ld a,(hl)      ; read source byte from top-left quarter
+    ld (nn),a      ; write to upper-right quarter (mirrored)
+    ld (mm),a      ; write to lower-left quarter (mirrored)
+    ld (bc),a      ; write to lower-right quarter (mirrored)
+    ldi            ; copy source to its own destination AND advance HL, DE

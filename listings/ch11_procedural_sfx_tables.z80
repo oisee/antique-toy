@@ -1,0 +1,11 @@
+sfx_explosion:
+    ; tone_lo, tone_hi, noise_period, volume, (unused)
+    DB 0, 0, 15, 15, 0    ; frame 0: loud low noise
+    DB 0, 0, 18, 13, 0    ; frame 1
+    DB 0, 0, 20, 11, 0    ; frame 2
+    DB 0, 0, 22, 9,  0    ; frame 3
+    DB 0, 0, 25, 7,  0    ; frame 4
+    DB 0, 0, 28, 5,  0    ; frame 5
+    DB 0, 0, 30, 3,  0    ; frame 6
+    DB 0, 0, 31, 1,  0    ; frame 7
+    DB $FF                 ; end

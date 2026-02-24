@@ -1,0 +1,36 @@
+; apply_gravity -- Add gravity to an entity's vertical velocity
+;
+; Input:  IX = entity pointer
+; Output: dy updated (8.8 fixed-point, positive = downward)
+;
+; GRAVITY_FRAC and GRAVITY_INT define the gravity constant
+; in 8.8 fixed-point. A good starting value: 0.25 per frame
+; = $0040 (INT=0, FRAC=64, i.e. 64/256 = 0.25 pixels/frame^2)
+;
+; Cost: ~50 T-states (Pentagon)
+
+GRAVITY_FRAC equ 40h     ; 0.25 pixels/frame^2 (fractional part)
+GRAVITY_INT  equ 00h     ; (integer part)
+MAX_FALL_INT equ 04h     ; terminal velocity: 4 pixels/frame
+
+apply_gravity:
+    ; Skip if entity is on the ground
+    bit  0, (ix+12)       ; 20T  check on_ground flag
+    ret  nz               ; 11/5T  on ground -- no gravity
+
+    ; dy += gravity (16-bit fixed-point add)
+    ld   a, (ix+9)        ; 19T  dy_frac
+    add  a, GRAVITY_FRAC  ; 7T
+    ld   (ix+9), a        ; 19T
+
+    ld   a, (ix+10)       ; 19T  dy_int
+    adc  a, GRAVITY_INT   ; 7T   add with carry from frac
+    ld   (ix+10), a       ; 19T
+
+    ; Clamp to terminal velocity
+    cp   MAX_FALL_INT     ; 7T
+    ret  c                ; 11/5T  below terminal velocity, done
+    ld   (ix+10), MAX_FALL_INT ; 19T  clamp integer part
+    xor  a                ; 4T
+    ld   (ix+9), a        ; 19T  zero fractional part (exact clamp)
+    ret                    ; 10T

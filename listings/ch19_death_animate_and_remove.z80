@@ -1,0 +1,23 @@
+; ai_death -- Play death animation, then deactivate
+;
+; Input:  IX = enemy entity
+; Output: Entity deactivated after animation completes
+;
+; Uses anim_frame as a countdown. When it reaches 0,
+; the entity is marked inactive.
+;
+; Cost: ~40 T-states per frame
+
+DEATH_FRAMES equ 8        ; 8 frames of death animation
+
+ai_death:
+    ld   a, (ix+6)        ; 19T  anim_frame (countdown)
+    or   a                ; 4T
+    jr   z, .deactivate   ; 12/7T
+
+    dec  (ix+6)           ; 23T  count down
+    ret                    ; 10T
+
+.deactivate:
+    res  7, (ix+12)       ; 23T  clear "active" flag (bit 7 of flags)
+    ret                    ; 10T

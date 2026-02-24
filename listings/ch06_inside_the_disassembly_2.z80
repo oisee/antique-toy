@@ -1,0 +1,3 @@
+    add  a,a          ;  4 T-states  (shift A left by 1)
+    add  a,(hl)       ;  7 T-states  (add source pixel into bit 0)
+    inc  l            ;  4 T-states  (advance source pointer)

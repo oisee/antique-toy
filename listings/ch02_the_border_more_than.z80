@@ -1,0 +1,2 @@
+    ld   a, 1          ; 7T   blue = colour 1
+    out  ($FE), a       ; 11T  set border colour

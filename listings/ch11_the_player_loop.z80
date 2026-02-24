@@ -1,0 +1,22 @@
+music_play:
+    ; Decrement speed counter
+    ld   a, (speed_counter)
+    dec  a
+    ld   (speed_counter), a
+    ret  nz              ; not time for a new row yet
+
+    ; Reset speed counter
+    ld   a, (song_speed)
+    ld   (speed_counter), a
+
+    ; Process each channel
+    ld   ix, channel_a_data
+    call process_channel
+    ld   ix, channel_b_data
+    call process_channel
+    ld   ix, channel_c_data
+    call process_channel
+
+    ; Write all registers to AY
+    call ay_flush_registers
+    ret

@@ -1,0 +1,9 @@
+    ld   a, (frame_counter)
+    ld   b, 3
+    ; A mod 3: subtract 3 repeatedly
+.mod3:
+    sub  b
+    jr   nc, .mod3
+    add  a, b              ; restore: A = frame_counter mod 3
+    or   a
+    ret  nz                ; skip unless remainder is 0

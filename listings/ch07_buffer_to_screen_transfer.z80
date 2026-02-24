@@ -1,0 +1,2 @@
+    pop  hl                   ; 10T -- read 2 bytes from buffer
+    ld   (screen_addr),hl     ; 16T -- write 2 bytes to screen

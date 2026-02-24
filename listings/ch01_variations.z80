@@ -1,0 +1,11 @@
+    ld   a, 2          ; red
+    out  ($FE), a
+    call render_sprites
+    ld   a, 1          ; blue
+    out  ($FE), a
+    call update_music
+    ld   a, 4          ; green
+    out  ($FE), a
+    call game_logic
+    xor  a             ; black
+    out  ($FE), a

@@ -1,0 +1,54 @@
+state_title:
+    call draw_title_screen
+    call read_input
+    ; Check for start key (SPACE or ENTER)
+    ld   a, (input_flags)
+    bit  BUTTON_FIRE, a
+    jr   z, .no_start
+    ; Transition to menu
+    ld   a, STATE_MENU
+    ld   (game_state), a
+    call init_menu          ; set up menu screen
+.no_start:
+    jp   main_loop
+
+state_game:
+    call read_input
+    ; Check for pause
+    ld   a, (input_keys)
+    bit  KEY_P, a
+    jr   z, .not_paused
+    ld   a, STATE_PAUSE
+    ld   (game_state), a
+    jp   main_loop
+.not_paused:
+    call update_entities
+    call check_collisions
+    call render_frame
+    call update_music       ; AY player -- see Chapter 11
+    jp   main_loop
+
+state_pause:
+    ; Game is frozen -- only check for unpause
+    call read_input
+    ld   a, (input_keys)
+    bit  KEY_P, a
+    jr   z, .still_paused
+    ld   a, STATE_GAME
+    ld   (game_state), a
+.still_paused:
+    ; Optionally blink "PAUSED" text
+    call blink_pause_text
+    jp   main_loop
+
+state_gameover:
+    call draw_gameover_screen
+    call read_input
+    ld   a, (input_flags)
+    bit  BUTTON_FIRE, a
+    jr   z, .wait
+    ld   a, STATE_TITLE
+    ld   (game_state), a
+    call init_title
+.wait:
+    jp   main_loop

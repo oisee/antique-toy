@@ -1,0 +1,16 @@
+; Entity structure (16 bytes per entity)
+ENT_X       equ  0    ; 16-bit, 8.8 fixed-point
+ENT_Y       equ  2    ; 16-bit, 8.8 fixed-point
+ENT_VX      equ  4    ; 16-bit, 8.8 fixed-point
+ENT_VY      equ  6    ; 16-bit, 8.8 fixed-point
+ENT_TYPE    equ  8    ; entity type (player, walker, flyer, shooter, boss)
+ENT_STATE   equ  9    ; FSM state (idle, patrol, chase, attack, retreat, dying)
+ENT_ANIM    equ  10   ; animation frame counter
+ENT_HEALTH  equ  11   ; hit points
+ENT_FLAGS   equ  12   ; bit flags: active, on_ground, facing_left, invuln, ...
+ENT_TIMER   equ  13   ; general-purpose timer (attack cooldown, etc.)
+ENT_AUX1    equ  14   ; type-specific data (patrol point, projectile type, etc.)
+ENT_AUX2    equ  15   ; type-specific data
+ENT_SIZE    equ  16
+
+MAX_ENTITIES equ 16   ; player + 8 enemies + 7 projectiles

@@ -1,0 +1,19 @@
+; Virtual processor main loop
+; IX points to the program (sequence of 1-byte instructions)
+; Point RAM at a fixed address, 3 bytes per cell
+
+vp_loop:
+    ld   a, (ix+0)        ; fetch instruction
+    inc  ix
+    ld   b, a             ; save full instruction
+    and  %11000000        ; extract opcode (top 2 bits)
+
+    cp   %11000000        ; END?
+    ret  z                ; yes — halt
+
+    ld   a, b
+    and  %00111111        ; extract cell number (bottom 6 bits)
+    ; ... compute cell address from cell number ...
+    ; ... dispatch based on opcode ...
+
+    jr   vp_loop

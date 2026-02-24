@@ -1,0 +1,5 @@
+; eZ80: MLT BC
+; B * C -> BC (16-bit result)
+    ld   b,sprite_width
+    ld   c,frame_number
+    mlt  bc                ; BC = B * C

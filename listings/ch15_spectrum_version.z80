@@ -1,0 +1,106 @@
+; Memory Inspector - ZX Spectrum 128K
+; Displays 256 bytes of memory as hex, navigable with keys
+; ORG $8000 (page 2, uncontended)
+
+    ORG  $8000
+
+SCREEN_ATTR EQU $5800
+START_ADDR  EQU inspect_addr      ; address to inspect (self-mod)
+
+start:
+    call clear_screen
+
+main_loop:
+    halt                          ; sync to frame
+
+    ; Read keyboard
+    call read_keys                ; returns: A = action
+    cp   1
+    jr   z, .page_up             ; Q = previous page
+    cp   2
+    jr   z, .page_down           ; A = next page
+    cp   3
+    jr   z, .bank_up             ; P = next bank
+    cp   4
+    jr   z, .bank_down           ; O = previous bank
+    jr   .draw
+
+.page_up:
+    ld   hl, (inspect_addr)
+    ld   de, -256
+    add  hl, de
+    ld   (inspect_addr), hl
+    jr   .draw
+.page_down:
+    ld   hl, (inspect_addr)
+    ld   de, 256
+    add  hl, de
+    ld   (inspect_addr), hl
+    jr   .draw
+.bank_up:
+    ld   a, (current_bank)
+    inc  a
+    and  7                        ; wrap 0-7
+    ld   (current_bank), a
+    call bank_switch
+    jr   .draw
+.bank_down:
+    ld   a, (current_bank)
+    dec  a
+    and  7
+    ld   (current_bank), a
+    call bank_switch
+
+.draw:
+    ; Display current bank and address
+    call draw_header
+
+    ; Display 16 rows x 16 bytes
+    ld   hl, (inspect_addr)
+    ld   b, 16                    ; 16 rows
+    ld   de, $4060                ; screen position (row 3, col 0)
+.row_loop:
+    push bc
+    push hl
+
+    ; Print address
+    ld   a, h
+    call print_hex                ; print high byte of address
+    ld   a, l
+    call print_hex                ; print low byte
+    ld   a, ':'
+    call print_char
+
+    ; Print 16 hex bytes
+    pop  hl
+    push hl
+    ld   b, 16
+.byte_loop:
+    ld   a, (hl)
+    call print_hex                ; 17T call + print routine
+    inc  hl
+    ld   a, ' '
+    call print_char
+    djnz .byte_loop
+
+    pop  hl
+    ld   de, 16
+    add  hl, de                   ; advance to next row
+    pop  bc
+
+    ; Move screen pointer down one character row
+    call next_char_row
+
+    djnz .row_loop
+
+    jr   main_loop
+
+; --- Data ---
+inspect_addr:  dw $C000          ; start address to inspect
+current_bank:  db 0              ; current bank at $C000
+bank_shadow:   db 0              ; shadow of port $7FFD
+
+; read_keys, print_hex, print_char, clear_screen,
+; draw_header, next_char_row, bank_switch: implementations
+; omitted for brevity -- see examples/mem_inspect.a80
+; for the complete compilable source.

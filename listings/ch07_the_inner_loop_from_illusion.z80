@@ -1,0 +1,7 @@
+; Inner loop: combine 4 chunky pixels into one output byte
+    ld   a,(hl)        ;  7T  -- read first chunky pixel ($03 or $00)
+    inc  l             ;  4T  -- step right in texture
+    dec  h             ;  4T  -- step up in texture
+    add  a,a           ;  4T  -- shift left
+    add  a,a           ;  4T  -- shift left (now shifted by 2)
+    add  a,(hl)        ;  7T  -- add second chunky pixel

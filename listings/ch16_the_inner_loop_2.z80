@@ -1,0 +1,24 @@
+; Stack sprite: 16x16, writes 2 bytes per row via PUSH
+; Input:  screen_addr = pre-calculated bottom-right screen address
+;         sprite_data = 32 bytes of pixel data (2 bytes x 16 rows,
+;                       stored bottom-to-top because PUSH goes downward)
+;
+stack_sprite_16x16:
+    di                           ;  4 T
+
+    ld   (restore_sp + 1), sp    ; 20 T   save SP (self-mod)
+
+    ld   sp, (screen_addr)       ; 20 T   SP = bottom of sprite on screen
+    ld   ix, sprite_data         ; 14 T
+
+    ; Row 15 (bottom) - each PUSH writes 2 bytes and decrements SP
+    ld   h, (ix+31)              ; 19 T   \
+    ld   l, (ix+30)              ; 19 T    | load bottom row
+    push hl                      ; 11 T   /  write to screen
+
+    ; But wait --- SP just decremented by 2, and the next row UP
+    ; on the Spectrum screen is NOT at SP-2. The interleaved layout
+    ; means "one row up" is at a completely different address.
+    ;
+    ; This is the fundamental problem with stack sprites on the
+    ; Spectrum: the screen is not contiguous in memory.

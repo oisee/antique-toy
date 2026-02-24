@@ -35,14 +35,14 @@ Here is how AI-assisted Z80 development actually works in practice. It is not ma
 
 ### The Loop
 
-```
+```text
 prompt --> code --> assemble --> error? --> fix --> assemble --> run --> wrong? --> fix --> run --> correct
   ^                                                                                                |
   +------------------------------------------------------------------------------------------------+
 ```
 
 <!-- figure: ch23_ai_feedback_loop -->
-```mermaid
+```mermaid id:ch23_the_loop_2
 graph LR
     A["Prompt\n(describe what you want)"] --> B["Generate Code\n(AI writes Z80 asm)"]
     B --> C["Assemble\n(sjasmplus / mza)"]
@@ -73,7 +73,7 @@ This loop is not fundamentally different from how a human programmer works, exce
 
 Suppose you ask Claude Code to write a routine that fills the ZX Spectrum attribute area with a diagonal stripe pattern. Here is a plausible first attempt:
 
-```z80
+```z80 id:ch23_a_concrete_example
 ; Fill attributes with diagonal stripes
 ; Pattern: alternating INK colours along diagonals
     ORG $8000
@@ -108,7 +108,7 @@ None of these are *wrong* in the sense that the code crashes. They are *wrong* i
 
 Here is the version you arrive at after two iterations:
 
-```z80
+```z80 id:ch23_a_concrete_example_2
 fill_diagonal:
     ld   hl, $5800
     ld   d, 0               ; row index
@@ -290,7 +290,7 @@ Introspec's scepticism about AI's Z80 capabilities is not generic technophobia. 
 
 Consider the rotozoomer inner loop from his Illusion analysis. The effect walks through a texture at an angle, producing rotated and zoomed 2x2 chunky pixels. The inner loop is:
 
-```z80
+```z80 id:ch23_honest_take_z80_they_still
     ld   a, (hl)    ; 7T   read texture byte
     inc  l          ; 4T   next column (no carry needed: 256-aligned!)
     dec  h          ; 4T   previous row
@@ -312,7 +312,7 @@ We tested Claude Code on several Z80 tasks from the demoscene domain. Here are r
 
 The AI's first attempt:
 
-```z80
+```z80 id:ch23_what_the_ai_gets_wrong
 down_hl:
     inc  h              ; 4T   move down one pixel row
     ld   a, h           ; 4T
@@ -328,9 +328,9 @@ down_hl:
     ret                 ; 10T
 ```
 
-This is correct for the first two thirds of the screen but fails at the third-third boundary. The screen memory is divided into three 2,048-byte thirds, and the transition from the second to the third third requires adding $08 to H, not subtracting. The AI generated code that handles the common case correctly but gets the boundary case wrong.
+This is actually correct -- it handles all three screen thirds properly, including the boundary transitions. The AI can get standard routines like DOWN_HL right because the pattern is well-documented and appears in many Z80 references. The routine works: `inc h` advances the pixel row, `add a, 32` advances the character row when needed, the carry from the L addition correctly detects third boundaries, and `sub 8` undoes the spurious TT increment for the common case.
 
-Introspec's article presents a version by RST7 using a dual-counter approach that handles all boundaries correctly in 2,343 T-states for a full-screen traverse. The naive version -- the one most humans write on their first attempt, and the one the AI approximates -- costs 5,922 T-states. The gap between "works" and "works well" is a factor of 2.5x.
+But "correct" is not the same as "good." Introspec's article presents a version by RST7 using a dual-counter approach that handles all boundaries in 2,343 T-states for a full-screen traverse. The naive approach above -- the standard textbook version -- costs 5,922 T-states. The gap between "works" and "works well" is a factor of 2.5x, and the AI does not bridge that gap. It produces the first version any competent programmer would write, not the version an expert would optimise toward.
 
 **Task: Generate an unrolled screen fill.** Asked to generate an unrolled PUSH-based screen fill (the technique from Chapter 3), the AI produced correct code -- PUSH pairs writing two bytes at a time, DI/EI to protect the stack pointer manipulation. But it did not think to arrange the data in reverse order (PUSH writes high byte first, to lower addresses), which means the fill pattern was backwards. A human who has written PUSH fills before accounts for this automatically.
 
@@ -398,17 +398,7 @@ For optimisation prompts, give a concrete target: "This routine takes ~3,200 T-s
 
 ## 23.10 The Broader Picture
 
-Every tool that raises the abstraction level on constrained hardware follows the same trajectory. BASIC: accessible, slow, memory-hungry. HiSoft C: faster, more structured, but limited. Macro assemblers and cross-development: same abstraction level, less friction.
-
-AI-assisted development is the latest step. It does not change the abstraction level of the output -- you are still writing Z80 assembly, and the Z80 still executes the same instructions at the same speeds. What it changes is the speed of the input -- how fast you go from idea to working (if unoptimised) code.
-
-The ZX Spectrum demoscene has been constrained not just by the machine's hardware but by the *human cost* of programming it. Writing Z80 assembly is slow. Debugging it is slower. Learning the tricks takes years. AI assistance lowers the entry barrier without lowering the ceiling. The experts will still write better inner loops than any AI. But more people will get to the point where they can appreciate *why* those inner loops are better.
-
-That is good for the scene. The demoscene thrives on participation. If the combination of documented techniques and AI-assisted tooling brings new makers into the ZX Spectrum scene, the compromise is worth making.
-
-Introspec is right that AI does not know Z80 -- not the way he knows it. But AI does not need to know Z80 the way Introspec does. It needs to know it well enough to help a newcomer get started, make fewer mistakes, and reach the point where they can learn the deep tricks from Introspec's articles themselves.
-
-Neither magic nor useless. A tool. Like HiSoft C, but different.
+AI assistance does not change the abstraction level of the output -- the Z80 still executes the same instructions at the same speeds. What it changes is the speed of the input: how fast you go from idea to working (if unoptimised) code. The demoscene's experts will still write better inner loops than any AI, but AI-assisted tooling lowers the entry barrier enough that more people can start making demos and learn the deep tricks for themselves.
 
 ---
 

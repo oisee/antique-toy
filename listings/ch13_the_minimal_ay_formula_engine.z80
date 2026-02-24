@@ -1,0 +1,11 @@
+; Frame-driven AY "bytebeat" — ~20 bytes
+; A = frame counter (incremented each HALT)
+    ld   e, a
+    and  $1F              ; period = low 5 bits of frame
+    ld   d, a             ; D = tone period low
+    ld   a, e
+    rrca
+    rrca
+    rrca
+    and  $0F              ; volume = bits 5-7 of frame, shifted
+    ; Write to AY: register 0 = tone period low, register 8 = volume

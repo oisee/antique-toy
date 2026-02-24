@@ -1,0 +1,40 @@
+; Compiled sprite: 16x16 (2 bytes wide)
+; Input:  HL = screen address of top-left
+;
+compiled_sprite_16x16:
+    ; Row 0
+    ld   (hl), $3C          ; 10 T   left byte
+    inc  l                  ;  4 T
+    ld   (hl), $0F          ; 10 T   right byte
+    dec  l                  ;  4 T   restore column
+    inc  h                  ;  4 T   next row
+                            ;        row cost: 32 T
+
+    ; Row 1
+    ld   (hl), $7E          ; 10 T
+    inc  l                  ;  4 T
+    ld   (hl), $1F          ; 10 T
+    dec  l                  ;  4 T
+    inc  h                  ;  4 T
+                            ;        row cost: 32 T
+
+    ; ... rows 2-6 similar ...
+
+    ; Row 7 (character boundary)
+    ld   (hl), $FF          ; 10 T
+    inc  l                  ;  4 T
+    ld   (hl), $FF          ; 10 T
+    dec  l                  ;  4 T
+    ; Character boundary crossing:
+    ld   a, l               ;  4 T
+    add  a, 32              ;  7 T
+    ld   l, a               ;  4 T
+    ld   a, h               ;  4 T
+    sub  8                  ;  7 T
+    ld   h, a               ;  4 T   boundary cost: 30 T
+    inc  h                  ;  4 T
+                            ;        row cost: 62 T
+
+    ; Rows 8-15 similar to 0-6, with another boundary at row 15
+    ; ...
+    ret                     ; 10 T

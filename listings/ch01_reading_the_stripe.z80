@@ -1,0 +1,7 @@
+.loop:
+    ld   a,(hl)        ; 7T
+    add  a,(hl)        ; 7T
+    ld   (de),a        ; 7T
+    inc  hl            ; 6T   -- 27T per iteration body
+    djnz .loop         ; 13T taken
+    ; Total: 256 * (27+13) - 5 = 10,235 T-states

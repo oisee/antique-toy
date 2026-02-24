@@ -19,7 +19,7 @@ The classic approach. Scan through the bits of the multiplier from LSB to MSB. F
 
 Here is Dark's 8x8 unsigned multiply. Input: B times C. Result in A (high byte) and C (low byte):
 
-```z80
+```z80 id:ch04_method_1_shift_and_add_from
 ; MULU112 -- 8x8 unsigned multiply
 ; Input:  B = multiplicand, C = multiplier
 ; Output: A:C = B * C (16-bit result, A=high, C=low)
@@ -57,7 +57,7 @@ For 16x16 producing a 32-bit result, Dark's MULU224 runs in 730 to 826 T-states.
 
 Dark's second method trades memory for speed, exploiting an algebraic identity that every demoscener eventually discovers:
 
-```
+```text
 A * B = ((A+B)^2 - (A-B)^2) / 4
 ```
 
@@ -65,7 +65,7 @@ Pre-compute a table of n^2/4 values, and multiplication becomes two lookups and 
 
 You need a 512-byte table of (n^2/4) for n = 0 to 511, page-aligned for single-register indexing. The table must be 512 bytes because (A+B) can reach 510.
 
-```z80
+```z80 id:ch04_method_2_square_table_lookup_2
 ; MULU_FAST -- Square table multiply
 ; Input:  B, C = unsigned 8-bit factors
 ; Output: HL = B * C (16-bit result)
@@ -118,7 +118,7 @@ Division on the Z80 is even more painful than multiplication. No divide instruct
 
 Binary long division. Start with a zeroed accumulator. The dividend shifts in from the right, one bit per iteration. Try subtracting the divisor; if it succeeds, set a quotient bit. If it fails, restore the accumulator -- hence "restoring division."
 
-```z80
+```z80 id:ch04_method_1_shift_and_subtract
 ; DIVU111 -- 8-bit unsigned divide
 ; Input:  B = dividend, C = divisor
 ; Output: B = quotient, A = remainder
@@ -152,7 +152,7 @@ The 16-bit version (DIVU222) costs 938 to 1034 T-states. A thousand T-states for
 
 Dark's faster alternative uses logarithm tables:
 
-```
+```text
 Log(A / B) = Log(A) - Log(B)
 A / B = AntiLog(Log(A) - Log(B))
 ```
@@ -179,7 +179,7 @@ Half a period of cosine, from 0 to pi, curves from +1 down to -1. A parabola y =
 
 Dark generates a 256-byte signed cosine table (-128 to +127), indexed by angle: 0 = 0 degrees, 64 = 90 degrees, 128 = 180 degrees, 256 wraps to 0. The power-of-two period means the angle index wraps naturally with 8-bit overflow, and cosine becomes sine by adding 64.
 
-```z80
+```z80 id:ch04_the_parabolic_approximation
 ; Generate 256-byte signed cosine table (-128..+127)
 ; using parabolic approximation
 ;
@@ -244,7 +244,7 @@ In a Bresenham loop, at every pixel you ask: should I step sideways? For a nearl
 
 Dark's solution: pre-compute the pixel pattern for each line slope within an 8x8 pixel grid, and unroll the drawing loop to output entire grid cells at once. A line segment within an 8x8 area is fully determined by its slope. For each of the eight octants, enumerate all possible 8-pixel patterns as straight sequences of `SET bit,(HL)` instructions with address increments between them.
 
-```z80
+```z80 id:ch04_dark_s_matrix_method_8x8
 ; Example: one unrolled 8-pixel segment of a nearly-horizontal line
 ; (octant 0: moving right, gently sloping down)
 ;
@@ -285,7 +285,7 @@ The Z80 has no floating-point unit. Every register holds an integer. But demo ef
 
 The most common format on the Z80 is **8.8**: high byte = integer part, low byte = fractional part. One 16-bit register pair holds one fixed-point number:
 
-```
+```text
 H = integer part    (-128..+127 signed, or 0..255 unsigned)
 L = fractional part (0..255, representing 0/256 to 255/256)
 ```
@@ -294,7 +294,7 @@ L = fractional part (0..255, representing 0/256 to 255/256)
 
 The beauty: **addition and subtraction are free** -- just normal 16-bit operations:
 
-```z80
+```z80 id:ch04_format_8_8_2
 ; Fixed-point 8.8 addition: result = a + b
 ; HL = first operand, DE = second operand
     add  hl, de          ; that's it. 11 T-states.
@@ -310,7 +310,7 @@ The processor does not care that you are treating these as fixed-point. Binary a
 
 Multiplying two 8.8 numbers produces a 16.16 result -- 32 bits. You want 8.8 back, so you take bits 8..23 of the product (effectively shifting right by 8). In practice, with small integer parts (coordinates, rotation factors between -1 and +1), you can decompose the multiply into partial products:
 
-```z80
+```z80 id:ch04_fixed_point_multiplication
 ; Fixed-point 8.8 multiply (simplified)
 ; Input:  BC = first operand (B.C in 8.8)
 ;         DE = second operand (D.E in 8.8)
@@ -402,7 +402,7 @@ The Z80 has no hardware random number generator. You must synthesize randomness 
 
 The Z80 has a built-in source of entropy that many coders reach for first: the R register. It increments automatically with each instruction fetch (every M1 cycle), cycling through 0-127. You can read it in 9 T-states:
 
-```z80
+```z80 id:ch04_the_r_register_trick
     ld   a, r              ; 9 T -- read refresh counter
 ```
 
@@ -416,11 +416,11 @@ In 2024, Gogin (of the Russian ZX scene) assembled a collection of Z80 PRNG rout
 
 Here are four generators from that collection, ordered from best to worst quality.
 
-#### Patrik Rak's CMWC Generator (Best Quality)
+#### Patrik Rak (Raxoft)'s CMWC Generator (Best Quality)
 
-This is a **Complement Multiply-With-Carry** generator by Patrik Rak, using the multiplier 253 and an 8-byte circular buffer. The mathematics behind CMWC are well-studied: George Marsaglia proved that certain multiplier/buffer combinations produce sequences with enormous periods. With multiplier 253 and buffer size 8, the theoretical period is (253^8 - 1) / 254 -- approximately 2^66 values before repeating.
+This is a **Complement Multiply-With-Carry** generator by Patrik Rak (Raxoft), using the multiplier 253 and an 8-byte circular buffer. The mathematics behind CMWC are well-studied: George Marsaglia proved that certain multiplier/buffer combinations produce sequences with enormous periods. With multiplier 253 and buffer size 8, the theoretical period is (253^8 - 1) / 254 -- approximately 2^66 values before repeating.
 
-```z80
+```z80 id:ch04_four_generators_from_the
 ; Patrik Rak's CMWC PRNG
 ; Quality: Excellent -- passes visual bitmap tests
 ; Size:    ~30 bytes code + 8 bytes table
@@ -465,7 +465,7 @@ Gogin's verdict: **best quality** in the collection. When filling a 256x192 bitm
 
 Originally from Ion Shell for the TI-83 calculator, adapted for Z80. This generator mixes the R register with a feedback loop, achieving surprisingly good randomness from just ~15 bytes:
 
-```z80
+```z80 id:ch04_four_generators_from_the_2
 ; Ion Random
 ; Quality: Good -- minor patterns visible only at extreme scale
 ; Size:    ~15 bytes
@@ -493,7 +493,7 @@ Gogin's verdict: **second best**. Very compact, good quality for its size.
 
 A 16-bit XORshift generator -- the Z80 adaptation of Marsaglia's well-known family:
 
-```z80
+```z80 id:ch04_four_generators_from_the_3
 ; 16-bit XORshift PRNG
 ; Quality: Mediocre -- visible diagonal patterns in bitmap tests
 ; Size:    ~25 bytes
@@ -523,9 +523,9 @@ xorshift_rnd:
 
 XORshift generators are fast and simple, but with only 16 bits of state the period is at most 65,535. More problematically, the bit-rotation pattern creates visible diagonal streaks when the output is mapped to pixels. For a quick star field or particle effect this may be acceptable. For anything that fills large screen areas with "noise," the patterns become obvious.
 
-#### Raxoft's CMWC Variant (Mediocre)
+#### Patrik Rak's CMWC Variant (Mediocre)
 
-A CMWC variant by Raxoft, similar in principle to Patrik Rak's version but with a different buffer arrangement. Gogin found it produced **visible patterns at scale** -- likely due to the way the carry propagation interacts with the buffer indexing. We include it in the compilable example (`examples/prng.a80`) for completeness, but for production use, Patrik Rak's version is strictly superior.
+A second CMWC variant by Patrik Rak (Raxoft), similar in principle to his version above but with a different buffer arrangement. Gogin found it produced **visible patterns at scale** -- likely due to the way the carry propagation interacts with the buffer indexing. We include it in the compilable example (`examples/prng.a80`) for completeness, but for production use, his 8-byte-buffer version above is strictly superior.
 
 ### Elite's Tribonacci Approach
 
@@ -533,11 +533,11 @@ Worth a brief mention: the legendary *Elite* (1984) used a Tribonacci-like seque
 
 ### Elite's Galaxy Generator: A Deeper Look
 
-The Tribonacci approach deserves more detail because it illustrates a profound principle: **a PRNG is not just a random number source -- it is a compression algorithm.**
+The Tribonacci approach deserves more detail because it illustrates a key principle: **a PRNG is not just a random number source -- it is a compression algorithm.**
 
 David Braben and Ian Bell needed 8 galaxies of 256 star systems, each with a name, position, economy, government type, and tech level. Storing all of that explicitly would consume kilobytes. Instead, they stored only a 6-byte seed per galaxy and a deterministic generator that expanded each seed into the full star system data. The generator was a three-register feedback loop -- each step rotates and XORs three 16-bit values:
 
-```
+```z80 id:ch04_elite_s_galaxy_generator_a
 ; Elite's galaxy generator (conceptual, 6502 origin):
 ;   seed = [s0, s1, s2]  (three 16-bit words)
 ;   twist: s0' = s1, s1' = s2, s2' = s0 + s1 + s2  (mod 65536)
@@ -556,7 +556,7 @@ Common tricks on the Z80:
 
 - **Triangular distribution** -- add two uniform random bytes and shift right. The sum clusters around the centre (128), producing "natural-looking" variation. Cost: two PRNG calls + ADD + SRL = ~20 extra T-states.
 
-```z80
+```z80 id:ch04_shaped_randomness
 ; Triangular random: result clusters around 128
     call patrik_rak_cmwc_rnd  ; A = uniform random
     ld   b, a
@@ -579,7 +579,7 @@ In a game, unpredictability matters. Common seeding strategies:
 
 - **FRAMES system variable ($5C78)** -- the Spectrum ROM maintains a 3-byte frame counter at address $5C78 that increments every 1/50th of a second from power-on. Reading it gives a time-dependent seed that varies with how long the machine has been running. Art-top (Artem Topchiy) recommends using it to initialise Patrik Rak's CMWC table:
 
-```z80
+```z80 id:ch04_seeds_and_reproducibility
 ; Seed Patrik Rak CMWC from FRAMES system variable
     ld   hl, $5C78            ; FRAMES (3 bytes, increments at 50 Hz)
     ld   a, (hl)              ; low byte -- most variable
@@ -607,7 +607,7 @@ For demos, simply initialise the generator's state to a known value and leave it
 | Patrik Rak CMWC | ~30 + 8 table | ~170 | Excellent | ~2^66 | Best overall; 8-byte buffer |
 | Ion Random | ~15 | ~75 | Good | Depends on R | Compact; mixes R register |
 | XORshift 16 | ~25 | ~90 | Mediocre | 65,535 | Visible diagonal patterns |
-| Raxoft CMWC | ~35 + 10 table | ~180 | Mediocre | ~2^66 | Patterns visible at scale |
+| Patrik Rak CMWC (alt) | ~35 + 10 table | ~180 | Mediocre | ~2^66 | Patterns visible at scale |
 | LD A,R alone | 2 | 9 | Poor | 128 | NOT a PRNG; use as seed only |
 
 For most demoscene work, **Patrik Rak's CMWC** is the clear winner: excellent quality, reasonable size, and a period so long it will never repeat during a demo. If code size is critical (size-coding, 256-byte intros), **Ion Random** packs remarkable quality into 15 bytes. XORshift is a fallback when you need something quick and do not care about visual quality.

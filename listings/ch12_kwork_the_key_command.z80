@@ -1,0 +1,19 @@
+; Simplified engine loop (conceptual)
+engine_loop:
+    ; Check if drum is pending
+    ld   a, (drum_pending)
+    or   a
+    jr   z, .no_drum
+    call play_drum            ; consumes 2 frames of CPU time
+    xor  a
+    ld   (drum_pending), a
+
+.no_drum:
+    ; Generate a batch of frames
+    call generate_batch       ; kWORK: produce N frames into buffer
+    ; (generate_batch returns when batch is done)
+
+    ; Check outer script for effect changes
+    call advance_script
+
+    jr   engine_loop

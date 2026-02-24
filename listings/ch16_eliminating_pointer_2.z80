@@ -1,0 +1,58 @@
+; Combined save-and-draw for masked sprite
+; HL = screen address, DE = sprite data (mask, gfx pairs)
+; IX = save buffer
+;
+save_and_draw_16x16:
+    ld   b, 16              ;  7 T
+.row:
+    ; Left byte
+    ld   a, (hl)            ;  7 T   read screen (for saving)
+    ld   (ix+0), a          ; 19 T   save to buffer
+    ld   c, a               ;  4 T
+
+    ld   a, (de)            ;  7 T   load mask
+    and  c                  ;  4 T   mask background
+    inc  de                 ;  6 T
+    ld   c, a               ;  4 T
+
+    ld   a, (de)            ;  7 T   load graphic
+    or   c                  ;  4 T   stamp sprite
+    ld   (hl), a            ;  7 T   write to screen
+    inc  de                 ;  6 T
+    inc  l                  ;  4 T
+
+    ; Right byte (similar)
+    ld   a, (hl)            ;  7 T
+    ld   (ix+1), a          ; 19 T
+    ld   c, a               ;  4 T
+
+    ld   a, (de)            ;  7 T
+    and  c                  ;  4 T
+    inc  de                 ;  6 T
+    ld   c, a               ;  4 T
+
+    ld   a, (de)            ;  7 T
+    or   c                  ;  4 T
+    ld   (hl), a            ;  7 T
+    inc  de                 ;  6 T
+    dec  l                  ;  4 T
+
+    ; Advance IX and HL
+    inc  ix                 ; 10 T
+    inc  ix                 ; 10 T
+
+    inc  h                  ;  4 T
+    ld   a, h               ;  4 T
+    and  7                  ;  7 T
+    jr   nz, .no_boundary   ; 12/7T
+    ld   a, l               ;  4 T
+    add  a, 32              ;  7 T
+    ld   l, a               ;  4 T
+    jr   c, .no_fix         ; 12/7T
+    ld   a, h               ;  4 T
+    sub  8                  ;  7 T
+    ld   h, a               ;  4 T
+.no_fix:
+.no_boundary:
+    djnz .row               ; 13 T
+    ret                     ; 10 T

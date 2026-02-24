@@ -1,0 +1,46 @@
+; Spawn a bullet at position (B=x_pixel, C=y)
+; moving in direction determined by player facing
+; Returns: carry set if no free slot available
+spawn_bullet:
+    ld   ix, entity_array + (SLOT_PROJ_FIRST * ENTITY_SIZE)
+    ld   d, SLOT_PROJ_LAST - SLOT_PROJ_FIRST + 1  ; 7 slots to check
+
+.find_slot:
+    ld   a, (ix + 9)        ; 19T  flags
+    bit  0, a               ; 8T   ACTIVE?
+    jr   z, .found          ; 12/7T found an inactive slot
+
+    push de                 ; 11T  save loop counter (D)
+    ld   de, ENTITY_SIZE    ; 10T  DE = 10 (D=0, E=10)
+    add  ix, de             ; 15T  next slot
+    pop  de                 ; 10T  restore loop counter
+    dec  d                  ; 4T
+    jr   nz, .find_slot     ; 12T
+
+    ; No free slot -- set carry and return
+    scf                      ; 4T
+    ret
+
+.found:
+    ; Fill in the bullet entity
+    ld   (ix + 0), 0        ; fractional X = 0
+    ld   (ix + 1), b        ; pixel X = B
+    ld   (ix + 2), c        ; Y = C
+    ld   (ix + 3), TYPE_BULLET ; type
+    ld   (ix + 4), 1        ; state = active
+    ld   (ix + 5), 0        ; anim_frame = 0
+    ld   (ix + 8), 1        ; health = 1 (dies on first collision)
+
+    ; Set velocity based on player facing
+    ld   a, (entity_array + 9)  ; player flags
+    bit  3, a               ; FACING_LEFT?
+    jr   z, .fire_right
+    ld   (ix + 6), -4       ; dx = -4 (fast, leftward)
+    jr   .set_flags
+.fire_right:
+    ld   (ix + 6), 4        ; dx = +4 (fast, rightward)
+.set_flags:
+    ld   (ix + 7), 0        ; dy = 0 (horizontal bullet)
+    ld   (ix + 9), %00000111  ; flags: ACTIVE + VISIBLE + COLLIDABLE
+    or   a                   ; clear carry (success)
+    ret

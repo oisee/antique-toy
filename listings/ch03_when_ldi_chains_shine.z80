@@ -1,0 +1,15 @@
+; Chaos zoomer inner loop (simplified from Eager)
+; Each line copies a different number of bytes from a source buffer.
+; Entry point into the LDI chain is calculated per line.
+    ld   hl, source_data
+    ld   de, dest_screen
+    ; ... calculate entry point based on zoom factor ...
+    jp   (ix)             ; jump into the LDI chain at the right point
+
+ldi_chain:
+    ldi                   ; byte 255
+    ldi                   ; byte 254
+    ldi                   ; byte 253
+    ; ... 256 LDIs total ...
+    ldi                   ; byte 0
+    ; falls through to next line setup

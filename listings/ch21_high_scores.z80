@@ -1,0 +1,15 @@
+; High score entry: 3 bytes name + 3 bytes BCD score = 6 bytes
+; 10 entries = 60 bytes
+HISCORE_COUNT equ 10
+HISCORE_SIZE  equ 6
+
+hiscore_table:
+    ; Pre-filled defaults
+    db   "ACE"
+    db   $00, $50, $00     ; 005000 BCD
+    db   "BOB"
+    db   $00, $40, $00     ; 004000
+    db   "CAT"
+    db   $00, $30, $00     ; 003000
+    ; ... 7 more entries ...
+    ds   7 * HISCORE_SIZE, 0

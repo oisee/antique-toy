@@ -1,0 +1,39 @@
+; check_all_collisions -- Test player vs enemies, bullets vs enemies
+;
+; Cost: ~2,000-3,000 T-states depending on active entity count
+
+check_all_collisions:
+    ld   ix, entity_array       ; player entity
+    ld   iy, entity_array + ENTITY_SIZE
+    ld   b, MAX_ENEMIES + MAX_BULLETS  ; 8 enemies + 7 bullets
+
+.loop:
+    push bc
+
+    ; Skip inactive entities
+    bit  7, (iy+12)
+    jr   z, .next
+
+    ; Is this an enemy? Check player vs enemy
+    ld   a, (iy+4)              ; entity type
+    cp   TYPE_BULLET
+    jr   z, .check_bullet
+
+    ; Enemy: test against player
+    call check_aabb
+    jr   nc, .next              ; no collision
+    call handle_player_hit      ; damage player, knockback, etc.
+    jr   .next
+
+.check_bullet:
+    ; Bullet: check against all enemies (or just nearby ones)
+    ; For simplicity, check bullet source -- don't hit the shooter
+    ; This is handled by a "source" field or by checking type
+    call check_bullet_collisions
+
+.next:
+    ld   de, ENTITY_SIZE
+    add  iy, de
+    pop  bc
+    djnz .loop
+    ret

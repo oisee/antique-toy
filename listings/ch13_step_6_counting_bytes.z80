@@ -1,0 +1,3 @@
+intro_end:
+    ASSERT intro_end - init <= 256, "Intro exceeds 256 bytes!"
+    DISPLAY "Intro size: ", /D, intro_end - init, " bytes"

@@ -1,0 +1,25 @@
+; Move entity right at velocity dx
+; HL points to entity X (2 bytes: low=fractional, high=pixel)
+; A = dx (signed velocity, treated as fractional byte)
+move_entity_x:
+    ld   c, (hl)            ; 7T   load X fractional part
+    inc  hl                  ; 6T
+    ld   b, (hl)            ; 7T   load X pixel part
+    ; BC = 16-bit fixed-point X
+
+    ld   e, a               ; 4T   dx into E
+    ; Sign-extend dx into DE
+    rla                      ; 4T   carry = sign bit
+    sbc  a, a               ; 4T   A = $FF if negative, $00 if positive
+    ld   d, a               ; 4T   DE = signed 16-bit dx
+
+    ex   de, hl             ; 4T
+    add  hl, de             ; 11T  new_X = old_X + dx (16-bit add)
+    ; HL = new X position (fractional in L, pixel in H)
+
+    ; Store back
+    ld   a, l               ; 4T
+    ld   (entity_x_lo), a   ; 13T  (self-modifying, or use IX)
+    ld   a, h               ; 4T
+    ld   (entity_x_hi), a   ; 13T
+    ret

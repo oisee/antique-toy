@@ -1,0 +1,7 @@
+start:
+    ; --- Fill pixels with checkerboard pattern ---
+    ld   hl, SCREEN
+    ld   de, SCREEN + 1
+    ld   bc, SCRLEN - 1
+    ld   (hl), $55       ; checkerboard: 01010101
+    ldir

@@ -1,0 +1,24 @@
+; apply_friction -- Decelerate horizontal movement
+;
+; Input:  IX = entity pointer
+; Output: dx decayed toward zero
+;
+; Friction is applied as a right shift (divide by power of 2).
+; SRA by 1 = divide by 2 (heavy friction, like rough ground)
+; SRA by 1 every other frame = divide by ~1.4 (lighter friction)
+;
+; Cost: ~55 T-states (Pentagon)
+
+apply_friction:
+    ; Only apply friction on the ground
+    bit  0, (ix+12)       ; 20T  on_ground flag
+    ret  z                ; 11/5T  in air -- no ground friction
+
+    ; 16-bit arithmetic right shift of dx (signed)
+    ld   a, (ix+8)        ; 19T  dx_int
+    sra  a                ; 8T   shift right, sign-extending
+    ld   (ix+8), a        ; 19T
+    ld   a, (ix+7)        ; 19T  dx_frac
+    rra                   ; 4T   rotate right through carry
+    ld   (ix+7), a        ; 19T
+    ret                    ; 10T

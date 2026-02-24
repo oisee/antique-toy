@@ -1,0 +1,59 @@
+; ai_patrol -- Walk back and forth between two points
+;
+; Input:  IX = enemy entity
+; Output: Position updated, state may transition to CHASE
+;
+; The enemy walks at a constant speed (PATROL_SPEED).
+; Direction is stored in bit 1 of the flags byte:
+;   bit 1 = 0: moving right
+;   bit 1 = 1: moving left
+;
+; Patrol boundaries are defined per-enemy type (hardcoded
+; or stored in a level table). Here we use a simple range
+; check against the initial spawn position +/- PATROL_RANGE.
+;
+; Cost: ~120 T-states (Pentagon)
+
+PATROL_SPEED equ 1        ; 1 pixel per frame
+PATROL_RANGE equ 32       ; 32 pixels from centre point
+
+ai_patrol:
+    ; --- Move in current direction ---
+    bit  1, (ix+12)       ; 20T  check direction flag
+    jr   nz, .move_left   ; 12/7T
+
+.move_right:
+    ld   a, (ix+1)        ; 19T  x_int
+    add  a, PATROL_SPEED  ; 7T
+    ld   (ix+1), a        ; 19T
+    ; Check right boundary
+    cp   PATROL_RIGHT_LIMIT ; 7T  (or use spawn_x + PATROL_RANGE)
+    jr   c, .check_player ; 12/7T  not at edge yet
+    ; Hit right edge -- turn left
+    set  1, (ix+12)       ; 23T  set direction = left
+    jr   .check_player    ; 12T
+
+.move_left:
+    ld   a, (ix+1)        ; 19T  x_int
+    sub  PATROL_SPEED     ; 7T
+    ld   (ix+1), a        ; 19T
+    ; Check left boundary
+    cp   PATROL_LEFT_LIMIT ; 7T
+    jr   nc, .check_player ; 12/7T
+    ; Hit left edge -- turn right
+    res  1, (ix+12)       ; 23T
+
+.check_player:
+    ; --- Detection: is the player nearby? ---
+    ; Simple range check: |player.x - enemy.x| < DETECT_RANGE
+    ld   a, (player_x)    ; 13T  player x_int (cached in RAM)
+    sub  (ix+1)           ; 19T  delta X
+    jr   nc, .pos_dx      ; 12/7T
+    neg                   ; 8T   absolute value
+.pos_dx:
+    cp   DETECT_RANGE     ; 7T   e.g., 48 pixels
+    ret  nc               ; 11/5T  too far -- stay in PATROL
+
+    ; Player detected -- transition to CHASE
+    ld   (ix+5), ST_CHASE ; 19T  set state = CHASE
+    ret                    ; 10T

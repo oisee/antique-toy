@@ -50,7 +50,7 @@ Before diving into code, let us lay out the two machines side by side.
 The frame budget ratio is roughly 5:1. But this understates the real difference, because many operations that consume CPU T-states on the Spectrum --- sprite rendering, screen scrolling, framebuffer management --- are offloaded to the VDP on the Agon. The eZ80 CPU spends its cycles on game logic, not pixel pushing.
 
 <!-- figure: ch22_spectrum_vs_agon_sprite -->
-```mermaid
+```mermaid id:ch22_the_architecture_at_a_glance
 graph TD
     subgraph ZX["ZX Spectrum: Draw Sprite (~1200T CPU)"]
         direction TB
@@ -119,7 +119,7 @@ The `.IS` suffix means "Instruction Short" --- the call instruction itself uses 
 
 Here is the practical pattern for calling MOS from Z80-mode code:
 
-```z80
+```z80 id:ch22_the_mode_switching_mechanism
 ; In Z80-compatible mode, calling a MOS API function
 ; We need to switch to ADL mode for the call
 
@@ -159,7 +159,7 @@ The entity system from Chapter 18 --- the structure arrays holding X, Y, type, s
 
 Here is the entity update loop on the Spectrum:
 
-```z80
+```z80 id:ch22_game_logic_and_entity_system
 ; Spectrum: Update all entities
 ; IX points to entity array, B = entity count
 update_entities:
@@ -181,7 +181,7 @@ update_entities:
 
 And on the Agon:
 
-```z80
+```z80 id:ch22_game_logic_and_entity_system_2
 ; Agon (ADL mode): Update all entities
 ; IX points to entity array, B = entity count
 update_entities:
@@ -207,7 +207,7 @@ The logic is identical. The instructions are identical. The difference is that I
 
 The collision code from Chapter 19 transfers directly. AABB checks use 8-bit or 16-bit comparisons --- the same CP, SUB, and conditional jump instructions work identically on both machines.
 
-```z80
+```z80 id:ch22_aabb_collision_detection
 ; AABB collision check: identical on both platforms
 ; A = entity1.x, B = entity1.x + width
 ; C = entity2.x, D = entity2.x + width
@@ -225,7 +225,7 @@ check_overlap_x:
 
 All fixed-point 8.8 calculations --- gravity, velocity, friction, acceleration --- port without changes. The shift-and-add patterns, the 16-bit additions, the right-shift friction:
 
-```z80
+```z80 id:ch22_fixed_point_arithmetic
 ; Apply gravity: velocity_y += gravity
 ; Works identically on both platforms
     ld   a,(ix+ENT_VY_LO)
@@ -242,7 +242,7 @@ Byte-level arithmetic does not care whether the registers are notionally 16 or 2
 
 The game state machine (title, menu, gameplay, pause, game over) uses a jump table indexed by state number. On the Spectrum:
 
-```z80
+```z80 id:ch22_state_machine
 ; Spectrum: dispatch game state
     ld   a,(game_state)
     add  a,a               ; multiply by 2 (16-bit pointers)
@@ -266,12 +266,13 @@ state_table:
 
 On the Agon, the pointer table stores 24-bit addresses:
 
-```z80
+```z80 id:ch22_state_machine_2
 ; Agon (ADL mode): dispatch game state
     ld   a,(game_state)
-    ld   e,a
-    ld   d,0               ; DE = state index (24-bit, upper byte zero)
-    ld   hl,a              ; HL = state * 3
+    ld   l,a
+    ld   h,0               ; HL = state index
+    ld   e,l
+    ld   d,h               ; DE = copy of state index
     add  hl,hl             ; HL = state * 2
     add  hl,de             ; HL = state * 3 (24-bit pointers)
     ld   de,state_table
@@ -305,7 +306,7 @@ On the Spectrum (from Chapter 16), drawing a 16x16 masked sprite costs roughly 1
 
 On the Agon, you upload the sprite bitmap *once*, and then move it by sending a position update:
 
-```z80
+```z80 id:ch22_rendering_from_framebuffer_to
 ; Agon: Create and position a hardware sprite
 ; Step 1: Upload sprite bitmap (done once at init)
 ;   VDU 23, 27, 4, spriteNum   ; select sprite
@@ -363,7 +364,7 @@ On the Spectrum, horizontal scrolling means shifting every byte of video memory 
 
 On the Agon, the VDP supports hardware tilemaps:
 
-```z80
+```z80 id:ch22_rendering_from_framebuffer_to_2
 ; Agon: Set up a tilemap (done once)
 ; VDU 23, 27, 20, tileWidth, tileHeight
 ; VDU 23, 27, 21, mapWidth.lo, mapWidth.hi, mapHeight.lo, mapHeight.hi
@@ -420,11 +421,11 @@ Every bank switch costs a port write and limits what code can see what data. The
 
 On the Agon, all 512 KB is visible simultaneously. There is no banking. There is no shadow screen trick (the VDP handles double buffering internally). You can have your entire game --- all five levels, all tilesets, all sprites, all music --- resident in memory at once. Level transitions do not require loading from tape or disk; you just point to a different region of RAM.
 
-This is liberating, but it also removes a constraint that forced good architecture. On the Spectrum, you were forced to think about data locality, about what needed to be co-resident, about load sequences. On the Agon, you can be sloppy. Do not be sloppy. The Agon has 512 KB, not infinity. A well-organized memory map is still a virtue.
+This simplifies development, but it also removes a constraint that forced good architecture. On the Spectrum, you were forced to think about data locality, about what needed to be co-resident, about load sequences. On the Agon, you can be sloppy. Do not be sloppy. The Agon has 512 KB, not infinity. A well-organized memory map is still a virtue.
 
 Typical Agon memory layout for the ported game:
 
-```
+```text
 $000000 - $00FFFF   MOS and system (reserved)
 $040000 - $04FFFF   Game code (~64 KB)
 $050000 - $06FFFF   Level data, all 5 levels (~128 KB)
@@ -438,7 +439,7 @@ Everything is addressable with a single `LD HL,$070000` --- no bank switching, n
 
 On the Spectrum, loading from tape is a minutes-long process with a distinctive audio signature. Even with DivMMC and esxDOS, file access is a sequence of RST $08 calls:
 
-```z80
+```z80 id:ch22_loading
 ; Spectrum + esxDOS: load a file
     ld   a,'*'             ; current drive
     ld   ix,filename
@@ -459,7 +460,7 @@ On the Spectrum, loading from tape is a minutes-long process with a distinctive 
 
 On the Agon, MOS provides a file API that reads directly from the SD card:
 
-```z80
+```z80 id:ch22_loading_2
 ; Agon: load a file using MOS API
     ld   hl,filename       ; 24-bit pointer to filename string
     ld   de,buffer         ; 24-bit pointer to destination
@@ -484,7 +485,7 @@ The Spectrum's AY-3-8910 is programmed by writing directly to hardware registers
 
 The Agon's audio is handled by the VDP. You send sound commands over the same serial link used for graphics:
 
-```z80
+```z80 id:ch22_sound
 ; Agon: play a note
 ; VDU 23, 0, 197, channel, volume, freq.lo, freq.hi, duration.lo, duration.hi
 
@@ -516,7 +517,7 @@ The Agon's sound system supports multiple waveforms (sine, square, triangle, saw
 
 One approach: write a thin abstraction layer that both platforms share.
 
-```z80
+```z80 id:ch22_sound_2
 ; Abstract sound interface
 ; Spectrum implementation:
 sound_play_note:
@@ -539,7 +540,7 @@ The Spectrum reads keyboard state by probing port $FE with half-row addresses in
 
 The Agon reads keyboard state through MOS:
 
-```z80
+```z80 id:ch22_input
 ; Spectrum: read keyboard
     ld   a,$FD             ; half-row: Q W E R T
     in   a,($FE)
@@ -554,7 +555,7 @@ The Agon reads keyboard state through MOS:
 
 The Spectrum gives you a bitmask of simultaneously pressed keys, ideal for game input (you can detect multiple keys at once). The Agon's MOS keyboard API is event-based: it gives you the most recent key pressed. For game input with simultaneous key detection, you typically use the MOS keyboard map --- a region of memory updated by MOS that reflects the state of all keys:
 
-```z80
+```z80 id:ch22_input_2
 ; Agon: read simultaneous keys from keyboard map
     ld   a,(mos_keymap+KEY_LEFT)   ; 1 if left arrow held, 0 if not
     or   a
@@ -584,7 +585,7 @@ Even at 18 MHz with 368,000 T-states per frame, the inner loop still matters for
 
 The core Z80 optimization techniques --- keeping values in registers instead of memory, using `INC L` instead of `INC HL` where possible, avoiding IX/IY indexed instructions for hot paths (they carry a 2-cycle prefix penalty on eZ80, just as they carry a 4-T-state penalty on Z80) --- still produce measurable improvements.
 
-```z80
+```z80 id:ch22_what_still_matters_inner_loop
 ; Tight entity scan: same optimization principles on both platforms
 ; Prefer: register-to-register ops, direct addressing, DJNZ
 ; Avoid: IX-indexed loads in hot inner loops when possible
@@ -615,7 +616,7 @@ This does not mean you should waste memory. But it means that optimization decis
 
 On the Spectrum, self-modifying code (SMC) is a standard optimization technique. You write instructions that patch their own immediate operands to avoid memory lookups:
 
-```z80
+```z80 id:ch22_what_becomes_irrelevant_self
 ; Spectrum: self-modifying code for speed
     ld   a,0               ; operand patched at runtime
     ; ... (the $00 after LD A is overwritten with the real value)
@@ -670,7 +671,7 @@ Create a new project with the Agon toolchain. You will need:
 
 Your entry point is different from the Spectrum. Instead of `ORG $8000` with a raw JP to your start address, the Agon loads executables at $040000 and MOS passes control to that address:
 
-```z80
+```z80 id:ch22_step_1_set_up_the_agon
 ; Agon: application entry point
     .ASSUME ADL=1          ; we are in ADL mode
     ORG  $040000
@@ -725,31 +726,7 @@ Run the game. Verify sprite positions, collision boxes, scrolling speed, sound t
 
 ## What Each Platform Forces You To Do Better
 
-This is the real lesson of porting. Every platform has constraints that push you toward better engineering, but the constraints are different.
-
-### The Spectrum Forces You To Be Efficient
-
-When your frame budget is 71,680 T-states and your sprite engine alone consumes 12,000 of them, you learn to count T-states. You learn to use `INC L` instead of `INC HL`. You learn to unroll loops. You learn to pre-compute everything you can. You learn to think about data layout --- keeping related data in contiguous memory, aligning buffers to page boundaries, arranging structs so that the most-accessed fields have the smallest offsets.
-
-This discipline transfers to every platform you will ever work on. The Spectrum teaches you what "efficient" really means at the instruction level, and that awareness never leaves you. Even on the Agon, where you have T-states to spare, writing tight inner loops is a habit worth keeping.
-
-### The Spectrum Forces You To Be Creative
-
-Attribute clash. Interleaved screen memory. A 6,912-byte framebuffer that looks like it was designed by a committee that never met. These constraints do not exist on the Agon, and their absence removes the creative pressure that produced some of the Spectrum's most distinctive visual techniques.
-
-The multicolour hack, the 4-phase colour trick, attribute-only effects, screen-third flipping for double buffering --- these are solutions to problems that do not exist on the Agon. You will not invent them if you only program the Agon. The Spectrum's constraints are a school of creative problem-solving.
-
-### The Agon Forces You To Think About Architecture
-
-When memory is no longer scarce, when T-states are no longer tight, the remaining challenges are architectural. How do you structure a game loop that communicates with an asynchronous coprocessor? How do you time your VDP commands so that sprites move smoothly? How do you manage the pipeline of data flowing from CPU to VDP over serial?
-
-The Agon teaches you about system design: separating concerns, managing latency, structuring command protocols, and building abstraction layers. These are software engineering skills that the Spectrum, with its "write directly to hardware" ethos, does not emphasize.
-
-### The Agon Forces You To Care About Data
-
-On the Spectrum, a 16x16 sprite is 32 bytes of pixel data plus 32 bytes of mask. On the Agon, the same sprite in 8bpp RGBA is 1,024 bytes. Multiply by 64 sprites across 4 animation frames and you have 256 KB of sprite data alone. Even with 512 KB, you start thinking about asset pipelines: how to convert, optimize, and manage large volumes of graphical data.
-
-The Agon makes you a better *tool builder* --- writing converters, optimizers, asset pipeline scripts. The Spectrum makes you a better *optimizer* of the code itself. Both skills matter.
+The Spectrum teaches cycle-level efficiency and creative constraint-solving: you learn to count T-states, exploit memory layout, and invent techniques like multicolour and attribute-only effects that exist only because of the hardware's limitations. The Agon teaches system architecture: managing an asynchronous coprocessor, structuring command pipelines, and building asset conversion tools for larger data volumes. The Spectrum makes you a better optimiser; the Agon makes you a better system designer. Both skills transfer.
 
 ---
 
@@ -759,7 +736,7 @@ The eZ80 adds several instructions that Z80 programmers will appreciate. The mos
 
 **LEA (Load Effective Address).** Compute an address from a base register plus an 8-bit signed displacement, without modifying the base register:
 
-```z80
+```z80 id:ch22_a_note_on_ez80_instructions
 ; eZ80: LEA IX, IY + offset
 ; Compute IX = IY + displacement without changing IY
     LEA  IX,IY+ENT_SIZE    ; IX points to next entity
@@ -769,7 +746,7 @@ On the Z80, this requires `PUSH IY` / `POP IX` / `LD DE,ENT_SIZE` / `ADD IX,DE` 
 
 **TST (Test Immediate).** AND the accumulator with an immediate value and set flags, without modifying A:
 
-```z80
+```z80 id:ch22_a_note_on_ez80_instructions_2
 ; eZ80: TST A, mask
 ; Test bits without destroying A
     TST  A,$80             ; test sign bit
@@ -780,7 +757,7 @@ On the Z80, you would need `BIT 7,A` (which does not work with arbitrary masks) 
 
 **MLT (Multiply).** 8x8 unsigned multiply, result in a 16-bit register pair:
 
-```z80
+```z80 id:ch22_a_note_on_ez80_instructions_3
 ; eZ80: MLT BC
 ; B * C -> BC (16-bit result)
     ld   b,sprite_width

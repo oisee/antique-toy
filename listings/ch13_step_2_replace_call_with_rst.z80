@@ -1,0 +1,6 @@
+ay_write:                      ; register in A, value in E
+    ld   bc, $FFFD
+    out  (c), a
+    ld   b, $BF
+    out  (c), e
+    ret                        ; 8 bytes total

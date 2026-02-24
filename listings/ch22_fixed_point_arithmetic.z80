@@ -1,0 +1,8 @@
+; Apply gravity: velocity_y += gravity
+; Works identically on both platforms
+    ld   a,(ix+ENT_VY_LO)
+    add  a,GRAVITY_LO
+    ld   (ix+ENT_VY_LO),a
+    ld   a,(ix+ENT_VY_HI)
+    adc  a,GRAVITY_HI
+    ld   (ix+ENT_VY_HI),a

@@ -1,0 +1,30 @@
+; Snare: noise burst with fast decay
+drum_snare:
+    ; Noise period: mid-range
+    ld   a, R_NOISE
+    ld   e, 8
+    call ay_write
+
+    ; Mixer: enable noise on channel C
+    ld   a, R_MIXER
+    ld   e, $18          ; tones A+B+C on, noise C on
+    call ay_write
+
+    ; Short envelope: fast decay
+    ld   a, R_ENV_LO
+    ld   e, 200
+    call ay_write
+    ld   a, R_ENV_HI
+    ld   e, 0
+    call ay_write
+
+    ; Envelope shape: single decay
+    ld   a, R_ENV_SHAPE
+    ld   e, $00          ; \___  single decay to silence
+    call ay_write
+
+    ; Channel C to envelope mode
+    ld   a, R_VOL_C
+    ld   e, $10
+    call ay_write
+    ret

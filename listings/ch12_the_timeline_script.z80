@@ -1,0 +1,15 @@
+; Timeline script: sequence of (effect_id, duration_frames, param_ptr)
+timeline:
+    DB  EFFECT_PLASMA,   0, 150   ; plasma for 150 frames (3 sec)
+    DW  plasma_params_1
+    DB  EFFECT_BARS,     0, 100   ; colour bars for 100 frames (2 sec)
+    DW  bars_params_1
+    DB  EFFECT_SCROLLER, 0, 200   ; text scroller for 200 frames (4 sec)
+    DW  scroller_params_1
+    DB  EFFECT_PLASMA,   0, 150   ; plasma again, different params
+    DW  plasma_params_2
+    DB  $FF                        ; end marker: loop from start
+
+EFFECT_PLASMA   EQU 0
+EFFECT_BARS     EQU 1
+EFFECT_SCROLLER EQU 2

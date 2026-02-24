@@ -1,0 +1,19 @@
+; Port $7FFD layout:
+;   Bit 0-2:  Bank number for $C000-$FFFF (0-7)
+;   Bit 3:    Screen select (0 = bank 5 normal, 1 = bank 7 shadow)
+;   Bit 4:    ROM select (0 = 128K editor, 1 = 48K BASIC)
+;   Bit 5:    Disable paging (PERMANENT -- cannot be undone without reset)
+;   Bits 6-7: Unused
+
+; Switch to bank N at $C000
+; Input: A = bank number (0-7)
+; Preserves: all registers except A
+switch_bank:
+    or   %00010000          ; ROM 1 (48K BASIC) -- keep this set
+    ld   (last_bank_state), a
+    ld   bc, $7FFD
+    out  (c), a
+    ret
+
+last_bank_state:
+    db   %00010000          ; default: bank 0, normal screen, ROM 1

@@ -1,0 +1,8 @@
+; MOS API: open a file
+    ld   hl, filename       ; pointer to null-terminated filename
+    ld   c, $01             ; mode: read
+    rst  $08                ; MOS call
+    db   $0A                ; function $0A: ffs_fopen
+    ; Returns file handle in A
+filename:
+    db   "level1.dat", 0

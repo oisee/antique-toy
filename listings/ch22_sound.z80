@@ -1,0 +1,25 @@
+; Agon: play a note
+; VDU 23, 0, 197, channel, volume, freq.lo, freq.hi, duration.lo, duration.hi
+
+play_note:
+    ld   a,23
+    rst  $10
+    xor  a                 ; 0
+    rst  $10
+    ld   a,197             ; sound command
+    rst  $10
+    ld   a,(channel)
+    rst  $10
+    ld   a,(volume)
+    rst  $10
+    ld   hl,(frequency)
+    ld   a,l
+    rst  $10
+    ld   a,h
+    rst  $10
+    ld   hl,(duration)
+    ld   a,l
+    rst  $10
+    ld   a,h
+    rst  $10
+    ret

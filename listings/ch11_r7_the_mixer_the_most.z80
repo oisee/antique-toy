@@ -1,0 +1,8 @@
+Bit 7: I/O port B direction (1 = input)
+Bit 6: I/O port A direction (1 = input)
+Bit 5: Noise C enable (0 = ON, 1 = off)
+Bit 4: Noise B enable (0 = ON, 1 = off)
+Bit 3: Noise A enable (0 = ON, 1 = off)
+Bit 2: Tone C enable  (0 = ON, 1 = off)
+Bit 1: Tone B enable  (0 = ON, 1 = off)
+Bit 0: Tone A enable  (0 = ON, 1 = off)

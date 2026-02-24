@@ -1,0 +1,74 @@
+; Main engine loop
+; Assumes IM2 is set up and music player runs in the ISR
+
+engine_init:
+    ; Set up display: fill pixel memory with checkerboard
+    call fill_checkerboard
+
+    ; Initialise ring buffer
+    xor  a
+    ld   (buf_write_idx), a
+    ld   (buf_read_idx), a
+    ld   (buf_count), a
+
+    ; Load first effect from timeline
+    ld   hl, timeline
+    ld   (script_ptr), hl
+    call load_next_effect
+
+engine_main:
+    ; === Step 1: Check for drum trigger ===
+    ld   a, (drum_pending)
+    or   a
+    jr   z, .no_drum
+
+    ; Play the drum -- this consumes ~2 frames
+    call play_kick_drum
+    xor  a
+    ld   (drum_pending), a
+    jr   .after_drum
+
+.no_drum:
+    ; === Step 2: Generate a frame into the buffer ===
+    ld   a, (buf_count)
+    cp   BUF_CAPACITY         ; buffer full?
+    jr   nc, .buffer_full
+
+    ; Generate one frame of the current effect
+    call generate_frame       ; writes 768 bytes to ring buffer
+
+    ; Advance buffer write pointer
+    ld   a, (buf_write_idx)
+    inc  a
+    cp   BUF_CAPACITY
+    jr   nz, .no_wrap_w
+    xor  a
+.no_wrap_w:
+    ld   (buf_write_idx), a
+    ld   a, (buf_count)
+    inc  a
+    ld   (buf_count), a
+
+.buffer_full:
+.after_drum:
+    ; === Step 3: Advance timeline ===
+    ld   hl, (frame_counter)
+    inc  hl
+    ld   (frame_counter), hl
+
+    ; Check if current effect duration has elapsed
+    ld   de, (effect_duration)
+    or   a
+    sbc  hl, de
+    jr   c, .effect_continues
+
+    ; Load next effect from timeline
+    call load_next_effect
+    ld   hl, 0
+    ld   (frame_counter), hl
+
+.effect_continues:
+    ; === Step 4: Wait if we are ahead of display ===
+    halt                      ; sync to frame boundary
+
+    jr   engine_main

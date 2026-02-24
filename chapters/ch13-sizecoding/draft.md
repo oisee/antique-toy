@@ -5,7 +5,7 @@
 
 There is a category of demoscene competition where the constraint is not time but *space*. Your entire program -- the code that draws the screen, produces the sound, handles the frame loop, holds whatever data it needs -- must fit in 256 bytes. Or 512. Or 1K, or 4K, or 8K. Not a byte more. The file is measured, and if it is 257 bytes, it is disqualified.
 
-These are **size-coding** competitions, and they produce some of the most remarkable work on the ZX Spectrum scene. A 256-byte intro that fills the screen with animated patterns and plays a recognisable melody is a form of compression so extreme it borders on magic. The gap between what the audience sees and the file size that produces it -- that gap is the art.
+These are **size-coding** competitions, and they produce some of the most remarkable work on the ZX Spectrum scene. A 256-byte intro that fills the screen with animated patterns and plays a recognisable melody is a form of compression so extreme it is hard to believe until you read the code. The gap between what the audience sees and the file size that produces it -- that gap is the art.
 
 This chapter is about the mindset, the techniques, and the specific tricks that make size-coding possible.
 
@@ -62,7 +62,7 @@ In a normal demo, these ROM routines are too slow to call in a tight loop. In a 
 
 **Overlapping instructions.** The Z80 decodes instructions byte by byte, with no alignment requirements. If you jump into the middle of a multi-byte instruction, the CPU decodes fresh from that point. This means you can hide one instruction inside another:
 
-```z80
+```z80 id:ch13_the_z80_size_coder_s_toolkit
     ld   a, $AF              ; opcode $3E, operand $AF
                               ; BUT: $AF is XOR A
 ```
@@ -75,7 +75,7 @@ A common pattern: the byte `$18` is `JR d` (relative jump). If you need the valu
 
 The deepest flag trick is `SBC A, A`: if carry is set, A becomes $FF; if carry is clear, A becomes $00. One byte, no branch, a full bitmask from a flag. Compare this to the branching alternative:
 
-```z80
+```z80 id:ch13_the_z80_size_coder_s_toolkit_2
     ; With branching: 6 bytes
     jr   nc, .zero            ; 2
     ld   a, $FF               ; 2
@@ -237,7 +237,7 @@ The sweet spot for learning size-coding is 256 bytes. At that size, every techni
 
 Self-modification becomes structural at 512 bytes. Embed the frame counter *inside* an instruction:
 
-```z80
+```z80 id:ch13_self_modifying_tricks
 frame_ld:
     ld   a, 0               ; this 0 is the frame counter
     inc  a
@@ -248,7 +248,7 @@ No separate variable. The counter lives in the instruction stream.
 
 Patch jump offsets to switch between effects:
 
-```z80
+```z80 id:ch13_self_modifying_tricks_2
 effect_jump:
     jr   effect_1               ; this offset gets patched
     ; ...
@@ -288,7 +288,7 @@ The impact on the audience is disproportionate. Sound transforms a size-coding e
 
 Unlike 256 bytes where you are locked into a single visual, 4K gives you room for 2-4 distinct effects with transitions. The structural framework is lightweight: a scene table mapping effect pointers to durations costs perhaps 30 bytes:
 
-```z80
+```z80 id:ch13_multi_effect_structure
 scene_table:
     DW effect_plasma    ; pointer to effect routine
     DB 150              ; duration in frames (3 seconds at 50fps)
@@ -379,7 +379,7 @@ A simple attribute plasma: fill 768 bytes of attribute memory with values from s
 
 Any call to a ROM address matching an RST vector saves 2 bytes per invocation. For AY output, replace the six verbose inline register writes (~60 bytes) with a small subroutine:
 
-```z80
+```z80 id:ch13_step_2_replace_call_with_rst
 ay_write:                      ; register in A, value in E
     ld   bc, $FFFD
     out  (c), a
@@ -414,7 +414,7 @@ Intuition about "how big is this" is unreliable. You need to count. There are th
 
 **Assembler output.** sjasmplus can report the assembled size. The `DISPLAY` directive prints to the console during assembly, and `ASSERT` enforces the limit:
 
-```z80
+```z80 id:ch13_step_6_counting_bytes
 intro_end:
     ASSERT intro_end - init <= 256, "Intro exceeds 256 bytes!"
     DISPLAY "Intro size: ", /D, intro_end - init, " bytes"
@@ -454,7 +454,7 @@ The principle is the same as PC bytebeat: replace stored music data with a formu
 
 A typical approach in a 256-byte intro:
 
-```z80
+```z80 id:ch13_the_minimal_ay_formula_engine
 ; Frame-driven AY "bytebeat" — ~20 bytes
 ; A = frame counter (incremented each HALT)
     ld   e, a
@@ -476,7 +476,7 @@ This produces a cycling tone that sweeps through periods and fades in/out -- not
 
 **Multi-channel formulas.** The AY has three tone channels. Use different bit rotations of the same frame counter for each channel -- they will produce related but distinct patterns, creating an impression of harmony:
 
-```z80
+```z80 id:ch13_techniques_for_better
     ld   a, (frame)
     call .write_ch_a      ; channel A: raw formula
     ld   a, (frame)
@@ -541,13 +541,7 @@ The judging criterion is purely visual -- the audience votes on the image, not t
 
 ## 13.10 Size-Coding as Art
 
-There is a moment in size-coding -- and UriS's making-of captures it perfectly -- when the program is 260 bytes and you need to cut 4. You could remove a visual feature. You could simplify the sound. Or you could find an encoding where the same bytes serve both purposes. When you find that encoding, it is not just a technical solution. It is *elegant*. The code is more beautiful for being smaller.
-
-This is why size-coding competitions persist. The practical utility of a 256-byte program is zero. The craft is the point. The constraint is the canvas. The results -- tiny binaries that produce music and motion from a space smaller than this paragraph -- are genuine art.
-
-diver4d's LPRINT article makes a similar point from the opposite direction. The LPRINT trick is not efficient. It produces visual noise that barely qualifies as an "effect." But when JtN and 4D used it in BBB, framing the technique with artistic intent, the result was a demo people remembered. The constraint became the medium. The limitations became the style.
-
-Size-coding teaches you things that improve all your coding. The discipline of questioning every byte sharpens instruction-encoding awareness. The habit of looking for overlaps transfers to any optimisation work. The practice of exploiting initial state and side effects makes you a better systems programmer. And the puzzle-solving experience -- finding the arrangement where everything fits -- applies far beyond 256 bytes.
+Size-coding teaches you things that improve all your coding: the discipline of questioning every byte sharpens instruction-encoding awareness, the habit of looking for overlaps transfers to any optimisation work, and the practice of exploiting initial state and side effects makes you a better systems programmer.
 
 ---
 

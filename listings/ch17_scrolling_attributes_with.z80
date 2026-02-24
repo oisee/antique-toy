@@ -1,0 +1,30 @@
+; Scroll all attributes left by 1 character column
+; New column data in a 24-byte table at new_col_data
+;
+scroll_attrs_left:
+    ld   hl, $5801          ; 10 T  source: column 1
+    ld   de, $5800          ; 10 T  dest: column 0
+    ld   bc, 767            ; 10 T  768 - 1 bytes
+    ldir                    ; 767*21 + 16 = 16,123 T
+
+    ; Now fill the rightmost column with new data
+    ld   hl, new_col_data   ; 10 T
+    ld   de, $581F          ; 10 T  column 31 of row 0
+    ld   b, 24              ; 7 T
+.fill_col:
+    ld   a, (hl)            ; 7 T
+    ld   (de), a            ; 7 T
+    inc  hl                 ; 6 T
+    ; advance DE by 32 (next attribute row)
+    ld   a, e               ; 4 T
+    add  a, 32              ; 7 T
+    ld   e, a               ; 4 T
+    jr   nc, .no_carry      ; 12/7 T
+    inc  d                  ; 4 T
+.no_carry:
+    djnz .fill_col          ; 13 T
+    ret
+
+    ; Total LDIR: ~16,123 T
+    ; Total column fill: ~24 * 50 = ~1,200 T
+    ; Grand total: ~17,323 T = 24.2% of frame

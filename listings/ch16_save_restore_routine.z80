@@ -1,0 +1,34 @@
+; Save background behind a 16x16 sprite
+; Input:  HL = screen address (top-left)
+;         DE = pointer to save buffer (32 bytes)
+;
+save_background_16x16:
+    ld   b, 16              ;  7 T
+
+.row:
+    ld   a, (hl)            ;  7 T   read left byte
+    ld   (de), a            ;  7 T   save it
+    inc  de                 ;  6 T
+    inc  l                  ;  4 T
+
+    ld   a, (hl)            ;  7 T   read right byte
+    ld   (de), a            ;  7 T   save it
+    inc  de                 ;  6 T
+    dec  l                  ;  4 T
+
+    ; DOWN_HL (same as sprite routines)
+    inc  h                  ;  4 T
+    ld   a, h               ;  4 T
+    and  7                  ;  7 T
+    jr   nz, .no_boundary   ; 12/7T
+    ld   a, l               ;  4 T
+    add  a, 32              ;  7 T
+    ld   l, a               ;  4 T
+    jr   c, .no_fix         ; 12/7T
+    ld   a, h               ;  4 T
+    sub  8                  ;  7 T
+    ld   h, a               ;  4 T
+.no_fix:
+.no_boundary:
+    djnz .row               ; 13 T
+    ret                     ; 10 T

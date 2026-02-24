@@ -1,0 +1,3 @@
+    ld   hl,source_image      ; source texture (page-aligned, 1 byte/pixel)
+    ld   de,screen_address    ; start of sphere area in video memory
+    call code_buffer          ; execute the generated rendering code

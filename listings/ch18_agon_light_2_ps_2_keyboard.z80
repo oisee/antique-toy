@@ -1,0 +1,17 @@
+; Agon: Read keyboard via MOS sysvar
+; MOS sysvar_keyascii at IX+$05
+read_input_agon:
+    ld   a, (ix + $05)      ; read last key from MOS sysvars
+    ; Map ASCII to input_flags
+    cp   'o'
+    jr   nz, .not_left
+    set  INPUT_LEFT, d
+.not_left:
+    cp   'p'
+    jr   nz, .not_right
+    set  INPUT_RIGHT, d
+.not_right:
+    ; ... etc for Q, A, SPACE
+    ld   a, d
+    ld   (input_flags), a
+    ret

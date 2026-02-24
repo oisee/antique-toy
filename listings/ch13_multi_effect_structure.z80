@@ -1,0 +1,36 @@
+scene_table:
+    DW effect_plasma    ; pointer to effect routine
+    DB 150              ; duration in frames (3 seconds at 50fps)
+    DW effect_tunnel
+    DB 200
+    DW effect_scroller
+    DB 250
+    DB 0                ; end marker
+
+scene_runner:
+    ld   hl, scene_table
+.next_scene:
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)        ; DE = effect routine address
+    inc  hl
+    ld   a, (hl)        ; A = duration
+    or   a
+    ret  z              ; end of table
+    inc  hl
+    push hl             ; save table pointer
+    ld   b, a           ; B = frame counter
+.frame_loop:
+    push bc
+    push de
+    call .call_effect
+    pop  de
+    pop  bc
+    halt                ; wait for vsync
+    djnz .frame_loop
+    pop  hl
+    jr   .next_scene
+
+.call_effect:
+    push de
+    ret                 ; jump to DE via push+ret trick

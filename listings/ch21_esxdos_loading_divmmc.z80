@@ -1,0 +1,38 @@
+; esxDOS function codes
+F_OPEN      equ  $9A
+F_CLOSE     equ  $9B
+F_READ      equ  $9D
+F_WRITE     equ  $9E
+F_SEEK      equ  $9F
+F_OPENDIR   equ  $A3
+F_READDIR   equ  $A4
+
+; esxDOS open modes
+FA_READ     equ  $01
+FA_WRITE    equ  $06
+FA_CREATE   equ  $0E
+
+; Open a file
+; IX = pointer to null-terminated filename
+; Returns: A = file handle (or carry set on error)
+esx_open:
+    ld   a, '*'            ; use default drive
+    ld   b, FA_READ        ; open for reading
+    rst  $08
+    db   F_OPEN
+    ret
+
+; Read bytes from file
+; A = file handle, IX = destination address, BC = byte count
+; Returns: BC = bytes actually read (or carry set on error)
+esx_read:
+    rst  $08
+    db   F_READ
+    ret
+
+; Close a file
+; A = file handle
+esx_close:
+    rst  $08
+    db   F_CLOSE
+    ret

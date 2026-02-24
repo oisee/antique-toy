@@ -1,0 +1,17 @@
+; Ion Random
+; Quality: Good -- minor patterns visible only at extreme scale
+; Size:    ~15 bytes
+; Output:  A = pseudo-random byte
+; Origin:  Ion Shell (TI-83), adapted for Z80
+
+ion_rnd:
+.smc_seed:
+    ld   hl, 0              ; 10 T -- seed (self-modifying)
+    ld   a, r               ; 9 T -- read refresh counter
+    ld   d, a               ; 4 T
+    ld   e, (hl)            ; 7 T
+    add  hl, de             ; 11 T
+    add  a, l               ; 4 T
+    xor  h                  ; 4 T
+    ld   (.smc_seed+1), hl  ; 16 T -- update seed
+    ret                     ; 10 T

@@ -1,0 +1,7 @@
+; Face table: each face is a list of vertex indices + attribute byte
+; Vertex order must be consistent (clockwise when front-facing)
+face_table:
+    DB  4, 0, 1, 8, 10        ; face 0: quad (4 vertices)
+    DB  4, 2, 3, 9, 11        ; face 1: quad
+    ; ... remaining faces ...
+    DB  0                      ; end marker

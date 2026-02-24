@@ -1,0 +1,6 @@
+; Example: derive v8 = (v4 + v5) / 2, then store it
+; Cell 4 = v4, Cell 5 = v5, Cell 8 = destination
+
+    DB  4           ; LOAD cell[4]     (opcode 00, cell 4)
+    DB  128+5       ; AVG  cell[5]     (opcode 10, cell 5 = %10000101)
+    DB  64+8        ; STORE cell[8]    (opcode 01, cell 8 = %01001000)

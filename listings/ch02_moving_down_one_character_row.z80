@@ -1,0 +1,3 @@
+    ld   a, l          ; 4T
+    add  a, 32         ; 7T
+    ld   l, a          ; 4T    total: 15T (if no third crossing)

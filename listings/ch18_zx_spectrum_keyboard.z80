@@ -1,0 +1,53 @@
+; Input flag bits
+INPUT_RIGHT  EQU  0
+INPUT_LEFT   EQU  1
+INPUT_DOWN   EQU  2
+INPUT_UP     EQU  3
+INPUT_FIRE   EQU  4
+
+; Read QAOP+SPACE into input_flags
+; Returns: A = input_flags byte, also stored at (input_flags)
+read_keyboard:
+    ld   d, 0               ; 7T   accumulate result in D
+
+    ; Read O and P: half-row $DF (P=bit0, O=bit1)
+    ld   bc, $DFFE          ; 10T
+    in   a, (c)             ; 12T
+    bit  0, a               ; 8T   P key
+    jr   nz, .no_right      ; 12/7T
+    set  INPUT_RIGHT, d     ; 8T
+.no_right:
+    bit  1, a               ; 8T   O key
+    jr   nz, .no_left       ; 12/7T
+    set  INPUT_LEFT, d      ; 8T
+.no_left:
+
+    ; Read Q and A: half-rows $FB (Q=bit0) and $FD (A=bit0... wait)
+    ; Q is in half-row $FB at bit 0
+    ld   b, $FB             ; 7T
+    in   a, (c)             ; 12T
+    bit  0, a               ; 8T   Q key
+    jr   nz, .no_up         ; 12/7T
+    set  INPUT_UP, d        ; 8T
+.no_up:
+
+    ; A is in half-row $FD at bit 0
+    ld   b, $FD             ; 7T
+    in   a, (c)             ; 12T
+    bit  0, a               ; 8T   A key
+    jr   nz, .no_down       ; 12/7T
+    set  INPUT_DOWN, d      ; 8T
+.no_down:
+
+    ; SPACE: half-row $7F at bit 0
+    ld   b, $7F             ; 7T
+    in   a, (c)             ; 12T
+    bit  0, a               ; 8T
+    jr   nz, .no_fire       ; 12/7T
+    set  INPUT_FIRE, d      ; 8T
+.no_fire:
+
+    ld   a, d               ; 4T
+    ld   (input_flags), a   ; 13T
+    ret                     ; 10T
+    ; Total: ~220T worst case (all keys pressed)

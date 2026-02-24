@@ -1,0 +1,6 @@
+; Triangular random: result clusters around 128
+    call patrik_rak_cmwc_rnd  ; A = uniform random
+    ld   b, a
+    call patrik_rak_cmwc_rnd  ; A = another uniform random
+    add  a, b                 ; sum (wraps at 256)
+    rra                       ; divide by 2 → triangular distribution

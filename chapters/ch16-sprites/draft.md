@@ -20,7 +20,7 @@ XOR drawing is the minimum viable sprite. It requires no mask data, no backgroun
 
 Here is a complete 16x16 XOR sprite routine:
 
-```z80
+```z80 id:ch16_the_simplest_approach
 ; Draw a 16x16 XOR sprite
 ; Input:  HL = screen address (top-left byte of sprite position)
 ;         IX = pointer to sprite data (32 bytes: 2 bytes x 16 rows)
@@ -45,13 +45,13 @@ xor_sprite_16x16:
     inc  h                  ;  4 T   move down one pixel row
     ld   a, h               ;  4 T   \
     and  7                  ;  7 T    | check character
-    jr   nz, .no_boundary   ;  7 T   /  boundary crossing
+    jr   nz, .no_boundary   ; 12/7T  /  boundary crossing
 
     ; Character boundary: adjust HL
     ld   a, l               ;  4 T
     add  a, 32              ;  7 T
     ld   l, a               ;  4 T
-    jr   c, .no_fix         ;  7 T
+    jr   c, .no_fix         ; 12/7T
     ld   a, h               ;  4 T
     sub  8                  ;  7 T
     ld   h, a               ;  4 T
@@ -62,9 +62,9 @@ xor_sprite_16x16:
     ret                     ; 10 T
 ```
 
-The inner loop costs 98 T-states per row in the common case (no boundary crossing) and up to 131 T-states at character boundaries. For 16 rows: approximately 1,700 T-states per draw. To erase the sprite, call the same routine again with the same screen address --- the XOR undoes itself.
+The inner loop costs 134 T-states per row in the common case (no boundary crossing): two IX loads at 19T each, two XOR-and-store sequences at 18T each, two INC IX at 10T, row advance (INC H + check) at 27T, and DJNZ at 13T. At character boundaries, the cost rises to ~164 T-states (the extra adjustment instructions replace the taken JR). For 16 rows: approximately 2,200 T-states per draw. To erase the sprite, call the same routine again with the same screen address --- the XOR undoes itself.
 
-Total cost to animate one XOR sprite: ~3,400 T-states per frame (draw + erase).
+Total cost to animate one XOR sprite: ~4,400 T-states per frame (draw + erase).
 
 ### When XOR works
 
@@ -104,7 +104,7 @@ For a 16x16 sprite, each row contains 4 bytes: mask-left, graphic-left, mask-rig
 
 ### The inner loop
 
-```z80
+```z80 id:ch16_the_inner_loop
 ; Draw a 16x16 masked sprite (byte-aligned)
 ; Input:  HL = screen address
 ;         DE = pointer to sprite data
@@ -142,12 +142,12 @@ masked_sprite_16x16:
     inc  h                  ;  4 T
     ld   a, h               ;  4 T
     and  7                  ;  7 T
-    jr   nz, .no_boundary   ;  7 T
+    jr   nz, .no_boundary   ; 12/7T
 
     ld   a, l               ;  4 T
     add  a, 32              ;  7 T
     ld   l, a               ;  4 T
-    jr   c, .no_fix         ;  7 T
+    jr   c, .no_fix         ; 12/7T
     ld   a, h               ;  4 T
     sub  8                  ;  7 T
     ld   h, a               ;  4 T
@@ -159,17 +159,17 @@ masked_sprite_16x16:
 
 ### Cycle counting
 
-Let us count the common case (no character boundary crossing):
+Let us count the common case (no character boundary crossing). Note that `JR NZ` is taken (12T) in the common case because the boundary crossing is rare --- only 1 in 8 rows crosses a character boundary.
 
 | Section | Instructions | T-states |
 |---------|-------------|----------|
 | Left byte: mask+draw | `ld a,(de)` + `and (hl)` + `inc de` + `ld c,a` + `ld a,(de)` + `or c` + `ld (hl),a` + `inc de` + `inc l` | 52 |
 | Right byte: mask+draw | Same sequence + `dec l` | 52 |
-| Row advance | `inc h` + `ld a,h` + `and 7` + `jr nz` | 22 |
+| Row advance | `inc h` + `ld a,h` + `and 7` + `jr nz` (taken) | 27 |
 | Loop | `djnz` | 13 |
-| **Total per row** | | **139** |
+| **Total per row** | | **144** |
 
-For 16 rows: 16 x 139 = **2,224 T-states** (common case). Add boundary-crossing overhead for ~2 boundaries in a 16-pixel sprite: roughly **2,300 T-states** total.
+For 16 rows: 16 x 144 = **2,304 T-states** (common case). Add boundary-crossing overhead for ~2 boundaries in a 16-pixel sprite: roughly **2,400 T-states** total.
 
 But this only draws the sprite. You also need to erase the previous frame's sprite, which means restoring the background --- we will address this in Method 6 (Dirty Rectangles). For now, note that the draw alone is about 35% more expensive than XOR, but the visual quality is incomparably better.
 
@@ -179,7 +179,7 @@ The routine above assumes the sprite starts at a byte boundary --- that is, the 
 
 You can shift at draw time:
 
-```z80
+```z80 id:ch16_byte_alignment_and_the_shift
 ; Shift mask and graphic right by A bits
 ; This adds significant cost per byte
     ld   a, (de)            ;  7 T   load mask byte
@@ -235,7 +235,7 @@ Most games use 4 pre-shifted copies. The 2-pixel horizontal resolution is barely
 
 The draw routine for pre-shifted sprites is identical to the byte-aligned masked sprite routine --- you just select the correct pre-shifted data set before calling it:
 
-```z80
+```z80 id:ch16_practical_compromise
 ; Select pre-shifted sprite data
 ; Input:  A = x coordinate (0-255)
 ;         IY = base of pre-shift table (4 entries, each pointing to 16-row data)
@@ -273,7 +273,7 @@ The technique requires a critical setup:
 
 For a 16x16 sprite (2 bytes wide), each row is a single PUSH:
 
-```z80
+```z80 id:ch16_the_inner_loop_2
 ; Stack sprite: 16x16, writes 2 bytes per row via PUSH
 ; Input:  screen_addr = pre-calculated bottom-right screen address
 ;         sprite_data = 32 bytes of pixel data (2 bytes x 16 rows,
@@ -306,7 +306,7 @@ And here is the fundamental difficulty. The PUSH method is the fastest possible 
 
 The solution is to not rely on SP auto-decrement for row navigation. Instead, you explicitly set SP for each row:
 
-```z80
+```z80 id:ch16_making_it_work_pre_calculated
 ; Stack sprite: 16x16 with explicit SP per row
 ; This is the practical version --- each row gets SP set independently
 ;
@@ -360,7 +360,7 @@ A compiled sprite takes the code-generation philosophy from Chapter 3 to its log
 
 Consider a simple 8x8 sprite with some transparent pixels. In a masked sprite, you would store mask+graphic pairs and run the AND/OR loop. In a compiled sprite, you generate Z80 instructions at assembly time (or at load time):
 
-```z80
+```z80 id:ch16_how_it_works
 ; Compiled sprite for a small arrow shape
 ; Input:  HL = screen address of top-left byte
 ; The sprite draws itself.
@@ -409,7 +409,7 @@ That is 122 T-states for an 8x8 sprite. The masked approach takes roughly 5x lon
 
 For a wider sprite, each row may have multiple `LD (HL), n` instructions separated by `INC L`:
 
-```z80
+```z80 id:ch16_16x16_compiled_sprite
 ; Compiled sprite: 16x16 (2 bytes wide)
 ; Input:  HL = screen address of top-left
 ;
@@ -470,7 +470,7 @@ Per row (common case): 32 T-states. For 16 rows with 1--2 boundary crossings: ro
 
 For sprites that need to appear over a detailed background, you compile the mask into the code:
 
-```z80
+```z80 id:ch16_compiled_sprites_with_masking
 ; Compiled sprite with masking: one byte
 ; Instead of ld (hl),n, we do:
     ld   a, (hl)            ;  7 T   read screen
@@ -486,9 +486,9 @@ For 16 rows x 2 bytes: 16 x (28 + 28 + 4 + 4 + 4) = 16 x 68 = **1,088 T-states**
 
 | Method | 16x16 draw cost | Masking | Notes |
 |--------|-----------------|---------|-------|
-| XOR sprite | ~1,700 T | No | Draw + erase = ~3,400 T |
-| OR+AND masked | ~2,300 T | Yes | Standard approach |
-| Pre-shifted masked | ~2,300 T | Yes | No shift cost; 4--8x memory |
+| XOR sprite | ~2,200 T | No | Draw + erase = ~4,400 T |
+| OR+AND masked | ~2,400 T | Yes | Standard approach |
+| Pre-shifted masked | ~2,400 T | Yes | No shift cost; 4--8x memory |
 | Stack sprite (PUSH) | ~810 T | No | DI required; solid rectangle |
 | Compiled (no mask) | ~570 T | No | Code = sprite; large footprint |
 | Compiled (masked) | ~1,088 T | Yes | Best of both; largest footprint |
@@ -528,7 +528,7 @@ The order matters. You restore before saving to avoid overwriting the new backgr
 
 For a 16x16 sprite (2 bytes wide, 16 rows), the background buffer is 32 bytes:
 
-```z80
+```z80 id:ch16_save_restore_routine
 ; Save background behind a 16x16 sprite
 ; Input:  HL = screen address (top-left)
 ;         DE = pointer to save buffer (32 bytes)
@@ -551,11 +551,11 @@ save_background_16x16:
     inc  h                  ;  4 T
     ld   a, h               ;  4 T
     and  7                  ;  7 T
-    jr   nz, .no_boundary   ;  7 T
+    jr   nz, .no_boundary   ; 12/7T
     ld   a, l               ;  4 T
     add  a, 32              ;  7 T
     ld   l, a               ;  4 T
-    jr   c, .no_fix         ;  7 T
+    jr   c, .no_fix         ; 12/7T
     ld   a, h               ;  4 T
     sub  8                  ;  7 T
     ld   h, a               ;  4 T
@@ -565,7 +565,7 @@ save_background_16x16:
     ret                     ; 10 T
 ```
 
-The restore routine is identical with source and destination swapped: read from the buffer, write to the screen. Each routine takes approximately **1,400 T-states** for 16 rows.
+The restore routine is identical with source and destination swapped: read from the buffer, write to the screen. Each routine takes approximately **1,500 T-states** for 16 rows.
 
 ### Full frame budget
 
@@ -573,23 +573,23 @@ Let us calculate the per-frame cost for 8 animated 16x16 sprites using OR+AND ma
 
 | Operation | Per sprite | 8 sprites |
 |-----------|-----------|-----------|
-| Restore background | ~1,400 T | 11,200 T |
-| Save new background | ~1,400 T | 11,200 T |
-| Draw sprite (masked) | ~2,300 T | 18,400 T |
-| **Total** | **~5,100 T** | **~40,800 T** |
+| Restore background | ~1,500 T | 12,000 T |
+| Save new background | ~1,500 T | 12,000 T |
+| Draw sprite (masked) | ~2,400 T | 19,200 T |
+| **Total** | **~5,400 T** | **~43,200 T** |
 
-On a Pentagon (71,680 T-states per frame): 40,800 T leaves **30,880 T** for game logic, input processing, music, and everything else. At 25 fps you have twice the budget (two frames per update), giving ~103,000 T-states for non-sprite work. This is comfortable for a game.
+On a Pentagon (71,680 T-states per frame): 43,200 T leaves **28,480 T** for game logic, input processing, music, and everything else. At 25 fps you have twice the budget (two frames per update), giving ~100,000 T-states for non-sprite work. This is comfortable for a game.
 
 If you use compiled masked sprites instead:
 
 | Operation | Per sprite | 8 sprites |
 |-----------|-----------|-----------|
-| Restore background | ~1,400 T | 11,200 T |
-| Save new background | ~1,400 T | 11,200 T |
+| Restore background | ~1,500 T | 12,000 T |
+| Save new background | ~1,500 T | 12,000 T |
 | Draw sprite (compiled, masked) | ~1,088 T | 8,704 T |
-| **Total** | **~3,888 T** | **~31,104 T** |
+| **Total** | **~4,088 T** | **~32,704 T** |
 
-That saves nearly 10,000 T-states per frame --- a meaningful improvement that buys you more room for game logic or more sprites.
+That saves over 10,000 T-states per frame --- a meaningful improvement that buys you more room for game logic or more sprites.
 
 ### Draw order and overlap
 
@@ -613,7 +613,7 @@ The routines above spend significant time on pointer management: `inc de`, `inc 
 
 **Use LDI instead of manual copy.** For save/restore operations, an LDI chain (Chapter 3) copies a byte from (HL) to (DE), increments both, and decrements BC --- all in 16 T-states. Compared to our manual `ld a,(hl)` + `ld (de),a` + `inc de` + `inc l` at 24 T-states, LDI saves 8 T-states per byte. For a 16x16 sprite (32 bytes), that is 256 T-states saved per save or restore operation.
 
-```z80
+```z80 id:ch16_eliminating_pointer
 ; Save background using LDI (partial unroll, 2 bytes per row)
 ; HL = screen address, DE = save buffer
 ;
@@ -629,11 +629,11 @@ save_bg_ldi:
     inc  h                  ;  4 T
     ld   a, h               ;  4 T
     and  7                  ;  7 T
-    jr   nz, .no_boundary   ;  7 T
+    jr   nz, .no_boundary   ; 12/7T
     ld   a, l               ;  4 T
     add  a, 32              ;  7 T
     ld   l, a               ;  4 T
-    jr   c, .no_fix         ;  7 T
+    jr   c, .no_fix         ; 12/7T
     ld   a, h               ;  4 T
     sub  8                  ;  7 T
     ld   h, a               ;  4 T
@@ -643,11 +643,11 @@ save_bg_ldi:
     ret                     ; 10 T
 ```
 
-Common-case row cost: 16 + 16 + 4 + 4 + 4 + 4 + 7 + 7 + 13 = **75 T-states**. For 16 rows: approximately **1,200 T-states** --- a worthwhile improvement over the 1,400 T-states of the manual approach.
+Common-case row cost: 16 + 16 + 4 + 4 + 4 + 4 + 7 + 12 + 13 = **80 T-states** (JR NZ is taken at 12T in the common case --- no boundary crossing). For 16 rows: approximately **1,280 T-states** --- a worthwhile improvement over the 1,500 T-states of the manual approach.
 
 **Combine save and draw.** Instead of save-then-draw as two separate passes over the screen area, combine them into one pass: for each byte, read the screen (save it), then write the sprite data. This halves the number of row-advance operations and eliminates one complete DOWN_HL traversal:
 
-```z80
+```z80 id:ch16_eliminating_pointer_2
 ; Combined save-and-draw for masked sprite
 ; HL = screen address, DE = sprite data (mask, gfx pairs)
 ; IX = save buffer
@@ -694,11 +694,11 @@ save_and_draw_16x16:
     inc  h                  ;  4 T
     ld   a, h               ;  4 T
     and  7                  ;  7 T
-    jr   nz, .no_boundary   ;  7 T
+    jr   nz, .no_boundary   ; 12/7T
     ld   a, l               ;  4 T
     add  a, 32              ;  7 T
     ld   l, a               ;  4 T
-    jr   c, .no_fix         ;  7 T
+    jr   c, .no_fix         ; 12/7T
     ld   a, h               ;  4 T
     sub  8                  ;  7 T
     ld   h, a               ;  4 T
@@ -708,7 +708,7 @@ save_and_draw_16x16:
     ret                     ; 10 T
 ```
 
-This combines save and draw into a single pass. The cost per row (common case): roughly **200 T-states**. For 16 rows: approximately **3,300 T-states** --- compared to separate save (~1,200 T) + draw (~2,300 T) = 3,500 T-states. The saving is modest (~200 T per sprite), but it adds up across 8 sprites.
+This combines save and draw into a single pass. The cost per row (common case): roughly **205 T-states** (JR NZ taken at 12T). For 16 rows: approximately **3,400 T-states** --- compared to separate save (~1,280 T) + draw (~2,400 T) = 3,680 T-states. The saving is modest (~280 T per sprite), but it adds up across 8 sprites.
 
 For maximum performance, unroll the entire routine: no DJNZ loop, explicit per-row code with boundary crossings baked in at rows 7 and 15. This eliminates loop and boundary-test overhead, bringing the total to roughly **2,780 T-states** at the cost of ~300 bytes of code per sprite routine.
 
@@ -720,7 +720,7 @@ The Agon Light 2 takes a fundamentally different approach. The eZ80 communicates
 
 The VDU command sequence for defining and activating a sprite:
 
-```
+```text
 VDU 23, 27, 0, n                     ; Select sprite n
 VDU 23, 27, 1, w, h, format          ; Create sprite: w x h pixels
 ; ... upload bitmap data ...
@@ -734,7 +734,7 @@ In eZ80 assembly, these commands are sent as byte sequences to the VDP via `RST 
 
 Once defined, moving a sprite is just the position command:
 
-```z80
+```z80 id:ch16_moving_a_sprite
 ; Agon: Move sprite 0 to (x, y)
 ; Input: BC = x, DE = y
 ;
@@ -773,7 +773,7 @@ Our target: 8 animated 16x16 sprites with background save/restore, running at 25
 
 Each sprite has a data structure:
 
-```z80
+```z80 id:ch16_spectrum_implementation
 ; Sprite structure (12 bytes per sprite)
 ;
 SPRITE_X        EQU 0       ; x coordinate (0-255)
@@ -793,7 +793,7 @@ NUM_SPRITES     EQU 8
 
 **Frame cycle (every 2 VBLANKs):**
 
-```z80
+```z80 id:ch16_spectrum_implementation_2
 main_loop:
     halt                    ; wait for VBLANK
     halt                    ; wait again (25 fps = every 2nd frame)
@@ -838,14 +838,14 @@ main_loop:
 | Phase | Cost |
 |-------|------|
 | 2 x HALT | 0 T (waiting) |
-| Restore 8 backgrounds | 8 x 1,200 = 9,600 T |
+| Restore 8 backgrounds | 8 x 1,280 = 10,240 T |
 | Update 8 positions | 8 x 200 = 1,600 T |
-| Save + Draw 8 sprites | 8 x 3,300 = 26,400 T |
+| Save + Draw 8 sprites | 8 x 3,400 = 27,200 T |
 | Loop overhead | ~2,000 T |
-| **Total sprite work** | **~39,600 T** |
-| **Available for game logic** | **~103,000 T** |
+| **Total sprite work** | **~41,040 T** |
+| **Available for game logic** | **~102,000 T** |
 
-With a 2-frame budget of 143,360 T-states (2 x 71,680 on Pentagon), we have roughly 103,000 T-states for game logic, input, and sound. This is generous --- enough for entity AI (Chapter 19), tile collision detection, music playback, and input processing.
+With a 2-frame budget of 143,360 T-states (2 x 71,680 on Pentagon), we have roughly 102,000 T-states for game logic, input, and sound. This is generous --- enough for entity AI (Chapter 19), tile collision detection, music playback, and input processing.
 
 Before drawing each sprite, calculate the screen address from (x, y) using the routine from Chapter 2, and select the correct pre-shifted data based on `x AND $06` (for 4 shift levels). The pre-shift selection logic from Method 3 applies directly.
 
@@ -853,15 +853,15 @@ Before drawing each sprite, calculate the screen address from (x, y) using the r
 
 On the Agon, the main loop becomes trivially simple: wait for VSync, update positions, send `VDU 23,27,4` move commands for each sprite, and proceed to game logic. No save/restore, no masking, no screen address calculation, no interleaved row navigation. The VDP handles everything.
 
-The contrast is instructive. On the Spectrum, sprite rendering is the dominant cost --- 40,000 T-states per frame, where every cycle saved in the inner loop translates directly to more sprites or more game logic. On the Agon, sprite rendering is effectively free from the CPU's perspective, and your engineering effort goes into game design rather than pixel-pushing. Both approaches have their satisfactions.
+The contrast is instructive. On the Spectrum, sprite rendering is the dominant cost --- over 40,000 T-states per frame, where every cycle saved in the inner loop translates directly to more sprites or more game logic. On the Agon, sprite rendering is effectively free from the CPU's perspective, and your engineering effort goes into game design rather than pixel-pushing. Both approaches have their satisfactions.
 
 ---
 
 ## Summary
 
-- **XOR sprites** are the simplest method: XOR to draw, XOR again to erase. ~1,700 T-states to draw a 16x16 sprite. No mask, no background save needed. Visual quality is poor (inverted pixels over background detail). Good for cursors, bullets, and debug markers.
+- **XOR sprites** are the simplest method: XOR to draw, XOR again to erase. ~2,200 T-states to draw a 16x16 sprite. No mask, no background save needed. Visual quality is poor (inverted pixels over background detail). Good for cursors, bullets, and debug markers.
 
-- **OR+AND masked sprites** are the industry standard. Each byte goes through an AND-with-mask, OR-with-graphic sequence that produces clean transparency. ~2,300 T-states for a 16x16 sprite. This is what most commercial Spectrum games use.
+- **OR+AND masked sprites** are the industry standard. Each byte goes through an AND-with-mask, OR-with-graphic sequence that produces clean transparency. ~2,400 T-states for a 16x16 sprite. This is what most commercial Spectrum games use.
 
 - **Pre-shifted sprites** eliminate the per-pixel shift cost by storing 4 or 8 pre-computed shifted copies of the sprite data. Draw time is the same as the masked routine. Memory cost scales from 4x (4 shifts, 2-pixel resolution) to 8x (8 shifts, full pixel resolution). The standard memory-vs-speed trade-off.
 
@@ -869,9 +869,9 @@ The contrast is instructive. On the Spectrum, sprite rendering is the dominant c
 
 - **Compiled sprites** turn the sprite into executable code. Each pixel byte becomes a `LD (HL),n` instruction. ~570 T-states without masking, ~1,088 T-states with compiled masking. The fastest masked method, at the cost of large code size. Animation requires separate compiled routines per frame.
 
-- **Dirty rectangles** with background save/restore are the standard technique for sprite animation. Save the background before drawing, restore it before drawing the next frame. Restore in reverse draw order to handle overlapping sprites correctly. The combined save-and-draw approach reduces per-sprite cost to ~3,300 T-states.
+- **Dirty rectangles** with background save/restore are the standard technique for sprite animation. Save the background before drawing, restore it before drawing the next frame. Restore in reverse draw order to handle overlapping sprites correctly. The combined save-and-draw approach reduces per-sprite cost to ~3,400 T-states.
 
-- **8 sprites at 25 fps** on a Spectrum 128K costs approximately 40,000 T-states per update cycle (every 2 frames), leaving ~103,000 T-states for game logic --- a comfortable budget for a real game.
+- **8 sprites at 25 fps** on a Spectrum 128K costs approximately 41,000 T-states per update cycle (every 2 frames), leaving ~102,000 T-states for game logic --- a comfortable budget for a real game.
 
 - **Agon Light 2 hardware sprites** eliminate the entire rendering problem. Define sprites once, move them with VDU commands. CPU cost is negligible. The trade-off is abstraction: you gain performance but lose the ability to do per-pixel tricks with sprite data.
 

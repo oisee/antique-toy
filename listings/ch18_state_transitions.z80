@@ -1,0 +1,6 @@
+; Transition: Game -> Game Over
+game_over_transition:
+    ld   a, STATE_GAMEOVER
+    ld   (game_state), a
+    call init_gameover       ; set up game over screen, save score
+    ret

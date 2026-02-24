@@ -1,0 +1,11 @@
+; Simple border stripes
+; Assumes we are synced to the start of a border scanline
+
+    ld   a, 2          ; 7T   red
+    out  ($FE), a       ; 11T
+    ; ... delay to fill this scanline ...
+    ld   a, 5          ; 7T   cyan
+    out  ($FE), a       ; 11T
+    ; ... delay to fill next scanline ...
+    ld   a, 6          ; 7T   yellow
+    out  ($FE), a       ; 11T

@@ -1,0 +1,7 @@
+    ld   a, (hl)    ; 7T   read texture byte
+    inc  l          ; 4T   next column (no carry needed: 256-aligned!)
+    dec  h          ; 4T   previous row
+    add  a          ; 4T   double (same as SLA A but 4T not 8T)
+    add  a          ; 4T   quadruple
+    add  (hl)       ; 7T   combine with second texture sample
+                    ; --- 30T per pixel pair

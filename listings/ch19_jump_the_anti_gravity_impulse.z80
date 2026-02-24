@@ -1,0 +1,28 @@
+; try_jump -- Initiate a jump if the player is on the ground
+;
+; Input:  IX = player entity
+; Output: dy set to -jump_force if on ground
+;
+; JUMP_FORCE defines the initial upward velocity in 8.8 fixed-point.
+; A good starting value: -3.5 pixels/frame = $FC80
+;   (INT = $FC = -4 signed, FRAC = $80 = +0.5, so -4 + 0.5 = -3.5)
+;
+; Cost: ~50 T-states (Pentagon)
+
+JUMP_FRAC equ 80h        ; fractional part of jump force
+JUMP_INT  equ 0FCh       ; integer part (-4 signed + 0.5 frac = -3.5)
+
+try_jump:
+    ; Must be on ground to jump
+    bit  0, (ix+12)       ; 20T  on_ground flag
+    ret  z                ; 11/5T  in air -- cannot jump
+
+    ; Set upward velocity
+    ld   (ix+9), JUMP_FRAC  ; 19T  dy_frac
+    ld   (ix+10), JUMP_INT  ; 19T  dy_int = -3.5 (upward)
+
+    ; Clear on_ground flag
+    res  0, (ix+12)       ; 23T
+
+    ; (Optional: play jump sound effect here)
+    ret                    ; 10T

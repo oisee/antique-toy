@@ -1,0 +1,7 @@
+    di
+    ld   (.smc_sp+1), sp  ; save SP via self-modifying code
+    ld   sp, table_addr    ; point SP at pre-computed data
+    ; ... inner loop using POP ...
+.smc_sp:
+    ld   sp, $0000          ; self-modified: restores original SP
+    ei

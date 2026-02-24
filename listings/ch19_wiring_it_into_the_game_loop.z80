@@ -1,0 +1,25 @@
+game_frame:
+    halt                       ; wait for VBlank
+
+    ; --- Input ---
+    call read_input            ; Chapter 18
+
+    ; --- Player physics ---
+    ld   ix, entity_array      ; player is entity 0
+    call handle_player_input   ; set dx from keys, try_jump from fire
+    call update_entity_physics ; gravity + friction + move + tile collide
+
+    ; --- Enemy AI (every 2nd frame) ---
+    call update_all_ai
+
+    ; --- Enemy physics (every frame) ---
+    call update_all_enemy_physics
+
+    ; --- Entity-vs-entity collisions ---
+    call check_all_collisions
+
+    ; --- Render ---
+    call render_entities       ; Chapter 16 sprites
+    call update_music          ; Chapter 11 AY
+
+    jr   game_frame

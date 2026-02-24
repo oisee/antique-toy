@@ -1,0 +1,26 @@
+; Agon: Set up a tilemap (done once)
+; VDU 23, 27, 20, tileWidth, tileHeight
+; VDU 23, 27, 21, mapWidth.lo, mapWidth.hi, mapHeight.lo, mapHeight.hi
+
+; Scroll the tilemap (every frame)
+; VDU 23, 27, 24, offsetX.lo, offsetX.hi, offsetY.lo, offsetY.hi
+
+scroll_tilemap:
+    ld   a,23
+    rst  $10
+    ld   a,27
+    rst  $10
+    ld   a,24              ; command: set scroll offset
+    rst  $10
+
+    ld   hl,(scroll_x)
+    ld   a,l
+    rst  $10               ; offsetX low
+    ld   a,h
+    rst  $10               ; offsetX high
+    ld   hl,(scroll_y)
+    ld   a,l
+    rst  $10               ; offsetY low
+    ld   a,h
+    rst  $10               ; offsetY high
+    ret

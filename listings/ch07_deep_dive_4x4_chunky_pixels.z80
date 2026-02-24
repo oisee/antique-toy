@@ -1,0 +1,7 @@
+; One of 256 pre-generated procedures
+proc_A5:
+    ld   (hl),$A5        ; 10T  -- value baked into instruction
+    inc  l               ;  4T
+    ld   (hl),$A5        ; 10T  -- 4x4 block spans 2 bytes horizontally
+    ; ... handle vertical repetition ...
+    ret                  ; 10T

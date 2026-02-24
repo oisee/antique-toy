@@ -1,0 +1,20 @@
+; loading_screen.asm — assemble with sjasmplus
+        org  $8000
+start:
+        ld   hl, compressed_screen
+        ld   de, $4000
+        call dzx0_standard
+
+.wait:  xor  a
+        in   a, ($fe)
+        cpl
+        and  $1f
+        jr   z, .wait
+        ret
+
+        include "dzx0_standard.asm"
+
+compressed_screen:
+        incbin "screen.zx0"
+
+        display "Total: ", /d, $ - start, " bytes"

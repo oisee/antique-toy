@@ -1,0 +1,15 @@
+main_loop:
+    halt                    ; sync to frame
+
+    ; Dispatch to current state handler
+    ld   a, (game_state)    ; 13T  load state index
+    ld   l, a               ; 4T
+    ld   h, 0               ; 7T
+    ld   de, state_table    ; 10T
+    add  hl, de             ; 11T  HL = state_table + offset
+    ld   e, (hl)            ; 7T   low byte of handler address
+    inc  hl                 ; 6T
+    ld   d, (hl)            ; 7T   high byte of handler address
+    ex   de, hl             ; 4T   HL = handler address
+    jp   (hl)               ; 4T   jump to handler
+                            ; --- 73T total dispatch overhead

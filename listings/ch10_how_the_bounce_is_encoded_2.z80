@@ -1,0 +1,3 @@
+    ld   hl, sin_table    ; H = page, L = don't care
+    ld   l, a             ; A = (column * freq + phase) & $FF
+    ld   a, (hl)          ; 7 T — one memory read, no arithmetic

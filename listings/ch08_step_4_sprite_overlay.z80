@@ -1,0 +1,5 @@
+; Sprite rendering: save background, patch sprite data
+    ld   a,(ix+1)           ; read current (background) byte
+    ld   (save_buffer),a    ; save for later restoration
+    ld   a,(sprite_data)    ; load sprite pixel
+    ld   (ix+1),a           ; patch into display code

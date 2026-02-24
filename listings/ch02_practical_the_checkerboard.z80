@@ -1,0 +1,6 @@
+    ORG $8000
+
+SCREEN  EQU $4000       ; pixel area start
+ATTRS   EQU $5800       ; attribute area start
+SCRLEN  EQU 6144        ; pixel bytes (256*192/8)
+ATTLEN  EQU 768         ; attribute bytes (32*24)

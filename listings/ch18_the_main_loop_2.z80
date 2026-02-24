@@ -1,0 +1,14 @@
+    ORG  $8000
+
+    ; Install IM1 interrupt handler (standard for games)
+    im   1
+    ei
+
+main_loop:
+    halt                    ; 4T + wait -- sync to frame interrupt
+
+    call read_input         ; poll keyboard/joystick
+    call update_entities    ; move everything, run logic
+    call render_frame       ; draw to screen
+
+    jr   main_loop          ; 12T -- loop forever

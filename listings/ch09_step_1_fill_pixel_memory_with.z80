@@ -1,0 +1,7 @@
+; Fill bitmap memory ($4000-$57FF) with checkerboard pattern
+    ld hl,$4000
+    ld de,$4001
+    ld bc,$17FF          ; 6143 bytes
+    ld a,$55             ; 01010101 binary -- alternating pixels
+    ld (hl),a
+    ldir

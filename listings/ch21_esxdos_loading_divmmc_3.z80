@@ -1,0 +1,23 @@
+; Detect esxDOS presence
+; Sets carry if esxDOS is NOT available
+detect_esxdos:
+    ; Try to open a nonexistent file -- if RST $08 returns
+    ; without crashing, esxDOS is present
+    ld   a, '*'
+    ld   b, FA_READ
+    ld   ix, test_filename
+    rst  $08
+    db   F_OPEN
+    jr   c, .not_present   ; carry set = open failed, but esxDOS handled it
+    ; File actually opened -- close it and return success
+    call esx_close
+    or   a                 ; clear carry
+    ret
+.not_present:
+    ; esxDOS returned an error -- it IS present, just file not found
+    ; Distinguish from "RST $08 went to ROM and crashed"
+    ; by checking if we're still running. If we're here, esxDOS is present.
+    or   a                 ; clear carry = esxDOS present
+    ret
+
+test_filename:  db "IRONCLAW.B0", 0

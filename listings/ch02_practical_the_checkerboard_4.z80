@@ -1,0 +1,8 @@
+    ; --- Border: blue ---
+    ld   a, 1
+    out  ($FE), a
+
+    ; Infinite loop
+.wait:
+    halt
+    jr   .wait

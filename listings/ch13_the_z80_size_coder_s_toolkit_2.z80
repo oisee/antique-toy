@@ -1,0 +1,10 @@
+    ; With branching: 6 bytes
+    jr   nc, .zero            ; 2
+    ld   a, $FF               ; 2
+    jr   .done                ; 2
+.zero:
+    xor  a                    ; 1
+.done:
+
+    ; With SBC A,A: 1 byte
+    sbc  a, a                 ; 1 — carry -> $FF, no carry -> $00

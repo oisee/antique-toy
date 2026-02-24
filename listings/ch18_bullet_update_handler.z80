@@ -1,0 +1,32 @@
+; Update a bullet entity
+; IX = entity pointer
+update_bullet:
+    ; Move horizontally
+    ld   a, (ix + 6)        ; 19T  dx
+    ld   e, a               ; 4T
+    ; Sign-extend
+    rla                      ; 4T
+    sbc  a, a               ; 4T
+    ld   d, a               ; 4T   DE = signed 16-bit dx
+
+    ld   l, (ix + 0)        ; 19T  X lo
+    ld   h, (ix + 1)        ; 19T  X hi
+    add  hl, de             ; 11T  new X
+    ld   (ix + 0), l        ; 19T
+    ld   (ix + 1), h        ; 19T
+
+    ; Check screen bounds (0-255 pixel range)
+    ld   a, h               ; 4T   pixel X
+    or   a                   ; 4T
+    jr   z, .off_screen     ; boundary check: if X=0, leftward bullet exited
+    cp   248                ; 7T   near right edge?
+    jr   nc, .off_screen    ; past right boundary
+
+    ; Still alive -- return
+    ret
+
+.off_screen:
+    ; Deactivate
+    ld   (ix + 9), 0        ; clear flags
+    ret
+    ; Total: ~170T active, ~190T when deactivating

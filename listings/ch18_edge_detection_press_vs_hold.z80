@@ -1,0 +1,20 @@
+input_flags:      DB  0    ; current frame
+input_prev:       DB  0    ; previous frame
+input_pressed:    DB  0    ; newly pressed this frame (edges)
+
+read_input_with_edges:
+    ; Save previous state
+    ld   a, (input_flags)
+    ld   (input_prev), a
+
+    ; Read current state
+    call read_input          ; updates input_flags
+
+    ; Compute edges: pressed = current AND NOT previous
+    ld   a, (input_prev)
+    cpl                      ; 4T   invert previous
+    ld   b, a                ; 4T
+    ld   a, (input_flags)    ; 13T
+    and  b                   ; 4T   current AND NOT previous
+    ld   (input_pressed), a  ; 13T  = newly pressed this frame
+    ret

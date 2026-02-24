@@ -1,0 +1,8 @@
+read_input:
+    call read_keyboard       ; D = keyboard flags
+    push de
+    call read_kempston       ; A = joystick flags
+    pop  de
+    or   d                   ; combine both sources
+    ld   (input_flags), a
+    ret

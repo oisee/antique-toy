@@ -1,0 +1,37 @@
+; Fixed-point 8.8 multiply (simplified)
+; Input:  BC = first operand (B.C in 8.8)
+;         DE = second operand (D.E in 8.8)
+; Output: HL = result (H.L in 8.8)
+;
+; Full product = BC * DE (32 bits), we want bits 8..23
+;
+; Decomposition:
+;   BC * DE = (B*256+C) * (D*256+E)
+;           = B*D*65536 + (B*E + C*D)*256 + C*E
+;
+; In 8.8 result (bits 8..23):
+;   H.L = B*D*256 + B*E + C*D + (C*E)/256
+;
+; For small B,D (say -1..+1), B*D*256 is the dominant term.
+; C*E/256 is a rounding correction.
+; Total cost: ~200 T-states using the shift-and-add multiplier.
+
+fixmul88:
+    ; Multiply B*E -> add to result high
+    ld   a, b
+    call mul8             ; A = B*E (assuming 8x8->8 truncated)
+    ld   h, a
+
+    ; Multiply C*D -> add to result
+    ld   a, c
+    ld   b, d
+    call mul8             ; A = C*D
+    add  a, h
+    ld   h, a
+
+    ; For higher precision, also compute B*D and C*E
+    ; and combine. In practice, the two middle terms
+    ; are often sufficient for demo work.
+
+    ld   l, 0             ; fractional part (approximate)
+    ret

@@ -1,0 +1,53 @@
+; ai_attack -- Fire projectile, then cool down
+;
+; Input:  IX = enemy entity
+; Output: May spawn a bullet, transitions back to CHASE when ready
+;
+; Cost: ~60 T-states (cooldown tick) or ~150 T-states (fire + spawn)
+
+ATTACK_COOLDOWN equ 30    ; 30 frames between shots (0.6 seconds)
+
+ai_attack:
+    ; --- Cooldown timer ---
+    ld   a, (ix+6)        ; 19T  anim_frame used as cooldown
+    or   a                ; 4T
+    jr   z, .fire         ; 12/7T  timer expired -- fire
+
+    ; Decrement cooldown
+    dec  (ix+6)           ; 23T
+    ret                    ; 10T  wait
+
+.fire:
+    ; --- Spawn a bullet ---
+    ; Find a free slot in the entity pool (bullet type)
+    call find_free_entity  ; returns IY = free entity, or Z flag if none
+    ret  z                 ; no free slots -- skip this shot
+
+    ; Configure the bullet entity
+    ld   a, (ix+1)
+    ld   (iy+1), a         ; bullet X = enemy X
+    ld   a, (ix+3)
+    add  a, 4
+    ld   (iy+3), a         ; bullet Y = enemy Y + 4 (mid-body)
+    ld   (iy+4), TYPE_BULLET ; entity type
+    ld   (iy+5), 0         ; state = 0 (active)
+
+    ; Bullet direction: toward the player
+    ld   a, (player_x)
+    sub  (ix+1)
+    jr   c, .bullet_left
+
+.bullet_right:
+    ld   (iy+8), BULLET_SPEED  ; dx_int = positive
+    jr   .fire_done
+
+.bullet_left:
+    ld   a, 0
+    sub  BULLET_SPEED
+    ld   (iy+8), a         ; dx_int = negative (two's complement)
+
+.fire_done:
+    ; Set cooldown and return to CHASE
+    ld   (ix+6), ATTACK_COOLDOWN  ; reset cooldown timer
+    ld   (ix+5), ST_CHASE         ; back to chase state
+    ret

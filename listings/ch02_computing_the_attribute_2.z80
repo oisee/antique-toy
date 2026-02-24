@@ -1,0 +1,10 @@
+; Pixel-to-attribute when H low bits are %111
+; (e.g., after processing the last scanline of a character cell)
+; Input:  HL where H = 010TT111
+; Output: HL = attribute address
+;
+    srl  h             ; 8T   010TT111 -> 0010TT11
+    rrc  h             ; 8T   0010TT11 -> 10010TT1
+    srl  h             ; 8T   10010TT1 -> 010010TT
+    set  4, h          ; 8T   010010TT -> 010110TT = $58+TT
+    ; L unchanged.     --- Total: 32T, 4 instructions

@@ -1,0 +1,34 @@
+; MULU_FAST -- Square table multiply
+; Input:  B, C = unsigned 8-bit factors
+; Output: HL = B * C (16-bit result)
+; Cost:   ~61 T-states (Pentagon)
+; Requires: sq_table = 512-byte table of n^2/4, page-aligned
+;
+; A*B = ((A+B)^2 - (A-B)^2) / 4
+
+mulu_fast:
+    ld   h, sq_table >> 8  ; high byte of table address
+    ld   a, b
+    add  a, c              ; A = B + C (may overflow into carry)
+    ld   l, a
+    ld   e, (hl)           ; look up (B+C)^2/4 low byte
+    inc  h
+    ld   d, (hl)           ; look up (B+C)^2/4 high byte
+
+    ld   a, b
+    sub  c                 ; A = B - C (may go negative)
+    jr   nc, .pos
+    neg                    ; take absolute value
+.pos:
+    ld   l, a
+    dec  h
+    ld   a, e
+    sub  (hl)              ; subtract (B-C)^2/4 low byte
+    ld   e, a
+    inc  h
+    ld   a, d
+    sbc  a, (hl)           ; subtract (B-C)^2/4 high byte
+    ld   d, a
+
+    ex   de, hl            ; HL = result
+    ret

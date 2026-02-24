@@ -1,0 +1,42 @@
+; Dirty rectangle entry: 4 bytes
+;   byte 0: screen address low
+;   byte 1: screen address high
+;   byte 2: width in bytes
+;   byte 3: height in pixel lines
+
+; Save background before drawing sprite
+save_background:
+    ; HL = screen address, B = height, C = width
+    ld   de, bg_save_buffer
+    ld   (bg_save_ptr), de
+    ; ... copy rectangle from screen to buffer ...
+    ret
+
+; Restore all saved backgrounds (called before new sprite render pass)
+restore_backgrounds:
+    ld   hl, dirty_rect_list
+    ld   b, (hl)           ; count of dirty rectangles
+    inc  hl
+    or   a
+    ret  z                 ; no sprites last frame
+
+.loop:
+    push bc
+    ; Read rectangle descriptor
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)           ; DE = screen address
+    inc  hl
+    ld   b, (hl)           ; B = height
+    inc  hl
+    ld   c, (hl)           ; C = width
+    inc  hl
+    push hl
+
+    ; Copy saved background back to screen
+    ; ... copy from bg_save_buffer to screen ...
+
+    pop  hl
+    pop  bc
+    djnz .loop
+    ret

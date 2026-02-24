@@ -1,0 +1,47 @@
+; Memory Inspector - Agon Light 2 (ADL mode)
+    .ASSUME ADL=1
+    ORG  $040000
+
+main_loop:
+    ; Wait for vsync via MOS sysvar
+    rst  $08
+    db   $08                      ; mos_sysvars
+    ld   a, (ix+$00)              ; sysvar_time (low byte)
+.wait_vsync:
+    cp   (ix+$00)
+    jr   z, .wait_vsync           ; spin until counter changes
+
+    ; Check keyboard (Q = up, A = down)
+    rst  $08
+    db   $00                      ; mos_getkey
+    ; ... navigation same as Spectrum version ...
+
+.draw:
+    rst  $10
+    db   30                       ; VDU 30 = cursor home
+
+    ld   hl, (inspect_addr)       ; 24-bit load!
+    ld   b, 16
+.row_loop:
+    push bc
+    push hl
+    call print_hex24              ; print full 24-bit address
+    ld   a, ':'
+    rst  $10
+    pop  hl
+    push hl
+    ld   b, 16
+.byte_loop:
+    ld   a, (hl)                  ; direct 24-bit access, no banking
+    call print_hex8
+    inc  hl
+    djnz .byte_loop
+    pop  hl
+    ld   de, 16
+    add  hl, de
+    pop  bc
+    djnz .row_loop
+    jr   main_loop
+
+inspect_addr: dl $000000          ; 24-bit address (dl, not dw)
+; Full source: examples/mem_inspect_agon.a80

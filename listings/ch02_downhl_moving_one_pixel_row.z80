@@ -1,0 +1,23 @@
+; DOWN_HL: move HL one pixel row down on the Spectrum screen
+; Input:  HL = current screen address
+; Output: HL = screen address one row below
+;
+down_hl:
+    inc  h             ; 4T   try moving one scan line down
+    ld   a, h          ; 4T
+    and  7             ; 7T   did we cross a character boundary?
+    ret  nz            ; 11/5T  no: done
+
+    ; Crossed a character cell boundary.
+    ; Reset scan line to 0, advance character row.
+    ld   a, l          ; 4T
+    add  a, 32         ; 7T   next character row (L += 32)
+    ld   l, a          ; 4T
+    ret  c             ; 11/5T  if carry, we crossed into next third
+
+    ; No carry from L, but we need to undo the H increment
+    ; that moved us into the wrong third.
+    ld   a, h          ; 4T
+    sub  8             ; 7T   back up one third in H
+    ld   h, a          ; 4T
+    ret                ; 10T

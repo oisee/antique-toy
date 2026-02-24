@@ -1,0 +1,19 @@
+; UP_HL optimised (Art-top)
+; Saves 1 byte, 3 T-states on boundary crossing
+;
+up_hl_opt:
+    dec  h             ; 4T
+    ld   a, h          ; 4T
+    cpl                ; 4T   complement: 111 -> 000
+    and  7             ; 7T   zero if we crossed boundary
+    ret  nz            ; 11/5T
+
+    ld   a, l          ; 4T
+    sub  32            ; 7T
+    ld   l, a          ; 4T
+    ret  c             ; 11/5T
+
+    ld   a, h          ; 4T
+    add  a, 8          ; 7T
+    ld   h, a          ; 4T
+    ret                ; 10T

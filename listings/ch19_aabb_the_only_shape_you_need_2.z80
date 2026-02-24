@@ -1,0 +1,70 @@
+; check_aabb -- Test whether two entities overlap
+;
+; Input:  IX = pointer to entity A
+;         IY = pointer to entity B
+; Output: Carry set if collision, clear if no collision
+;
+; Entity structure offsets (from Chapter 18):
+;   +0  x_frac    (low byte of 8.8 X position)
+;   +1  x_int     (high byte -- the pixel X coordinate)
+;   +2  y_frac
+;   +3  y_int
+;   +4  type
+;   +5  state
+;   +6  anim_frame
+;   +7  dx_frac
+;   +8  dx_int
+;   +9  dy_frac
+;   +10 dy_int
+;   +11 health
+;   +12 flags
+;   +13 width     (bounding box width in pixels)
+;   +14 height    (bounding box height in pixels)
+;   +15 (reserved)
+;
+; Cost: 91-270 T-states (Pentagon), depending on early exit
+; Average case (no collision): ~120 T-states
+
+check_aabb:
+    ; --- Test 1: A.left < B.right ---
+    ; A.left  = A.x_int
+    ; B.right = B.x_int + B.width
+    ld   a, (iy+1)        ; 19T  B.x_int
+    add  a, (iy+13)       ; 19T  + B.width = B.right
+    ld   b, a             ; 4T   B = B.right (save for test 2)
+    ld   a, (ix+1)        ; 19T  A.x_int = A.left
+    cp   b                ; 4T   A.left - B.right
+    jr   nc, .no_collision ; 12/7T  if A.left >= B.right, no collision
+                           ; --- early exit: 91T (taken, incl. .no_collision) ---
+
+    ; --- Test 2: A.right > B.left ---
+    ; A.right = A.x_int + A.width
+    ; B.left  = B.x_int
+    add  a, (ix+13)       ; 19T  A.x_int + A.width = A.right
+    ld   b, (iy+1)        ; 19T  B.x_int = B.left
+    cp   b                ; 4T   A.right - B.left (we need A.right > B.left)
+    jr   c, .no_collision  ; 12/7T  if A.right < B.left, no collision
+    jr   z, .no_collision  ; 12/7T  if A.right = B.left, touching but not overlapping
+
+    ; --- Test 3: A.top < B.bottom ---
+    ld   a, (iy+3)        ; 19T  B.y_int
+    add  a, (iy+14)       ; 19T  + B.height = B.bottom
+    ld   b, a             ; 4T
+    ld   a, (ix+3)        ; 19T  A.y_int = A.top
+    cp   b                ; 4T   A.top - B.bottom
+    jr   nc, .no_collision ; 12/7T  if A.top >= B.bottom, no collision
+
+    ; --- Test 4: A.bottom > B.top ---
+    add  a, (ix+14)       ; 19T  A.y_int + A.height = A.bottom
+    ld   b, (iy+3)        ; 19T  B.y_int = B.top
+    cp   b                ; 4T   A.bottom - B.top
+    jr   c, .no_collision  ; 12/7T
+    jr   z, .no_collision  ; 12/7T
+
+    ; All four tests passed -- collision detected
+    scf                    ; 4T   set carry flag
+    ret                    ; 10T
+
+.no_collision:
+    or   a                 ; 4T   clear carry flag
+    ret                    ; 10T

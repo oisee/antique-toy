@@ -1,0 +1,6 @@
+; apply_friction_ice -- Light friction, every other frame
+;
+    ld   a, (frame_counter)
+    and  1
+    ret  nz               ; skip odd frames
+    jr   apply_friction   ; apply on even frames only

@@ -1,0 +1,11 @@
+; Agon: read simultaneous keys from keyboard map
+    ld   a,(mos_keymap+KEY_LEFT)   ; 1 if left arrow held, 0 if not
+    or   a
+    jr   z,.no_left
+    ; move player left
+.no_left:
+    ld   a,(mos_keymap+KEY_RIGHT)
+    or   a
+    jr   z,.no_right
+    ; move player right
+.no_right:

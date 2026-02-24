@@ -24,7 +24,7 @@ Here is the raw cost of just *touching* every byte in the pixel area, using diff
 
 | Method | Per byte | 6,144 bytes | % of frame |
 |--------|----------|-------------|------------|
-| `ldir` | 21 T | 129,003 T | 180% |
+| `ldir` | 21 T | 129,019 T | 180% |
 | `ldi` chain | 16 T | 98,304 T | 137% |
 | `ld a,(hl)` + `ld (de),a` + `inc hl` + `inc de` | 24 T | 147,456 T | 206% |
 | `push` (2 bytes) | 5.5 T/byte | 33,792 T | 47% |
@@ -43,7 +43,7 @@ Vertical scrolling moves the screen contents up or down by one or more pixel row
 
 Recall the screen address structure from Chapter 2:
 
-```
+```text
 High byte:  0 1 0 T T S S S
 Low byte:   L L L C C C C C
 ```
@@ -118,7 +118,7 @@ When you scroll the screen left by one pixel, every byte in every row must shift
 
 The Z80's `RL` (rotate left through carry) instruction is the tool for this. For a leftward scroll, each pixel moves one position left. Bit 7 is the leftmost pixel in a byte, bit 0 the rightmost. Shifting left means each byte's bit 7 exits and must enter bit 0 of the byte to its left. The carry flag bridges adjacent bytes, so we process the row from **right to left**:
 
-```z80
+```z80 id:ch17_why_horizontal_scrolling_is
 ; Scroll one pixel row left by 1 pixel
 ; HL points to byte 31 (rightmost) of the row
 ;
@@ -183,7 +183,7 @@ The attribute area is linear: 32 bytes per row, 24 rows, sequential from `$5800`
 
 For the entire 24-row attribute area:
 
-```z80
+```z80 id:ch17_scrolling_attributes_with
 ; Scroll all attributes left by 1 character column
 ; New column data in a 24-byte table at new_col_data
 ;
@@ -279,7 +279,7 @@ Here is the per-frame cost breakdown:
 
 The key inner routine shifts 1 or 2 columns of pixel data by 1 pixel. For a 2-column (16-pixel) window, each row has 2 bytes to shift:
 
-```z80
+```z80 id:ch17_implementation_the_edge
 ; Shift 2 bytes left by 1 pixel with carry propagation
 ; HL points to the right byte of the pair
 ;
@@ -296,7 +296,7 @@ For 160 rows (20 char rows x 8 scanlines): 160 x 40 = **6,400 T-states**. With p
 
 Here is the complete per-frame sequence for a combined horizontal scroller:
 
-```z80
+```z80 id:ch17_the_rendering_pipeline
 frame_loop:
     halt                         ; wait for interrupt
 
@@ -351,7 +351,7 @@ The character-level pixel scroll (step 2 in the pipeline above) shifts 8 pixels'
 
 For a single row, this is a 31-byte LDIR:
 
-```z80
+```z80 id:ch17_scrolling_the_pixel_data_by
 ; Shift one pixel row left by 8 pixels (1 byte)
 ; HL = address of byte 1 (source), DE = address of byte 0 (dest)
 ; BC = 31
@@ -364,7 +364,7 @@ For the full play area (168 rows): 168 x 646 = 108,528 T-states + row navigation
 
 A better approach leverages the fact that within each scanline of a character row, the bytes are contiguous. For 20 character columns, one scanline's data is 20 contiguous bytes. Scrolling that scanline left by 1 byte means LDIR of 19 bytes:
 
-```z80
+```z80 id:ch17_scrolling_the_pixel_data_by_2
 ; Scroll one scan line of the play area left by 1 character column
 ; Play area is 20 columns wide (columns 2-21, for example)
 ; Source: column 3, Dest: column 2, count: 19
@@ -387,7 +387,7 @@ The ZX Spectrum 128K has a feature that transforms the scrolling problem: **two 
 
 Port `$7FFD` controls which screen is displayed:
 
-```z80
+```z80 id:ch17_the_shadow_screen_trick
 ; Bit 3 of port $7FFD selects the display screen:
 ;   Bit 3 = 0: display page 5 (standard screen at $4000)
 ;   Bit 3 = 1: display page 7 (shadow screen at $C000)
@@ -405,7 +405,7 @@ The trick for scrolling:
 
 This double-buffering approach eliminates tearing completely and gives you a full frame (or more) to prepare each scrolled frame. The cost is that you need to maintain two complete screen states, and each "scroll" is actually a full redraw of the play area into the back buffer.
 
-```z80
+```z80 id:ch17_the_shadow_screen_trick_2
 ; Flip displayed screen and return back buffer address in HL
 ;
 ; screen_flag:  0 = showing page 5, drawing to page 7
@@ -413,7 +413,7 @@ This double-buffering approach eliminates tearing completely and gives you a ful
 ;
 flip_screens:
     ld   a, (screen_flag)
-    xor  1                   ; 4 T   toggle
+    xor  1                   ; 7 T   toggle (XOR with immediate)
     ld   (screen_flag), a
 
     ld   hl, $C000           ; assume drawing to page 7
@@ -480,7 +480,7 @@ Everything above describes a leftward scroll (the player moves right, the world 
 
 For attribute scrolling, reverse the LDIR direction. Copy bytes 0--30 to positions 1--31, right to left. LDIR copies forward (low to high addresses), so for a rightward scroll you need LDDR (copy backward):
 
-```z80
+```z80 id:ch17_scrolling_right_and_the
 ; Scroll attributes right by 1 character column
 ;
 scroll_attrs_right:
@@ -493,7 +493,7 @@ scroll_attrs_right:
 
 For pixel bit-shifting, a rightward scroll uses `RR (HL)` instead of `RL (HL)`, processing left to right:
 
-```z80
+```z80 id:ch17_scrolling_right_and_the_2
 ; Scroll one pixel row RIGHT by 1 pixel
 ; HL points to byte 0 (leftmost)
 ;
@@ -519,7 +519,7 @@ The Agon Light 2's VDP (Video Display Processor) handles scrolling entirely diff
 
 The VDP supports a viewport offset for bitmap modes. By setting the scroll offset registers, you shift the entire displayed image without moving any pixel data. The eZ80 sends a VDP command via the serial link:
 
-```z80
+```z80 id:ch17_hardware_scroll_offsets
 ; Agon: set horizontal scroll offset
 ; VDU 23, 0, &C3, x_low, x_high
 ;
@@ -541,7 +541,7 @@ The hardware applies this offset when reading the framebuffer for display. No pi
 
 The VDP's tilemap mode provides native tile-based rendering. You define a set of tiles (8x8 or 16x16 pixel patterns), build a map array that references tile indices, and the hardware renders the map at display time. Scrolling is achieved by changing the tilemap's viewport offset:
 
-```z80
+```z80 id:ch17_tilemap_scrolling
 ; Agon: set tilemap scroll offset
 ; VDU 23, 27, <tilemap_scroll_command>, offset_x, offset_y
 ;
@@ -564,7 +564,7 @@ For an infinitely scrolling level, the tilemap acts as a ring buffer. The map is
 2. When a new tile column is about to scroll into view, the eZ80 writes new tile indices into the column that just scrolled off the left edge.
 3. The tilemap wraps, and the newly written column appears on the right.
 
-```z80
+```z80 id:ch17_ring_buffer_column_loading
 ; Ring-buffer column loading (Agon, conceptual)
 ;
 ; tilemap is 40 columns wide, screen shows 32
@@ -604,7 +604,7 @@ The CPU work per frame is minimal: writing 20 tile indices via VDP commands, per
 | Map size limit | Limited by RAM, no hardware support | Tilemap size limited by VDP memory |
 | Colour per tile | 2 colours per 8x8 cell (attribute) | Full colour per pixel |
 
-The contrast is stark. What the Spectrum programmer spends most of their frame budget on -- moving pixel data across a scrambled memory layout -- the Agon handles with a register write. This is not a criticism of either platform. It is a demonstration of how hardware design choices propagate through every level of the software. The Spectrum's constraints forced the development of the combined scroll method, tile engines, and shadow-screen tricks. The Agon's constraints are elsewhere (serial VDP latency, command overhead for complex scenes).
+The contrast is stark. What the Spectrum programmer spends most of their frame budget on -- moving pixel data across a scrambled memory layout -- the Agon handles with a register write. The hardware design choices propagate through every level of the software. The Spectrum's constraints forced the development of the combined scroll method, tile engines, and shadow-screen tricks. The Agon's constraints are elsewhere (serial VDP latency, command overhead for complex scenes).
 
 ---
 
@@ -616,7 +616,7 @@ Build a horizontal side-scroller with a 20x20-character play area that scrolls s
 
 Here is the complete structure:
 
-```z80
+```z80 id:ch17_spectrum_version_combined
 ; Side-scroller engine — ZX Spectrum 128K
 ; Uses combined character + pixel method with shadow screen.
 ;

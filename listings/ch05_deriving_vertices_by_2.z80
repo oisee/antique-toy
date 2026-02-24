@@ -1,0 +1,8 @@
+; Average two signed 8-bit coordinates
+; A = first coordinate, B = second coordinate
+; Result in A = (A + B) / 2
+
+    add  a, b           ;  4 T-states
+    sra  a              ;  8 T-states
+                        ; ----
+                        ; 12 T-states total

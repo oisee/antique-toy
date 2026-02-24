@@ -1,0 +1,39 @@
+; Draw a 16x16 XOR sprite
+; Input:  HL = screen address (top-left byte of sprite position)
+;         IX = pointer to sprite data (32 bytes: 2 bytes x 16 rows)
+;
+xor_sprite_16x16:
+    ld   b, 16              ;  7 T   16 rows
+
+.row:
+    ld   a, (ix+0)          ; 19 T   left byte of sprite row
+    xor  (hl)               ;  7 T   combine with screen
+    ld   (hl), a            ;  7 T   write back
+    inc  l                  ;  4 T   move right one byte
+
+    ld   a, (ix+1)          ; 19 T   right byte of sprite row
+    xor  (hl)               ;  7 T
+    ld   (hl), a            ;  7 T   write back
+    dec  l                  ;  4 T   restore column
+
+    inc  ix                 ; 10 T   \  advance sprite
+    inc  ix                 ; 10 T   /  data pointer
+
+    inc  h                  ;  4 T   move down one pixel row
+    ld   a, h               ;  4 T   \
+    and  7                  ;  7 T    | check character
+    jr   nz, .no_boundary   ; 12/7T  /  boundary crossing
+
+    ; Character boundary: adjust HL
+    ld   a, l               ;  4 T
+    add  a, 32              ;  7 T
+    ld   l, a               ;  4 T
+    jr   c, .no_fix         ; 12/7T
+    ld   a, h               ;  4 T
+    sub  8                  ;  7 T
+    ld   h, a               ;  4 T
+.no_fix:
+
+.no_boundary:
+    djnz .row               ; 13 T  (8 on last)
+    ret                     ; 10 T

@@ -1,0 +1,4 @@
+; Elite's galaxy generator (conceptual, 6502 origin):
+;   seed = [s0, s1, s2]  (three 16-bit words)
+;   twist: s0' = s1, s1' = s2, s2' = s0 + s1 + s2  (mod 65536)
+;   repeat twist for each byte of star system data

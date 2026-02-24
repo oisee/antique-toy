@@ -1,0 +1,12 @@
+; Abstract sound interface
+; Spectrum implementation:
+sound_play_note:
+    ; A = channel, B = note, C = instrument
+    ; ... look up AY register values, write to ports $FFFD/$BFFD
+    ret
+
+; Agon implementation:
+sound_play_note:
+    ; A = channel, B = note, C = instrument
+    ; ... convert to VDP sound command, send via RST $10
+    ret

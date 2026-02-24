@@ -1,0 +1,16 @@
+    ld   a, (phase)
+    inc  a
+    and  3
+    ld   (phase), a
+    add  a, a           ; phase * 2 (pointer table is 16-bit entries)
+    ld   hl, buf_ptrs
+    ld   e, a
+    ld   d, 0
+    add  hl, de
+    ld   a, (hl)
+    inc  hl
+    ld   h, (hl)
+    ld   l, a           ; HL = source buffer address
+    ld   de, $5800      ; DE = attribute RAM
+    ld   bc, 768
+    ldir                ; copy attributes for this phase

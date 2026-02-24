@@ -1,0 +1,17 @@
+; Fill one scan line from x_left to x_right at screen row Y
+; Screen address already computed in HL
+
+fill_scanline:
+    ld   a, (x_right)
+    sub  (ix+x_left)
+    ret  c                  ; nothing to fill if right < left
+    ret  z
+    ld   b, a               ; B = pixel count
+
+    ; For byte-aligned fills: write whole bytes
+    ld   a, $FF             ; solid fill
+.fill_loop:
+    ld   (hl), a
+    inc  l                  ; next byte (within same screen line)
+    djnz .fill_loop
+    ret

@@ -1,0 +1,5 @@
+; Naive approach: call each tile renderer
+    call draw_tile_0
+    call draw_tile_1
+    call draw_tile_2
+    ; ...

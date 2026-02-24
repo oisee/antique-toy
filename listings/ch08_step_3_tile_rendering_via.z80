@@ -1,0 +1,12 @@
+; Patch one scanline of a 16x16 tile into the display buffer
+; IX points to the LD DE instruction for this position in the buffer
+; HL points to the tile's pixel data for this scanline
+
+    ld   a,(hl)             ;  7 T  read tile byte 0
+    ld   (ix+1),a           ; 19 T  patch into LD DE operand (low byte)
+    inc  hl                 ;  6 T
+    ld   a,(hl)             ;  7 T  read tile byte 1
+    ld   (ix+2),a           ; 19 T  patch into LD DE operand (high byte)
+    inc  hl                 ;  6 T
+    ; advance IX to the next scanline's LD DE instruction
+    ; (stride depends on display code structure)

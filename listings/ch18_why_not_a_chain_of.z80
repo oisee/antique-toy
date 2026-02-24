@@ -1,0 +1,8 @@
+    ld   a, (game_state)
+    cp   STATE_TITLE
+    jp   z, state_title
+    cp   STATE_MENU
+    jp   z, state_menu
+    cp   STATE_GAME
+    jp   z, state_game
+    ; ...

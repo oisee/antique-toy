@@ -1,0 +1,8 @@
+; Bit 3 of port $7FFD selects the display screen:
+;   Bit 3 = 0: display page 5 (standard screen at $4000)
+;   Bit 3 = 1: display page 7 (shadow screen at $C000)
+
+    ld   a, (current_bank)
+    or   %00001000           ; set bit 3: display shadow screen
+    ld   bc, $7FFD
+    out  (c), a

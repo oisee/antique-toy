@@ -1,0 +1,42 @@
+frame_loop:
+    halt                         ; wait for interrupt
+
+    ; --- Always: advance pixel offset ---
+    ld   a, (scroll_pixel_x)
+    inc  a
+    cp   8
+    jr   nz, .no_char_scroll
+
+    ; --- Every 8th frame: character scroll ---
+    xor  a                       ; reset pixel offset to 0
+    ld   (scroll_pixel_x), a
+
+    ; Advance tile position
+    ld   hl, (scroll_tile_x)
+    inc  hl
+    ld   (scroll_tile_x), hl
+
+    ; Scroll pixel data left by 1 column (8 pixels)
+    call scroll_pixels_left_char
+
+    ; Scroll attributes left by 1 column
+    call scroll_attrs_left
+
+    ; Draw new tile column on right edge
+    call draw_right_column
+
+    jr   .scroll_done
+
+.no_char_scroll:
+    ld   (scroll_pixel_x), a
+
+    ; Shift the edge columns by 1 pixel
+    call shift_edge_columns
+
+.scroll_done:
+    ; --- Game logic, sprites, music ---
+    call update_entities
+    call draw_sprites
+    call play_music
+
+    jr   frame_loop

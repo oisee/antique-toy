@@ -74,7 +74,7 @@ You cannot have all three. Exomizer wins on ratio but is slow to decompress and 
 Introspec's genius was to map these tradeoffs on a Pareto frontier --- a curve where no tool can improve on one dimension without losing on another. If a compressor is dominated on all three axes by another tool, it is obsolete. If it sits on the frontier, it is the right choice for some use case.
 
 <!-- figure: ch14_compression_tradeoff -->
-```mermaid
+```mermaid id:ch14_the_tradeoff_triangle
 graph LR
     SRC["Source Data\n(raw bytes)"] --> EXO["Exomizer\n48.3% ratio\n~250 T/byte\n170B decompressor"]
     SRC --> APL["ApLib\n49.2% ratio\n~105 T/byte\n199B decompressor"]
@@ -132,7 +132,7 @@ ZX7 was already remarkable: a 69-byte decompressor that achieved respectable com
 
 The Z80 decompressor for ZX0 is hand-optimised assembly, designed specifically for the Z80's instruction set. It exploits the Z80's flag register, its block transfer instructions, and the exact timing of conditional jumps to squeeze maximum functionality into minimum bytes. Here is the kind of code we are talking about:
 
-```z80
+```z80 id:ch14_the_decompressor
 ; ZX0 decompressor — standard version
 ; HL = source (compressed data)
 ; DE = destination (output buffer)
@@ -181,7 +181,7 @@ Not everything needs a full LZ compressor. Two simpler techniques handle specifi
 
 The simplest scheme: replace a run of identical bytes with a count and a value. The decompressor is trivial:
 
-```z80
+```z80 id:ch14_rle_run_length_encoding
 ; Minimal RLE decompressor — HL = source, DE = destination
 rle_decompress:
         ld      a, (hl)         ; read count
@@ -215,14 +215,14 @@ Understanding compression algorithms is useful. Integrating them into your build
 
 The pipeline: source asset (PNG) --> converter (png2scr) --> compressor (zx0) --> assembler (sjasmplus) --> .tap file. The compressor runs on your development machine, not the Spectrum. For ZX0: `zx0 screen.scr screen.zx0`. Include the result with sjasmplus's INCBIN directive:
 
-```z80
+```z80 id:ch14_from_asset_to_binary
 compressed_screen:
     incbin "assets/screen.zx0"
 ```
 
 At runtime, decompress with a simple call:
 
-```z80
+```z80 id:ch14_from_asset_to_binary_2
     ld   hl, compressed_screen    ; source: compressed data
     ld   de, $4000                ; destination: screen memory
     call dzx0_standard            ; decompress
@@ -247,7 +247,7 @@ Change a source PNG, run `make`, and the compressed binary is regenerated automa
 
 A complete minimal example --- decompress a loading screen to video memory and wait for a keypress:
 
-```z80
+```z80 id:ch14_example_loading_screen_with
 ; loading_screen.asm — assemble with sjasmplus
         org  $8000
 start:

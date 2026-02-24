@@ -41,7 +41,7 @@ This is a design decision with cascading technical benefits. Attribute-resolutio
 
 At the centre of Lo-Fi Motion's architecture is the **scene table** -- a data structure that drives the entire demo. Each entry in the table describes one scene:
 
-```
+```z80 id:ch20_the_scene_table
 ; Scene table entry (conceptual structure)
 scene_entry:
     DB  bank_number          ; which 16K memory bank holds this effect's code
@@ -92,7 +92,7 @@ The practical lesson: there is no single "right" toolchain. The right one is whe
 
 The tools chain together through a **Makefile** (or equivalent build script). The pipeline for Lo-Fi Motion looks approximately like this:
 
-```
+```text
 Source assets (PNG, raw data)
     |
     v
@@ -133,7 +133,7 @@ The critical observation: the engine and pipeline consume the first two days. Ev
 
 ## 20.3 Making-of Culture
 
-The ZX Spectrum demoscene has a remarkably strong culture of documenting how demos are made. This is not universal in the broader demoscene -- on many platforms, demos ship with no documentation beyond credits. On the Spectrum scene, detailed making-of articles are a tradition, and Hype (hype.retroscene.org) is the primary venue for publishing them.
+The ZX Spectrum demoscene has a strong culture of documenting how demos are made. This is not universal in the broader demoscene -- on many platforms, demos ship with no documentation beyond credits. On the Spectrum scene, detailed making-of articles are a tradition, and Hype (hype.retroscene.org) is the primary venue for publishing them.
 
 ### Eager: The Technical NFO
 
@@ -165,7 +165,7 @@ This matters for demo workflow at any scale. Even in a full-sized demo with a pr
 
 The ZX Spectrum demo toolchain has converged on a standard set. Here is a typical project layout:
 
-```
+```text
 src/
     main.asm            ; entry point, scene table, engine loop
     engine.asm          ; scene table interpreter, buffer management
@@ -329,7 +329,7 @@ This is what "MORE" demands. Not more polygons, not more colours, not more effec
 For the reader who has followed this book from Chapter 1 and wants to make a demo, here is a concrete path.
 
 <!-- figure: ch20_demo_workflow_pipeline -->
-```mermaid
+```mermaid id:ch20_your_first_demo_a_practical
 graph TD
     IDEA["Idea\n(visual concept, mood, music)"] --> PROTO["Prototype\n(verify/ HTML/JS, or\nquick Z80 test)"]
     PROTO --> IMPL["Z80 Implementation\n(sjasmplus, effect code)"]
@@ -385,7 +385,7 @@ graph TD
 
 12. **Submit.** Choose a party. Follow the rules. Upload the file. Then watch the compo and enjoy seeing your work on screen.
 
-You will not win. Your effects will be simpler than the experienced groups' entries. Your sync will be imperfect. Your transitions will be rough. None of this matters. What matters is that you finished a demo, submitted it to a compo, and joined a community that has been doing this for thirty years. The next demo will be better. And the one after that.
+Your first entry is unlikely to place. Treat it as a learning exercise: the feedback from seeing your work on the big screen and comparing it to other entries is more valuable than any prize. Each subsequent demo will be better because you will know what to fix.
 
 ---
 

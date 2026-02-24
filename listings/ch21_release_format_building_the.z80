@@ -1,0 +1,71 @@
+; main.a80 -- top-level assembly file
+
+    ; Define the BASIC loader
+    DEVICE ZXSPECTRUM128
+
+    ; Page in bank 2 at $8000
+    ORG $8000
+
+    ; Include all game code
+    INCLUDE "defs.a80"
+    INCLUDE "banks.a80"
+    INCLUDE "render.a80"
+    INCLUDE "sprites.a80"
+    INCLUDE "entities.a80"
+    INCLUDE "physics.a80"
+    INCLUDE "collisions.a80"
+    INCLUDE "ai.a80"
+    INCLUDE "player.a80"
+    INCLUDE "hud.a80"
+    INCLUDE "menu.a80"
+    INCLUDE "loader.a80"
+    INCLUDE "music_driver.a80"
+    INCLUDE "sfx.a80"
+    INCLUDE "esxdos.a80"
+
+    ; Entry point
+entry:
+    di
+    ld   sp, $BFFF
+    call init_system
+    call detect_esxdos
+    jr   c, .tape_load
+    call load_from_esxdos
+    jr   .loaded
+.tape_load:
+    call load_bank_data
+.loaded:
+    call init_interrupts
+    ei
+    jp   main_loop
+
+    ; Bank data sections
+    ; Each SLOT/PAGE directive places data into the correct bank
+    SLOT 3               ; use $C000 slot
+    PAGE 0               ; bank 0
+    ORG $C000
+    INCLUDE "data/bank0_levels.a80"   ; INCBIN compressed level data
+
+    PAGE 1               ; bank 1
+    ORG $C000
+    INCLUDE "data/bank1_levels.a80"
+
+    PAGE 3               ; bank 3
+    ORG $C000
+    INCLUDE "data/bank3_sprites.a80"
+
+    PAGE 4               ; bank 4
+    ORG $C000
+    INCLUDE "data/bank4_music.a80"
+
+    PAGE 6               ; bank 6
+    ORG $C000
+    INCLUDE "data/bank6_sfx.a80"
+
+    ; Save as .tap with BASIC loader
+    SAVETAP "build/ironclaw.tap", BASIC, "Ironclaw", 10, 2
+    SAVETAP "build/ironclaw.tap", CODE, "Screen", $4000, 6912, $4000
+    SAVETAP "build/ironclaw.tap", CODE, "Code", $8000, $-$8000, $8000
+
+    ; Save bank snapshots (for .sna or manual loading)
+    SAVESNA "build/ironclaw.sna", entry

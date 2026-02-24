@@ -1,0 +1,16 @@
+main_loop:
+    halt                     ; wait for vsync
+
+    call calc_plasma         ; calculate one quarter
+    call copy_four_way       ; mirror to full screen
+
+    ; Advance plasma phases
+    ld hl,phase1
+    inc (hl)
+    inc (hl)                 ; phase1 += 2
+    ld hl,phase2
+    inc (hl)                 ; phase2 += 1
+    ld hl,phase3
+    dec (hl)                 ; phase3 -= 1 (counter-rotating)
+
+    jr main_loop

@@ -1,0 +1,2 @@
+compressed_screen:
+    incbin "assets/screen.zx0"

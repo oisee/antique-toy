@@ -1,0 +1,9 @@
+; Scroll one pixel row RIGHT by 1 pixel
+; HL points to byte 0 (leftmost)
+;
+    or   a                ; 4 T    clear carry
+    rr   (hl)             ; 15 T   shift right, bit 0 -> carry
+    inc  hl               ; 6 T
+    rr   (hl)             ; 15 T   carry -> bit 7
+    inc  hl               ; 6 T
+    ; ... 32 bytes total ...

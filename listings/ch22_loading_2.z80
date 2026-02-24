@@ -1,0 +1,14 @@
+; Agon: load a file using MOS API
+    ld   hl,filename       ; 24-bit pointer to filename string
+    ld   de,buffer         ; 24-bit pointer to destination
+    ld   bc,size           ; 24-bit max size
+    ld   a,mos_fopen       ; MOS file open function
+    rst  $08               ; MOS API call
+    ; A = file handle
+
+    ld   a,mos_fread       ; MOS file read function
+    rst  $08
+    ; Data loaded
+
+    ld   a,mos_fclose
+    rst  $08

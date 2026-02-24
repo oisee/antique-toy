@@ -1,0 +1,13 @@
+; Select pre-shifted sprite data
+; Input:  A = x coordinate (0-255)
+;         IY = base of pre-shift table (4 entries, each pointing to 16-row data)
+; Output: DE = pointer to correct shifted sprite data
+;
+select_preshift:
+    and  $06                ;  7 T   mask to shifts 0,2,4,6 (4 copies)
+    ld   c, a               ;  4 T
+    ld   b, 0               ;  7 T
+    add  iy, bc             ; 15 T
+    ld   e, (iy+0)          ; 19 T
+    ld   d, (iy+1)          ; 19 T   DE = pointer to shifted data
+    ret

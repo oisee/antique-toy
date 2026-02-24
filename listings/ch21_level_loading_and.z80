@@ -1,0 +1,70 @@
+; Load and initialise level
+; A = level number (0-4)
+load_level:
+    push af
+
+    ; Determine which bank holds this level
+    cp   2
+    jr   nc, .bank1
+    ; Levels 0-1: bank 0
+    ld   a, 0
+    call switch_bank
+    pop  af
+    push af
+    ; Look up compressed data address
+    add  a, a
+    ld   l, a
+    ld   h, 0
+    ld   de, level_ptrs_bank0
+    add  hl, de
+    jr   .decompress
+.bank1:
+    ; Levels 2-4: bank 1
+    ld   a, 1
+    call switch_bank
+    pop  af
+    push af
+    sub  2                 ; offset within bank 1
+    add  a, a
+    ld   l, a
+    ld   h, 0
+    ld   de, level_ptrs_bank1
+    add  hl, de
+
+.decompress:
+    ; HL points to 2-byte address of compressed level data in current bank
+    ld   a, (hl)
+    inc  hl
+    ld   h, (hl)
+    ld   l, a              ; HL = compressed data source (in $C000-$FFFF)
+
+    ; Decompress tilemap into bank 7
+    ; First, save current bank and switch to bank 7
+    ; BUT: bank 7 is at $4000 (shadow screen), not $C000
+    ; We decompress to $C000 in a temporary bank, then copy
+    ; OR: decompress directly into shadow screen at $4000
+
+    ; Simpler approach: decompress into a buffer at $8000+ area
+    ; (we have ~2KB free above our code in bank 2)
+    ; For large levels, use bank 7 at $4000:
+    ; Enable shadow screen banking, then write to $4000-$7FFF
+
+    ld   de, level_buffer  ; destination in bank 2 work area
+    call zx0_decompress    ; ZX0 decompressor: HL=src, DE=dest
+
+    ; Initialise entities from spawn table
+    pop  af                ; A = level number
+    call init_level_entities
+
+    ; Set viewport to level start
+    ld   hl, 0
+    ld   (viewport_x), hl
+    ld   hl, 0
+    ld   (viewport_y), hl
+
+    ; Reset scroll state
+    xor  a
+    ld   (scroll_pixel_offset), a
+    ld   (scroll_dirty), a
+
+    ret

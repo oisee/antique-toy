@@ -1,0 +1,2 @@
+    ld   (de),a       ;  7 T-states  (write screen byte)
+    inc  e            ;  4 T-states  (advance screen pointer)

@@ -1,0 +1,40 @@
+; Setup: install IM2 handler
+setup_im2:
+    di
+    ld   a, $C0          ; interrupt vector table at $C000
+    ld   i, a
+    im   2
+
+    ; Fill vector table at $C000 with $C1C1
+    ; Handler at $C1C1
+    ld   hl, $C000
+    ld   de, $C001
+    ld   bc, 256
+    ld   (hl), $C1
+    ldir
+
+    ; Place JP at $C1C1
+    ld   a, $C3          ; JP opcode
+    ld   ($C1C1), a
+    ld   hl, isr_handler
+    ld   ($C1C2), hl
+
+    ei
+    ret
+
+isr_handler:
+    push af
+    push bc
+    push de
+    push hl
+    ; ... push all registers you use ...
+
+    call music_play      ; <-- the player routine
+
+    ; ... pop all registers ...
+    pop  hl
+    pop  de
+    pop  bc
+    pop  af
+    ei
+    reti

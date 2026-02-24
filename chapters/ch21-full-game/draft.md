@@ -20,7 +20,7 @@ Before writing a single line of Z80, you need a directory structure that scales.
 
 ### Directory Layout
 
-```
+```text
 ironclaw/
   src/
     main.a80           -- entry point, bank switching, state machine
@@ -111,7 +111,7 @@ This pipeline means the game's content is always in editable form (PNG, TMX), an
 
 The ZX Spectrum 128K has eight 16KB RAM banks, numbered 0 through 7. At any moment, the CPU sees a 64KB address space:
 
-```
+```text
 $0000-$3FFF   ROM (16KB) -- BASIC or 128K editor ROM
 $4000-$7FFF   Bank 5 (always) -- screen memory (normal screen)
 $8000-$BFFF   Bank 2 (always) -- typically code
@@ -120,7 +120,7 @@ $C000-$FFFF   Switchable -- banks 0-7, selected via port $7FFD
 
 Banks 5 and 2 are hardwired to `$4000` and `$8000` respectively. Only the top 16KB window (`$C000-$FFFF`) is switchable. The bank selection register at port `$7FFD` also controls which screen is displayed (bank 5 or bank 7) and which ROM page is active.
 
-```z80
+```z80 id:ch21_memory_map_128k_bank_2
 ; Port $7FFD layout:
 ;   Bit 0-2:  Bank number for $C000-$FFFF (0-7)
 ;   Bit 3:    Screen select (0 = bank 5 normal, 1 = bank 7 shadow)
@@ -148,7 +148,7 @@ The critical rule: **always store your last write to `$7FFD`** in a shadow varia
 
 Here is how Ironclaw distributes its 128KB across the eight banks:
 
-```
+```text
 Bank 0 ($C000)  -- Level data: tilemaps for levels 1-2 (compressed)
                    Tileset graphics (compressed)
                    Decompression buffer
@@ -187,7 +187,7 @@ Bank 7 ($4000)  -- Shadow screen (used for double buffering)
 ```
 
 <!-- figure: ch21_128k_bank_allocation -->
-```
+```text
          ZX Spectrum 128K — Ironclaw Bank Allocation
          ═══════════════════════════════════════════
 
@@ -226,7 +226,7 @@ Several things to notice about this layout:
 
 **Music is split across banks 4 and 6.** The PT3 player runs during the interrupt handler, which fires once per frame. The interrupt handler must page in the music bank, update the AY registers, and page back to whatever bank the main loop was using. Splitting music across two banks means the interrupt handler must know which bank contains the current song. We handle this with a variable:
 
-```z80
+```z80 id:ch21_ironclaw_bank_allocation_3
 current_music_bank:
     db   4              ; bank 4 by default
 
@@ -236,6 +236,9 @@ im2_handler:
     push de
     push hl
     push ix
+    push iy              ; IY must be preserved -- BASIC uses it
+                         ; for system variables, and PT3 players
+                         ; typically use IY internally
 
     ; Save current bank state
     ld   a, (last_bank_state)
@@ -257,6 +260,7 @@ im2_handler:
     ld   bc, $7FFD
     out  (c), a
 
+    pop  iy
     pop  ix
     pop  hl
     pop  de
@@ -278,7 +282,7 @@ The stack lives at the top of bank 2's address space, growing downward from `$BF
 
 A game is not one program. It is a sequence of modes -- title screen, menu, gameplay, pause, game over, high scores -- each with different input handling, different rendering, and different update logic. Chapter 18 introduced the state machine pattern. Here is how Ironclaw implements it at the top level.
 
-```z80
+```z80 id:ch21_the_state_machine
 ; Game states
 STATE_LOADER    equ  0
 STATE_TITLE     equ  1
@@ -333,7 +337,7 @@ State transitions happen by writing a new value to `current_state`. The transiti
 
 This is where integration happens. During `STATE_GAMEPLAY`, every frame must execute the following, in order:
 
-```
+```text
 1. Read input                ~200 T-states
 2. Update player physics     ~800 T-states
 3. Update player state       ~400 T-states
@@ -356,7 +360,7 @@ The order matters. Input must come first -- you need the player's intent before 
 
 ### Reading Input
 
-```z80
+```z80 id:ch21_reading_input
 ; Read keyboard and Kempston joystick
 ; Returns result in A: bit 0=right, 1=left, 2=down, 3=up, 4=fire
 read_input:
@@ -424,7 +428,7 @@ When the viewport shifts by one tile column, the renderer must:
 
 The column copy is an LDIR chain: 20 rows x 8 pixel lines x 29 bytes = 4,640 bytes at 21 T-states each = 97,440 T-states. That is more than an entire frame. This is why Chapter 17's shadow screen technique is essential.
 
-```z80
+```z80 id:ch21_the_scroll_engine
 ; Shadow screen double-buffer scroll
 ; Frame N: display screen is bank 5, draw screen is bank 7
 ; 1. Draw the shifted background into bank 7
@@ -456,7 +460,7 @@ Each 16x16 sprite has four pre-shifted copies (Chapter 16, method 3), one for ea
 
 Pre-shifted sprite data lives in bank 3. During the sprite rendering phase, the renderer pages in bank 3, iterates through all active entities, and draws each one:
 
-```z80
+```z80 id:ch21_sprite_integration
 ; Draw all active entities
 ; Assumes bank 3 (sprite graphics) is paged in at $C000
 render_entities:
@@ -512,7 +516,7 @@ render_entities:
 
 Before drawing sprites at their new positions, you must erase them from their old positions. Ironclaw uses the dirty rectangle method from Chapter 16: before drawing a sprite, save the background beneath it to a buffer. Before the next frame's sprite rendering pass, restore those saved backgrounds.
 
-```z80
+```z80 id:ch21_background_restore_dirty
 ; Dirty rectangle entry: 4 bytes
 ;   byte 0: screen address low
 ;   byte 1: screen address high
@@ -569,7 +573,7 @@ Chapters 18 and 19 covered these systems in isolation. In the integrated game, t
 
 The physics update must interleave with collision detection. The pattern is:
 
-```
+```text
 1. Apply gravity:  velocity_y += GRAVITY
 2. Apply input:    if (input_right) velocity_x += ACCEL
 3. Horizontal move:
@@ -589,7 +593,7 @@ The horizontal and vertical moves are separate because collision response must h
 
 All positions use 8.8 fixed-point format (Chapter 4): the high byte is the pixel coordinate, the low byte is the fractional part. Velocity values are also 8.8. This gives sub-pixel movement precision without requiring any multiplication in the core physics loop -- addition and shifting are sufficient.
 
-```z80
+```z80 id:ch21_physics_collision_loop_2
 ; Apply gravity to entity at IX
 ; velocity_y is 16-bit signed, 8.8 fixed-point
 apply_gravity:
@@ -612,7 +616,7 @@ apply_gravity:
 
 The tile collision check converts a pixel coordinate to a tile index, then looks up the tile type in the level's collision map:
 
-```z80
+```z80 id:ch21_tile_collision
 ; Check tile at pixel position (B=x, C=y)
 ; Returns: A = tile type (0=empty, 1=solid, 2=hazard, 3=platform)
 check_tile:
@@ -649,7 +653,7 @@ For Ironclaw, level widths are set to 256 tiles. This is not a coincidence -- it
 
 Each enemy type has a finite state machine (Chapter 19). The state is stored in the entity structure:
 
-```z80
+```z80 id:ch21_enemy_ai
 ; Entity structure (16 bytes per entity)
 ENT_X       equ  0    ; 16-bit, 8.8 fixed-point
 ENT_Y       equ  2    ; 16-bit, 8.8 fixed-point
@@ -680,7 +684,7 @@ Ironclaw's four enemy types:
 
 The key optimisation from Chapter 19: AI does not run every frame. Enemy AI updates are distributed across frames using a simple round-robin:
 
-```z80
+```z80 id:ch21_enemy_ai_2
 ; Update AI for subset of enemies each frame
 ; ai_frame_counter cycles 0, 1, 2, 0, 1, 2, ...
 update_enemy_ai:
@@ -747,7 +751,7 @@ The PT3 data format is compact -- a typical 2-3 minute game music loop compresse
 
 Sound effects use the priority-based channel stealing system from Chapter 11. When a sound effect triggers (player jumps, enemy dies, projectile fires), the SFX engine temporarily hijacks one AY channel, overriding whatever the music was doing on that channel. When the effect finishes, the channel returns to music control.
 
-```z80
+```z80 id:ch21_sound_effects
 ; SFX priority levels
 SFX_JUMP       equ  1     ; low priority
 SFX_PICKUP     equ  2
@@ -793,7 +797,7 @@ The SFX update runs inside the interrupt handler, after the PT3 player. If an SF
 
 SFX definitions are procedural tables rather than sampled audio. Each entry is a sequence of per-frame register values:
 
-```z80
+```z80 id:ch21_sound_effects_2
 ; SFX: player jump -- ascending frequency sweep on channel C
 sfx_jump_data:
     db   8                 ; duration: 8 frames
@@ -823,7 +827,7 @@ The `.tap` file format is a sequence of data blocks, each preceded by a 2-byte l
 
 Ironclaw's .tap structure:
 
-```
+```text
 Block 0:  BASIC loader program (autorun line 10)
 Block 1:  Loading screen (6912 bytes -> $4000)
 Block 2:  Main code block (bank 2 content -> $8000)
@@ -848,7 +852,7 @@ Line 10 sets RAMTOP below `$8000`, protecting our code from BASIC's stack. Line 
 
 But this only loads the main code block. The banked data (blocks 3-7) must be loaded by our own Z80 code, which pages in each bank and uses the ROM's tape loading routine:
 
-```z80
+```z80 id:ch21_the_tap_file_and_basic_loader_3
 ; Load bank data from tape
 ; Called after main code is running
 load_bank_data:
@@ -883,7 +887,7 @@ load_tape_block:
 
 For users with a DivMMC or similar hardware, loading from an SD card is dramatically faster and more reliable. The esxDOS API provides file operations through `RST $08` followed by a function number:
 
-```z80
+```z80 id:ch21_esxdos_loading_divmmc
 ; esxDOS function codes
 F_OPEN      equ  $9A
 F_CLOSE     equ  $9B
@@ -926,7 +930,7 @@ esx_close:
 
 Ironclaw detects whether esxDOS is present at startup by checking for the DivMMC signature. If present, it loads all data from files on the SD card instead of tape:
 
-```z80
+```z80 id:ch21_esxdos_loading_divmmc_2
 ; Load game data from esxDOS
 ; All bank data stored in separate files on SD card
 load_from_esxdos:
@@ -965,7 +969,7 @@ filename_bank6:  db "IRONCLAW.B6", 0
 
 The detection code:
 
-```z80
+```z80 id:ch21_esxdos_loading_divmmc_3
 ; Detect esxDOS presence
 ; Sets carry if esxDOS is NOT available
 detect_esxdos:
@@ -1001,7 +1005,7 @@ In practice, the safest detection method checks for the DivMMC's identification 
 
 The loading screen is the player's first impression. It loads as `LOAD "" SCREEN$` in the BASIC loader, meaning it appears while the remaining data blocks are loading from tape. On esxDOS, the loading is fast enough that you may want to display the screen for a minimum duration:
 
-```z80
+```z80 id:ch21_loading_screen
 show_loading_screen:
     ; Loading screen is already in screen memory ($4000) from BASIC loader
     ; If loading from esxDOS, load it explicitly:
@@ -1033,7 +1037,7 @@ The loading screen itself is a standard Spectrum screen file: 6,144 bytes of pix
 
 The title screen state displays the game logo and animated background, then transitions to the menu on any keypress:
 
-```z80
+```z80 id:ch21_title_screen_and_menu
 state_title:
     ; Animate background (e.g., scrolling starfield, colour cycling)
     call title_animate
@@ -1052,7 +1056,7 @@ state_title:
 
 The menu offers three options: Start Game, Options, High Scores. Navigation uses up/down keys, selection uses fire/enter. The menu is a simple state machine within the `STATE_MENU` handler:
 
-```z80
+```z80 id:ch21_title_screen_and_menu_2
 menu_selection:
     db   0                 ; 0=Start, 1=Options, 2=HiScores
 
@@ -1119,7 +1123,7 @@ state_menu:
 
 High scores are stored in a 10-entry table in bank 2's data area:
 
-```z80
+```z80 id:ch21_high_scores
 ; High score entry: 3 bytes name + 3 bytes BCD score = 6 bytes
 ; 10 entries = 60 bytes
 HISCORE_COUNT equ 10
@@ -1139,7 +1143,7 @@ hiscore_table:
 
 Scores use BCD (Binary Coded Decimal) -- two decimal digits per byte, three bytes per score, giving a maximum of 999,999 points. BCD is preferable to binary for display because converting a 24-bit binary number to decimal on a Z80 requires expensive division. With BCD, the `DAA` instruction handles carry between digits automatically, and printing requires only masking nibbles:
 
-```z80
+```z80 id:ch21_high_scores_2
 ; Add points to score
 ; DE = points to add (BCD, 2 bytes, max 9999)
 add_score:
@@ -1181,7 +1185,7 @@ When the player starts a level or completes one, the game must:
 5. Reset the viewport to the level's start position
 6. Reset the scroll engine state
 
-```z80
+```z80 id:ch21_level_loading_and
 ; Load and initialise level
 ; A = level number (0-4)
 load_level:
@@ -1284,7 +1288,7 @@ The border stripe tells you *that* you are over budget. DeZog tells you *where*.
 
 **Step 1: Isolate the slow frame.** Set a conditional breakpoint at the start of the main loop that triggers only when a "frame overflow" flag is set. Add code to set this flag when the frame takes too long:
 
-```z80
+```z80 id:ch21_the_profiling_workflow
 ; At the end of the gameplay frame, before HALT:
     ; Check if we're still in the current frame
     ; (a simple approach: read the raster line via floating bus
@@ -1301,7 +1305,7 @@ The border stripe tells you *that* you are over budget. DeZog tells you *where*.
 
 A systematic profiling pass measures each subsystem:
 
-```
+```text
 Subsystem            Measured T-states   Budget %
 ─────────────────────────────────────────────────
 read_input                    187          0.3%
@@ -1323,7 +1327,7 @@ Slack                      20,528         28.6%
 
 That is the average case. Now profile the worst case -- level 3, six enemies on screen, player near the right edge triggering a scroll:
 
-```
+```text
 Subsystem            Measured T-states   Budget %
 ─────────────────────────────────────────────────
 read_input                    187          0.3%
@@ -1444,7 +1448,7 @@ Music is composed in Vortex Tracker II, which exports directly to `.pt3` format.
 
 The complete conversion pipeline for a level:
 
-```
+```text
 tileset.png ──→ png2tiles.py ──→ tileset.bin ──→ pletter ──→ tileset.bin.plt
                                                               │
 level1.tmx ──→ map2bin.py ──→ level1_map.bin ──→ zx0 ──→ level1_map.bin.zx0
@@ -1467,7 +1471,7 @@ Every step is automated by the Makefile. The artist changes a tile, types `make`
 
 The final deliverable is a `.tap` file. sjasmplus can generate `.tap` output directly using its `SAVETAP` directive:
 
-```z80
+```z80 id:ch21_release_format_building_the
 ; main.a80 -- top-level assembly file
 
     ; Define the BASIC loader
@@ -1571,7 +1575,7 @@ The difference between a working game and a finished game is polish. Here is a c
 
 **Input debounce.** Ignore key presses that last fewer than 2 frames. Without debounce, the menu cursor will skip past options because the key was held for multiple frames. A simple frame counter per key fixes this:
 
-```z80
+```z80 id:ch21_final_polish
 ; Debounced fire button
 fire_held_frames:
     db   0

@@ -1,0 +1,7 @@
+; Looped version: clear 256 bytes at (HL)
+    ld   b, 0            ; 7 T   (B=0 means 256 iterations)
+    xor  a               ; 4 T
+.loop:
+    ld   (hl), a         ; 7 T
+    inc  hl              ; 6 T
+    djnz .loop           ; 13 T  (8 on last iteration)

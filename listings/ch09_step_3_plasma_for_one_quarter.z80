@@ -1,0 +1,52 @@
+; Calculate plasma for top-left quarter (16 columns x 12 rows)
+; Input: frame_phase is incremented each frame
+; Output: attr_buffer filled with 192 attribute bytes
+
+calc_plasma:
+    ld iy,attr_buffer
+    ld h,sin_table / 256     ; H = high byte of sine table page
+    ld b,12                  ; 12 rows (half of 24)
+.row_loop:
+    ld c,16                  ; 16 columns (half of 32)
+.col_loop:
+    ; Plasma = sin(x*2 + phase1) + sin(y*3 + phase2) + sin(x+y + phase3)
+
+    ; Term 1: sin(x*2 + phase1)
+    ld a,c
+    add a,a                  ; x * 2
+    add a,(ix+0)             ; + phase1 (self-modifying or IX-indexed)
+    ld l,a
+    ld a,(hl)                ; sin_table[x*2 + phase1]
+    ld d,a                   ; accumulate in D
+
+    ; Term 2: sin(y*3 + phase2)
+    ld a,b
+    add a,a
+    add a,b                  ; y * 3
+    add a,(ix+1)             ; + phase2
+    ld l,a
+    ld a,(hl)                ; sin_table[y*3 + phase2]
+    add a,d
+    ld d,a
+
+    ; Term 3: sin((x+y) + phase3)
+    ld a,c
+    add a,b                  ; x + y
+    add a,(ix+2)             ; + phase3
+    ld l,a
+    ld a,(hl)                ; sin_table[x+y + phase3]
+    add a,d                  ; total plasma value
+
+    ; Map to attribute byte
+    rrca
+    rrca
+    rrca                     ; shift to get ink bits in position
+    and %00000111            ; 8 ink colours
+    or  %00111000            ; white paper (bits 3-5 = 7)
+    ld (iy+0),a              ; store in buffer
+    inc iy
+
+    dec c
+    jr nz,.col_loop
+    djnz .row_loop
+    ret

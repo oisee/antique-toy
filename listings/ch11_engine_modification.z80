@@ -1,0 +1,13 @@
+music_frame:
+    ; Update chip 0
+    ld   a, $FF
+    ld   bc, $FFFD
+    out  (c), a          ; select chip 0
+    call update_chip0    ; write 14 registers
+
+    ; Update chip 1
+    ld   a, $FE
+    ld   bc, $FFFD
+    out  (c), a          ; select chip 1
+    call update_chip1    ; write 14 registers
+    ret

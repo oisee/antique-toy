@@ -1,0 +1,6 @@
+; Shift one pixel row left by 8 pixels (1 byte)
+; HL = address of byte 1 (source), DE = address of byte 0 (dest)
+; BC = 31
+;
+    ldir                     ; 31*21 - 5 = 646 T per row... wait.
+                             ; Actually: 30*21 + 16 = 646 T. Yes.

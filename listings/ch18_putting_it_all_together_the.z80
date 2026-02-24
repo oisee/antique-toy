@@ -1,0 +1,543 @@
+    ORG  $8000
+
+; ============================================================
+; Constants
+; ============================================================
+MAX_ENTITIES    EQU  16
+ENTITY_SIZE     EQU  10
+
+STATE_TITLE     EQU  0
+STATE_MENU      EQU  2
+STATE_GAME      EQU  4
+STATE_PAUSE     EQU  6
+STATE_GAMEOVER  EQU  8
+
+TYPE_INACTIVE   EQU  0
+TYPE_PLAYER     EQU  1
+TYPE_ENEMY      EQU  2
+TYPE_BULLET     EQU  3
+TYPE_EXPLOSION  EQU  4
+
+INPUT_RIGHT     EQU  0
+INPUT_LEFT      EQU  1
+INPUT_DOWN      EQU  2
+INPUT_UP        EQU  3
+INPUT_FIRE      EQU  4
+
+FLAG_ACTIVE     EQU  0
+FLAG_VISIBLE    EQU  1
+FLAG_COLLIDABLE EQU  2
+FLAG_FACING_L   EQU  3
+
+; ============================================================
+; Entry point
+; ============================================================
+entry:
+    di
+    ld   sp, $C000          ; set stack (below banked memory on 128K)
+                            ; NOTE: $FFFF is in banked page on 128K Spectrum,
+                            ; which causes stack corruption during bank switches.
+                            ; Use $C000 (or $BFFF) for 128K compatibility.
+    im   1
+    ei
+
+    ; Clear entity array
+    ld   hl, entity_array
+    ld   de, entity_array + 1
+    ld   bc, MAX_ENTITIES * ENTITY_SIZE - 1
+    ld   (hl), 0
+    ldir
+
+    ; Start in title state
+    ld   a, STATE_TITLE
+    ld   (game_state), a
+
+; ============================================================
+; Main loop with state dispatch
+; ============================================================
+main_loop:
+    halt                     ; sync to frame interrupt
+
+    ; --- Border profiling: red = active processing ---
+    ld   a, 2
+    out  ($FE), a
+
+    ; Dispatch to current state
+    ld   a, (game_state)
+    ld   l, a
+    ld   h, 0
+    ld   de, state_table
+    add  hl, de
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+    ex   de, hl
+    jp   (hl)
+
+; Called by each state handler when done
+return_to_loop:
+    ; --- Border black: idle ---
+    xor  a
+    out  ($FE), a
+    jr   main_loop
+
+; ============================================================
+; State table
+; ============================================================
+state_table:
+    DW   state_title
+    DW   state_menu
+    DW   state_game
+    DW   state_pause
+    DW   state_gameover
+
+; ============================================================
+; State: Title screen
+; ============================================================
+state_title:
+    call read_input_with_edges
+    ld   a, (input_pressed)
+    bit  INPUT_FIRE, a
+    jr   z, .wait
+    ; Transition to game
+    ld   a, STATE_GAME
+    ld   (game_state), a
+    call init_game
+.wait:
+    jp   return_to_loop
+
+; ============================================================
+; State: Game
+; ============================================================
+state_game:
+    call read_input_with_edges
+
+    ; Check pause
+    ; (using 'P' key -- half-row $DF, bit 0 is P, but for simplicity
+    ;  we check input_pressed bit 4 / FIRE as a toggle here)
+
+    ; Update all entities
+    call update_entities
+
+    ; Render all visible entities
+    call render_entities
+
+    ; Update music
+    ; call music_play         ; PT3 player -- see Chapter 11
+
+    jp   return_to_loop
+
+; ============================================================
+; State: Pause (minimal)
+; ============================================================
+state_pause:
+    call read_input_with_edges
+    ld   a, (input_pressed)
+    bit  INPUT_FIRE, a
+    jr   z, .still_paused
+    ld   a, STATE_GAME
+    ld   (game_state), a
+.still_paused:
+    jp   return_to_loop
+
+; ============================================================
+; State: Game Over (minimal)
+; ============================================================
+state_gameover:
+    call read_input_with_edges
+    ld   a, (input_pressed)
+    bit  INPUT_FIRE, a
+    jr   z, .wait
+    ld   a, STATE_TITLE
+    ld   (game_state), a
+.wait:
+    jp   return_to_loop
+
+; ============================================================
+; State: Menu (minimal — expand for your game)
+; ============================================================
+state_menu:
+    ; A full menu would display options and handle UP/DOWN/FIRE.
+    ; For this skeleton, the menu simply transitions to the title.
+    ; See Exercise 2 below for adding a real menu with item selection.
+    jp   state_title
+
+; ============================================================
+; Init game: set up player and enemies
+; ============================================================
+init_game:
+    ; Clear entity array
+    ld   hl, entity_array
+    ld   de, entity_array + 1
+    ld   bc, MAX_ENTITIES * ENTITY_SIZE - 1
+    ld   (hl), 0
+    ldir
+
+    ; Set up player (slot 0)
+    ld   ix, entity_array
+    ld   (ix + 0), 0        ; X fractional = 0
+    ld   (ix + 1), 128      ; X pixel = 128 (centre)
+    ld   (ix + 2), 160      ; Y = 160 (near bottom)
+    ld   (ix + 3), TYPE_PLAYER
+    ld   (ix + 4), 1        ; state = active
+    ld   (ix + 5), 0        ; anim_frame
+    ld   (ix + 6), 0        ; dx
+    ld   (ix + 7), 0        ; dy
+    ld   (ix + 8), 3        ; health = 3
+    ld   (ix + 9), %00000111 ; ACTIVE + VISIBLE + COLLIDABLE
+
+    ; Set up 8 enemies (slots 1-8) in a formation
+    ld   ix, entity_array + ENTITY_SIZE   ; slot 1
+    ld   b, 8               ; 8 enemies
+    ld   c, 24              ; starting X pixel
+
+.enemy_loop:
+    ld   (ix + 0), 0        ; X fractional
+    ld   (ix + 1), c        ; X pixel
+    ld   (ix + 2), 32       ; Y = 32 (near top)
+    ld   (ix + 3), TYPE_ENEMY
+    ld   (ix + 4), 1        ; state = active
+    ld   (ix + 5), 0        ; anim_frame
+    ld   (ix + 6), 1        ; dx = 1 (moving right slowly)
+    ld   (ix + 7), 0        ; dy = 0
+    ld   (ix + 8), 1        ; health = 1
+    ld   (ix + 9), %00000111 ; ACTIVE + VISIBLE + COLLIDABLE
+
+    ; Advance to next slot and X position
+    ld   de, ENTITY_SIZE
+    add  ix, de
+    ld   a, c
+    add  a, 28              ; 28 pixels apart
+    ld   c, a
+    djnz .enemy_loop
+
+    ret
+
+; ============================================================
+; Input system
+; ============================================================
+input_flags:      DB  0
+input_prev:       DB  0
+input_pressed:    DB  0
+
+read_input_with_edges:
+    ; Save previous
+    ld   a, (input_flags)
+    ld   (input_prev), a
+
+    ; Read keyboard (QAOP + SPACE)
+    ld   d, 0
+
+    ; P key: half-row $DF, bit 0
+    ld   bc, $DFFE
+    in   a, (c)
+    bit  0, a
+    jr   nz, .no_right
+    set  INPUT_RIGHT, d
+.no_right:
+    ; O key: half-row $DF, bit 1
+    bit  1, a
+    jr   nz, .no_left
+    set  INPUT_LEFT, d
+.no_left:
+
+    ; Q key: half-row $FB, bit 0
+    ld   b, $FB
+    in   a, (c)
+    bit  0, a
+    jr   nz, .no_up
+    set  INPUT_UP, d
+.no_up:
+
+    ; A key: half-row $FD, bit 0
+    ld   b, $FD
+    in   a, (c)
+    bit  0, a
+    jr   nz, .no_down
+    set  INPUT_DOWN, d
+.no_down:
+
+    ; SPACE: half-row $7F, bit 0
+    ld   b, $7F
+    in   a, (c)
+    bit  0, a
+    jr   nz, .no_fire
+    set  INPUT_FIRE, d
+.no_fire:
+
+    ld   a, d
+    ld   (input_flags), a
+
+    ; Compute edges
+    ld   a, (input_prev)
+    cpl
+    ld   b, a
+    ld   a, (input_flags)
+    and  b
+    ld   (input_pressed), a
+    ret
+
+; ============================================================
+; Entity update loop
+; ============================================================
+update_entities:
+    ld   ix, entity_array
+    ld   b, MAX_ENTITIES
+
+.loop:
+    push bc
+    ld   a, (ix + 9)        ; flags
+    bit  FLAG_ACTIVE, a
+    jr   z, .skip
+
+    ld   a, (ix + 3)        ; type
+    call update_by_type
+
+.skip:
+    ld   de, ENTITY_SIZE
+    add  ix, de
+    pop  bc
+    djnz .loop
+    ret
+
+; ============================================================
+; Type dispatch
+; ============================================================
+type_handlers:
+    DW   .nop_handler       ; TYPE_INACTIVE
+    DW   update_player
+    DW   update_enemy
+    DW   update_bullet
+    DW   update_explosion
+
+update_by_type:
+    add  a, a
+    ld   l, a
+    ld   h, 0
+    ld   de, type_handlers
+    add  hl, de
+    ld   e, (hl)
+    inc  hl
+    ld   d, (hl)
+    ex   de, hl
+    jp   (hl)
+
+.nop_handler:
+    ret
+
+; ============================================================
+; Player update
+; ============================================================
+update_player:
+    ld   a, (input_flags)
+    bit  INPUT_RIGHT, a
+    jr   z, .not_right
+    ld   a, (ix + 0)
+    add  a, 2               ; move right (subpixel)
+    ld   (ix + 0), a
+    jr   nc, .x_done_r
+    inc  (ix + 1)
+.x_done_r:
+    res  FLAG_FACING_L, (ix + 9)
+    jr   .horiz_done
+.not_right:
+    bit  INPUT_LEFT, a
+    jr   z, .horiz_done
+    ld   a, (ix + 0)
+    sub  2                   ; move left (subpixel)
+    ld   (ix + 0), a
+    jr   nc, .x_done_l
+    dec  (ix + 1)
+.x_done_l:
+    set  FLAG_FACING_L, (ix + 9)
+.horiz_done:
+
+    ; Fire bullet on press (edge-detected)
+    ld   a, (input_pressed)
+    bit  INPUT_FIRE, a
+    jr   z, .no_fire
+    ld   b, (ix + 1)        ; player X pixel
+    ld   c, (ix + 2)        ; player Y
+    call spawn_bullet
+.no_fire:
+
+    ; Animate
+    ld   a, (ix + 5)
+    inc  a
+    and  7
+    ld   (ix + 5), a
+    ret
+
+; ============================================================
+; Enemy update (simple patrol)
+; ============================================================
+update_enemy:
+    ; Move by dx
+    ld   a, (ix + 6)        ; dx
+    add  a, (ix + 1)        ; add to X pixel
+    ld   (ix + 1), a
+
+    ; Bounce at screen edges
+    cp   240
+    jr   c, .no_bounce_r
+    ld   (ix + 6), -1       ; reverse direction
+    jr   .bounce_done
+.no_bounce_r:
+    cp   8
+    jr   nc, .bounce_done
+    ld   (ix + 6), 1        ; reverse direction
+.bounce_done:
+
+    ; Animate
+    ld   a, (ix + 5)
+    inc  a
+    and  3                   ; 4-frame animation cycle
+    ld   (ix + 5), a
+    ret
+
+; ============================================================
+; Bullet update
+; ============================================================
+update_bullet:
+    ld   a, (ix + 6)        ; dx
+    add  a, (ix + 1)        ; add to X pixel (simplified: integer movement)
+    ld   (ix + 1), a
+
+    ; Off screen?
+    cp   248
+    jr   nc, .deactivate
+    or   a
+    jr   z, .deactivate
+    ret
+
+.deactivate:
+    ld   (ix + 9), 0        ; clear all flags
+    ret
+
+; ============================================================
+; Explosion update
+; ============================================================
+update_explosion:
+    ld   a, (ix + 5)        ; anim_frame
+    inc  a
+    cp   8                   ; 8 frames
+    jr   nc, .done
+    ld   (ix + 5), a
+    ret
+.done:
+    ld   (ix + 9), 0
+    ret
+
+; ============================================================
+; Spawn bullet
+; ============================================================
+spawn_bullet:
+    ; B = x pixel, C = y
+    push ix
+    ld   ix, entity_array + (9 * ENTITY_SIZE)   ; first projectile slot
+    ld   d, 7               ; 7 slots to search
+
+.find:
+    ld   a, (ix + 9)
+    bit  FLAG_ACTIVE, a
+    jr   z, .found
+    push de                  ; save loop counter in D
+    ld   de, ENTITY_SIZE     ; DE = 10 (D=0, E=10)
+    add  ix, de
+    pop  de                  ; restore loop counter
+    dec  d
+    jr   nz, .find
+    ; No free slot
+    pop  ix
+    scf
+    ret
+
+.found:
+    ld   (ix + 0), 0
+    ld   (ix + 1), b
+    ld   (ix + 2), c
+    ld   (ix + 3), TYPE_BULLET
+    ld   (ix + 4), 1
+    ld   (ix + 5), 0
+    ld   (ix + 7), 0        ; dy = 0
+
+    ; Direction from player facing
+    ld   a, (entity_array + 9)   ; player flags
+    bit  FLAG_FACING_L, a
+    jr   z, .right
+    ld   (ix + 6), -4       ; dx = -4
+    jr   .dir_done
+.right:
+    ld   (ix + 6), 4        ; dx = +4
+.dir_done:
+    ld   (ix + 8), 1        ; health = 1
+    ld   (ix + 9), %00000111 ; ACTIVE + VISIBLE + COLLIDABLE
+
+    pop  ix
+    or   a                   ; clear carry
+    ret
+
+; ============================================================
+; Render entities (stub -- see Chapter 16 for sprite rendering)
+; ============================================================
+render_entities:
+    ; In a real game, this iterates visible entities and draws sprites.
+    ; See Chapter 16 for OR+AND masked sprites, pre-shifted sprites,
+    ; and the dirty-rectangle system.
+    ; For this skeleton, we use a minimal attribute-block renderer.
+    ld   ix, entity_array
+    ld   b, MAX_ENTITIES
+
+.loop:
+    push bc
+    ld   a, (ix + 9)
+    bit  FLAG_VISIBLE, a
+    jr   z, .skip
+
+    ; Draw a 1-character coloured block at entity position.
+    ; For real sprite rendering, see Chapter 16 (OR+AND masks,
+    ; pre-shifted sprites, compiled sprites, dirty rectangles).
+    ld   a, (ix + 1)        ; X pixel
+    rrca                     ; /2
+    rrca                     ; /4
+    rrca                     ; /8 = character column
+    and  $1F                 ; mask to 0-31
+    ld   e, a
+    ld   a, (ix + 2)        ; Y pixel
+    rrca
+    rrca
+    rrca
+    and  $1F                 ; character row (0-23)
+    ; Compute attribute address: $5800 + row*32 + col
+    ld   l, a
+    ld   h, 0
+    add  hl, hl             ; row * 2
+    add  hl, hl             ; row * 4
+    add  hl, hl             ; row * 8
+    add  hl, hl             ; row * 16
+    add  hl, hl             ; row * 32
+    ld   d, 0
+    add  hl, de             ; + column
+    ld   de, $5800
+    add  hl, de             ; HL = attribute address
+
+    ; Colour by type
+    ld   a, (ix + 3)        ; type
+    add  a, a               ; type * 2 (crude colour mapping)
+    or   %01000000           ; BRIGHT bit
+    ld   (hl), a            ; write attribute
+
+.skip:
+    ld   de, ENTITY_SIZE
+    add  ix, de
+    pop  bc
+    djnz .loop
+    ret
+
+; ============================================================
+; Data
+; ============================================================
+game_state:     DB   STATE_TITLE
+
+entity_array:
+    DS   MAX_ENTITIES * ENTITY_SIZE, 0

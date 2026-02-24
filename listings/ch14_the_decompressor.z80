@@ -1,0 +1,23 @@
+; ZX0 decompressor — standard version
+; HL = source (compressed data)
+; DE = destination (output buffer)
+; Uses: AF, BC, DE, HL
+dzx0_standard:
+        ld      bc, $ffff       ; initial offset = -1
+        push    bc
+        inc     bc              ; BC = 0 (literal length counter)
+        ld      a, $80          ; bit buffer: only flag bit set
+dzx0s_literals:
+        call    dzx0s_elias     ; read literal length
+        ldir                    ; copy literals
+        add     a, a            ; read flag bit
+        jr      c, dzx0s_new_offset
+        call    dzx0s_elias     ; read match length
+        ex      (sp), hl        ; retrieve offset from stack
+        push    hl              ; put it back
+        add     hl, de          ; calculate match address
+        ldir                    ; copy match
+        add     a, a            ; read flag bit
+        jr      nc, dzx0s_literals
+dzx0s_new_offset:
+        ; ... offset decoding continues ...

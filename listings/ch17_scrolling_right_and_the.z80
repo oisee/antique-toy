@@ -1,0 +1,8 @@
+; Scroll attributes right by 1 character column
+;
+scroll_attrs_right:
+    ld   hl, $5ADE          ; source: last row, column 30
+    ld   de, $5ADF          ; dest: last row, column 31
+    ld   bc, 767            ; 768 - 1 bytes
+    lddr                    ; 767*21 + 16 = 16,123 T
+    ret

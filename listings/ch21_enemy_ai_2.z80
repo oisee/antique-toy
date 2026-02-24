@@ -1,0 +1,41 @@
+; Update AI for subset of enemies each frame
+; ai_frame_counter cycles 0, 1, 2, 0, 1, 2, ...
+update_enemy_ai:
+    ld   a, (ai_frame_counter)
+    inc  a
+    cp   3
+    jr   c, .no_wrap
+    xor  a
+.no_wrap:
+    ld   (ai_frame_counter), a
+
+    ; Only update enemies where (entity_index % 3) == ai_frame_counter
+    ld   ix, entity_array + ENT_SIZE  ; skip player (index 0)
+    ld   b, MAX_ENTITIES - 1
+    ld   c, 0              ; entity index counter
+
+.loop:
+    push bc
+    ld   a, (ix + ENT_FLAGS)
+    bit  FLAG_ACTIVE, a
+    jr   z, .next
+
+    ; Check if this entity's turn
+    ld   a, c
+    ld   e, 3
+    call mod_a_e           ; A = entity_index % 3
+    ld   b, a
+    ld   a, (ai_frame_counter)
+    cp   b
+    jr   nz, .next
+
+    ; Run AI for this entity
+    call run_entity_ai     ; dispatch based on ENT_TYPE and ENT_STATE
+
+.next:
+    pop  bc
+    inc  c
+    ld   de, ENT_SIZE
+    add  ix, de
+    djnz .loop
+    ret

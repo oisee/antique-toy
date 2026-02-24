@@ -1,0 +1,22 @@
+; MULU112 -- 8x8 unsigned multiply
+; Input:  B = multiplicand, C = multiplier
+; Output: A:C = B * C (16-bit result, A=high, C=low)
+; Cost:   196-204 T-states (Pentagon)
+;
+; From Dark / X-Trade, Spectrum Expert #01 (1997)
+
+mulu112:
+    ld   a, 0           ; clear accumulator (high byte of result)
+    ld   d, 8           ; 8 bits to process
+
+.loop:
+    rr   c              ; shift LSB of multiplier into carry
+    jr   nc, .noadd     ; if bit was 0, skip addition
+    add  a, b           ; add multiplicand to accumulator
+.noadd:
+    rra                 ; shift accumulator right (carry into bit 7,
+                        ;   bit 0 into carry -- this carry feeds
+                        ;   back into C via the next RR C)
+    dec  d
+    jr   nz, .loop
+    ret

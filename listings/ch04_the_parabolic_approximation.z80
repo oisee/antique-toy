@@ -1,0 +1,22 @@
+; Generate 256-byte signed cosine table (-128..+127)
+; using parabolic approximation
+;
+; The table covers one full period: cos(n * 2*pi/256)
+; scaled to signed 8-bit range.
+;
+; Approach: for the first half (0..127), compute
+;   y = 127 - (x^2 * 255 / 128^2)
+; approximated via incrementing differences.
+; Mirror for second half.
+
+gen_cos_table:
+    ld   hl, cos_table
+    ld   b, 0              ; x = 0
+    ld   de, 0             ; running delta (fixed-point)
+
+    ; First quarter: cos descends from +127 to 0
+    ; Second quarter: continues to -128
+    ; ...build via incremental squared differences
+
+    ; In practice, the generation loop runs ~30 bytes
+    ; and produces the table in a few hundred cycles.

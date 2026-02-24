@@ -1,0 +1,13 @@
+; Quick X-distance rejection before calling check_aabb
+; If the horizontal distance between entities exceeds
+; MAX_WIDTH (the widest entity), they cannot collide.
+
+    ld   a, (ix+1)        ; 19T  A.x_int
+    sub  (iy+1)           ; 19T  - B.x_int
+    jr   nc, .pos_dx      ; 12/7T
+    neg                   ; 8T   absolute value
+.pos_dx:
+    cp   MAX_WIDTH        ; 7T   widest possible entity
+    jr   nc, .skip        ; 12/7T  too far apart, skip AABB check
+    call check_aabb       ; only test close pairs
+.skip:

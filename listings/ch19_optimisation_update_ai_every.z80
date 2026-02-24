@@ -1,0 +1,27 @@
+; update_all_ai -- Update enemy AI on alternate frames
+;
+; Input:  frame_counter = current frame number
+; Output: All enemies updated (on even frames only)
+
+update_all_ai:
+    ld   a, (frame_counter) ; 13T
+    and  1                  ; 7T   check bit 0
+    ret  nz                 ; 11/5T  odd frame -- skip AI entirely
+
+    ; Even frame -- run AI for all active enemies
+    ld   ix, entity_array + ENTITY_SIZE  ; skip player (entity 0)
+    ld   b, MAX_ENEMIES    ; 8 enemies
+.loop:
+    push bc                ; 11T  save counter
+
+    ; Check if entity is active
+    bit  7, (ix+12)        ; 20T
+    call nz, ai_dispatch   ; 17T + handler (only if active)
+
+    ; Advance to next entity
+    ld   de, ENTITY_SIZE   ; 10T  16 bytes per entity
+    add  ix, de            ; 15T
+
+    pop  bc                ; 10T
+    djnz .loop             ; 13/8T
+    ret

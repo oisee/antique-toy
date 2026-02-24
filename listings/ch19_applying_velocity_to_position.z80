@@ -1,0 +1,26 @@
+; move_entity -- Apply velocity to position
+;
+; Input:  IX = entity pointer
+; Output: X and Y positions updated by dx and dy
+;
+; Cost: ~80 T-states (Pentagon)
+
+move_entity:
+    ; X position += dx (16-bit fixed-point add)
+    ld   a, (ix+0)        ; 19T  x_frac
+    add  a, (ix+7)        ; 19T  + dx_frac
+    ld   (ix+0), a        ; 19T
+
+    ld   a, (ix+1)        ; 19T  x_int
+    adc  a, (ix+8)        ; 19T  + dx_int (with carry)
+    ld   (ix+1), a        ; 19T
+
+    ; Y position += dy (16-bit fixed-point add)
+    ld   a, (ix+2)        ; 19T  y_frac
+    add  a, (ix+9)        ; 19T  + dy_frac
+    ld   (ix+2), a        ; 19T
+
+    ld   a, (ix+3)        ; 19T  y_int
+    adc  a, (ix+10)       ; 19T  + dy_int (with carry)
+    ld   (ix+3), a        ; 19T
+    ret                    ; 10T

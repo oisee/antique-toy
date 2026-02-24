@@ -1,0 +1,48 @@
+; Read keyboard and Kempston joystick
+; Returns result in A: bit 0=right, 1=left, 2=down, 3=up, 4=fire
+read_input:
+    ld   d, 0              ; accumulate result
+
+    ; Kempston joystick (active high)
+    in   a, ($1F)          ; Kempston port
+    and  %00011111         ; mask 5 bits: fire, up, down, left, right
+    ld   d, a
+
+    ; Keyboard: QAOP + space (merge with joystick)
+    ; Q = up
+    ld   bc, $FBFE         ; half-row Q-T
+    in   a, (c)
+    bit  0, a              ; Q key
+    jr   nz, .not_q
+    set  3, d              ; up
+.not_q:
+    ; O = left
+    ld   b, $DF            ; half-row Y-P
+    in   a, (c)
+    bit  1, a              ; O key
+    jr   nz, .not_o
+    set  1, d              ; left
+.not_o:
+    ; P = right
+    bit  0, a              ; P key (same half-row)
+    jr   nz, .not_p
+    set  0, d              ; right
+.not_p:
+    ; A = down
+    ld   b, $FD            ; half-row A-G
+    in   a, (c)
+    bit  0, a              ; A key
+    jr   nz, .not_a
+    set  2, d              ; down
+.not_a:
+    ; Space = fire
+    ld   b, $7F            ; half-row space-B
+    in   a, (c)
+    bit  0, a              ; space
+    jr   nz, .not_fire
+    set  4, d              ; fire
+.not_fire:
+
+    ld   a, d
+    ld   (input_state), a
+    ret

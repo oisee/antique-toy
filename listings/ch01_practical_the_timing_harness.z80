@@ -1,0 +1,31 @@
+    ORG $8000
+
+start:
+    ; Wait for the frame interrupt
+    halt
+
+    ; --- Border RED: code under test begins ---
+    ld   a, 2          ; 7T  red = colour 2
+    out  ($FE), a      ; 11T write to border port
+
+    ; ===== CODE UNDER TEST =====
+    ; Replace this block with whatever you want to measure.
+    ; Example: 256 iterations of a NOP loop.
+
+    ld   b, 0          ; 7T  B=0 wraps to 256 iterations
+.loop:
+    nop                ; 4T
+    nop                ; 4T
+    nop                ; 4T
+    nop                ; 4T  -- 16T per iteration body
+    djnz .loop         ; 13T taken, 8T on final iteration
+    ; Total: 256 * (16+13) - 5 = 7,419 T-states
+
+    ; ===== END CODE UNDER TEST =====
+
+    ; --- Border BLACK: idle ---
+    xor  a             ; 4T  A=0 (black), shorter than LD A,0
+    out  ($FE), a      ; 11T
+
+    ; Loop forever
+    jr   start

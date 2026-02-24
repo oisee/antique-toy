@@ -1,0 +1,18 @@
+; Debounced fire button
+fire_held_frames:
+    db   0
+
+check_fire:
+    ld   a, (input_state)
+    bit  4, a
+    jr   z, .released
+    ; Fire is held
+    ld   a, (fire_held_frames)
+    inc  a
+    ld   (fire_held_frames), a
+    cp   1                 ; only trigger on first frame of press
+    ret                    ; Z flag set if this is the first frame
+.released:
+    xor  a
+    ld   (fire_held_frames), a
+    ret                    ; Z flag clear (no fire)

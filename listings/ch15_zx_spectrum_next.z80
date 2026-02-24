@@ -1,0 +1,8 @@
+; Map 8KB page $0A into slot 3 ($6000-$7FFF)
+    ld   a, $0A
+    ld   bc, $243B          ; Next register select port
+    ld   a, $53             ; Register $53 = MMU slot 3
+    out  (c), a
+    ld   bc, $253B          ; Next register data port
+    ld   a, $0A             ; Page $0A
+    out  (c), a

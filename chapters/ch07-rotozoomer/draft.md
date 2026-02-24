@@ -15,7 +15,7 @@ This chapter traces two threads. The first is Introspec's 2017 analysis of the r
 
 A rotozoomer displays a 2D texture rotated by some angle and scaled by some factor. The naive approach: for every screen pixel, compute its corresponding texture coordinate via a trigonometric rotation:
 
-```
+```text
     tx = sx * cos(theta) * scale  +  sy * sin(theta) * scale  +  offset_x
     ty = -sx * sin(theta) * scale  +  sy * cos(theta) * scale  +  offset_y
 ```
@@ -24,7 +24,7 @@ At 256x192, that is 49,152 pixels each needing two multiplications. Even with a 
 
 The key insight is that the transformation is *linear*. Moving one pixel right on screen always adds the same (dx, dy) to the texture coordinates. Moving one pixel down always adds the same (dx', dy'). The per-pixel cost collapses from two multiplications to two additions:
 
-```
+```text
 Step right:   dx = cos(theta) * scale,   dy = -sin(theta) * scale
 Step down:    dx' = sin(theta) * scale,  dy' = cos(theta) * scale
 ```
@@ -63,7 +63,7 @@ In practice, Spectrum demos land on 2x2 for featured rotozoomer effects and rese
 
 The encoding is designed for the inner loop. Each chunky pixel is stored as `$03` (on) or `$00` (off). This value is not arbitrary -- it encodes exactly the two low bits set: `%00000011`. Watch what happens as four pixels accumulate in the A register:
 
-```
+```text
 After pixel 1:  A = %00000011                  ($03)
 After 2x shift: A = %00001100                  ($0C)
 After pixel 2:  A = %00001100 + %00000011      ($0F)
@@ -83,7 +83,7 @@ The critical property: because we only ever add `$03` or `$00`, there is no carr
 
 Introspec's disassembly reveals the core rendering sequence. HL walks through the texture; H tracks one axis and L the other:
 
-```z80
+```z80 id:ch07_the_inner_loop_from_illusion
 ; Inner loop: combine 4 chunky pixels into one output byte
     ld   a,(hl)        ;  7T  -- read first chunky pixel ($03 or $00)
     inc  l             ;  4T  -- step right in texture
@@ -139,27 +139,27 @@ The rendering code is generated fresh each frame, with walk-direction instructio
 
 For intermediate angles, the generator distributes steps unevenly using Bresenham-like error accumulation. A 30-degree rotation alternates between `inc l : nop` and `inc l : dec h` at roughly a 2:1 ratio, approximating the 1.73:1 tangent of 30 degrees. The resulting code is an unrolled loop where each iteration has its own specific walk pair, tuned to the current angle.
 
-The rendering cost for 128x96 at 2x2 chunky:
+The rendering cost for 128x96 at 2x2 chunky. The 128x96 area is 96 pixel rows, but each 2x2 texel covers two pixel rows, giving 48 texel rows. Each texel row produces 16 output bytes (128 pixels / 8 bits per byte, with 4 chunky pixels packed per byte):
 
-```
+```text
 16 output bytes/row x 95 T-states = 1,520 T-states/row
-1,520 x 96 rows = 145,920 T-states total
+1,520 x 48 texel rows = 72,960 T-states total
 ```
 
-Roughly 2 frames on a Pentagon (71,680 T-states per frame). But this is the bare inner loop only. A complete accounting adds:
+Roughly 1 frame on a Pentagon (71,680 T-states per frame). But this is the bare inner loop only. A complete accounting adds:
 
-```
+```text
 Code generation:        ~  1,000 T  (patching walk instructions)
 Row setup (per row):    ~    800 T  (48 rows x ~17 T each)
 Buffer-to-screen copy:  ~ 20,000 T  (stack trick, 1,536 bytes)
 Sine table lookups:     ~    200 T
 Frame overhead:         ~    500 T  (HALT, border, angle update)
                         ----------
-Inner loop:              145,920 T
-Total per frame:        ~168,000 T  (= 2.35 Pentagon frames)
+Inner loop:               72,960 T
+Total per frame:        ~ 95,460 T  (= 1.33 Pentagon frames)
 ```
 
-On a standard 48K/128K Spectrum at 69,888 T-states per frame, the rendering takes roughly 2.4 frames. Introspec's estimate of 4-6 frames per screen accounts for the more complex code path in Illusion (which handles the full 256x192 screen, not just a 128x96 strip) and the cost of the music engine running in the interrupt. On a Pentagon with its slightly longer frame (71,680 T-states) and no contention, the inner loop runs about 3% faster.
+On a standard 48K/128K Spectrum at 69,888 T-states per frame, the rendering takes roughly 1.4 frames. Introspec's estimate of 4-6 frames per screen accounts for the more complex code path in Illusion (which handles the full 256x192 screen, not just a 128x96 strip) and the cost of the music engine running in the interrupt. On a Pentagon with its slightly longer frame (71,680 T-states) and no contention, the inner loop runs about 3% faster.
 
 Memory contention on the 48K/128K Spectrum adds another hidden cost. During the top 192 scanlines, the ULA steals cycles from the CPU when accessing the lower 16KB of RAM ($4000-$7FFF). The inner loop reads from the texture (which should be above $8000, out of contended memory) and writes to a buffer (also above $8000), so it avoids contention entirely. The buffer-to-screen transfer, however, writes directly to video RAM and will be slowed by contention if it overlaps with the display period. This is why demos synchronise the screen transfer to the border period or to the bottom of the display.
 
@@ -171,7 +171,7 @@ The rotozoomer renders into an off-screen buffer, then transfers to video memory
 
 The transfer uses the stack:
 
-```z80
+```z80 id:ch07_buffer_to_screen_transfer
     pop  hl                   ; 10T -- read 2 bytes from buffer
     ld   (screen_addr),hl     ; 16T -- write 2 bytes to screen
 ```
@@ -192,7 +192,7 @@ sq's article pushes chunky pixels to 4x4 -- effective resolution 64x48. The visu
 
 **Approach 4: Self-modifying code (76-78 T-states per pair).** Pre-generate 256 rendering procedures, one per possible byte value, each with the pixel value baked in as an immediate operand:
 
-```z80
+```z80 id:ch07_deep_dive_4x4_chunky_pixels
 ; One of 256 pre-generated procedures
 proc_A5:
     ld   (hl),$A5        ; 10T  -- value baked into instruction
@@ -231,7 +231,7 @@ Here is the structure for a working rotozoomer with 2x2 chunky pixels and a chec
 
 **Texture.** A 256-byte page-aligned table where each byte is `$03` or `$00`, generating 8-pixel-wide stripes. The H register provides the second dimension; XORing H into the lookup creates a full checkerboard:
 
-```z80
+```z80 id:ch07_practical_building_a_simple
     ALIGN 256
 texture:
     LUA ALLPASS
@@ -249,7 +249,7 @@ texture:
 
 **The rendering loop.** The outer loop sets the starting texture coordinate for each row (stepping perpendicular to the walk direction). The inner loop walks through the texture:
 
-```z80
+```z80 id:ch07_practical_building_a_simple_2
 .byte_loop:
     ld   a,(hl)              ; read texel 1
     inc  l                   ; walk (patched per-frame)
@@ -310,12 +310,12 @@ The chunky pixel size is the most consequential design decision in a rotozoomer:
 |-----------|----------------|----------|-------------------|
 | Resolution | 128x96 | 64x48 | 32x24 |
 | Texels/frame | 12,288 | 3,072 | 768 |
-| Inner loop cost | ~146,000 T | ~29,000 T | ~7,300 T |
-| Frames/screen | ~2.3 | ~0.5 | ~0.1 |
+| Inner loop cost | ~73,000 T | ~29,000 T | ~7,300 T |
+| Frames/screen | ~1.3 | ~0.5 | ~0.1 |
 | Visual quality | Good motion | Chunky but fast | Very blocky |
 | Use case | Featured effects | Bumpmapping, overlays | Attribute-only FX |
 
-The 4x4 version fits within a single frame with room for a music engine and other effects. The 2x2 version takes 2-3 frames but looks substantially better. The 8x8 case is the attribute tunnel from Chapter 9.
+The 4x4 version fits within a single frame with room for a music engine and other effects. The 2x2 version takes roughly 1.3-1.5 frames (including overhead) but looks substantially better. The 8x8 case is the attribute tunnel from Chapter 9.
 
 Once you have a fast chunky renderer, the rotozoomer is just one application. The same engine drives **bumpmapping** (read height differences instead of raw texels, derive shading), **interlaced effects** (render odd/even rows on alternating frames, doubling effective frame rate at the cost of flicker), and **texture distortion** (vary the walk direction per row for wavy or ripple effects). A 4x4 rotozoomer can share a frame with a scrolltext, a music engine, and a screen transfer. sq's work was motivated by exactly this versatility.
 
@@ -331,21 +331,25 @@ The purest form: every screen pixel maps to one texel. The texture is monochrome
 
 The inner loop skeleton looks something like this:
 
-```z80
+```z80 id:ch07_variant_1_monochrome_bitmap
 ; For each screen pixel:
-    bit  n,(hl)           ; 12T  -- test texture bit at current coords
-    jr   z,.pixel_off     ; 7/12T
-    set  m,(de)           ; 15T  -- set screen bit
+; DE = texture pointer, HL = screen pointer
+    ld   a,(de)           ;  7T  -- read texture byte
+    and  n                ;  7T  -- test texture bit at current coords
+    jr   z,.pixel_off     ; 12/7T
+    set  m,(hl)           ; 15T  -- set screen bit
     jr   .pixel_done      ; 12T
 .pixel_off:
-    res  m,(de)           ; 15T  -- clear screen bit
+    res  m,(hl)           ; 15T  -- clear screen bit
 .pixel_done:
-    ; advance texture coords (inc l / dec h / etc.)
+    ; advance texture coords (inc e / dec d / etc.)
     ; advance screen bit position
     ; ... next pixel
 ```
 
-The per-pixel cost is brutal: 30-40 T-states minimum, with branching on every pixel. Across 49,152 pixels, that is 1.5 to 2 million T-states for the rendering pass alone -- roughly 21-28 frames on a standard Spectrum. A full-screen monochrome rotozoomer at 50fps is not happening.
+Note that SET and RES only work with (HL), (IX+d), or (IY+d) -- not (DE) or (BC). This forces HL to serve as the screen pointer, while DE handles the texture coordinates.
+
+The per-pixel cost is brutal: 35-45 T-states minimum, with branching on every pixel. Across 49,152 pixels, that is 1.5 to 2 million T-states for the rendering pass alone -- roughly 21-28 frames on a standard Spectrum. A full-screen monochrome rotozoomer at 50fps is not happening.
 
 But nobody said you need to fill the whole screen. The technique shines when applied to a smaller region -- a 128x64 strip, a circular viewport, a masked area -- or when you accept a lower frame rate in exchange for the visual impact of full-resolution rotation. It also works beautifully for distortion effects where the "rotation" is not uniform: varying the step vectors per scanline produces wave distortions, barrel effects, and the "sonic ripple" look seen in parts of Illusion by Dark/X-Trade. The coordinate mapping is no longer a simple rotation but a per-line warp through the texture. The maths is the same -- fixed-point stepping along a direction -- but the direction itself changes every row.
 
@@ -367,7 +371,7 @@ The inner loop is structurally identical to the chunky version -- step through t
 
 The maths:
 
-```
+```text
 32 columns x 24 rows = 768 attribute cells
 ~10 T-states per cell (read texel + write attribute + step)
 768 x 10 = ~7,680 T-states total
@@ -384,7 +388,7 @@ The attribute rotozoomer is perfect for backgrounds, transitions, or as a base l
 | Variant | Effective resolution | Bytes written/frame | ~T-states (render) | Colour | Typical use |
 |---------|---------------------|--------------------|--------------------|--------|-------------|
 | Monochrome bitmap | 256x192 (or subregion) | 6,144 (full screen) | 1,500,000-2,000,000 | 1-bit | Hero effect, distortion, warp |
-| Chunky 2x2 | 128x96 | 1,536 | ~146,000 | 1-bit | Featured rotozoomer |
+| Chunky 2x2 | 128x96 | 1,536 | ~73,000 | 1-bit | Featured rotozoomer |
 | Chunky 4x4 | 64x48 | 384 | ~29,000 | 1-bit | Multi-effect, overlay |
 | Attribute | 32x24 | 768 | ~7,700 | INK+PAPER (2 colours/cell) | Background, colour wash, transition |
 

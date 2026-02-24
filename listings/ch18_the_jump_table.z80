@@ -1,0 +1,7 @@
+; Table of handler addresses, indexed by state
+state_table:
+    DW   state_title        ; STATE_TITLE   = 0
+    DW   state_menu         ; STATE_MENU    = 2
+    DW   state_game         ; STATE_GAME    = 4
+    DW   state_pause        ; STATE_PAUSE   = 6
+    DW   state_gameover     ; STATE_GAMEOVER = 8

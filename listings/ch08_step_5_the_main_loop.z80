@@ -1,0 +1,31 @@
+main_loop:
+    halt                    ; synchronise with frame
+
+    ; --- Frame 1: attributes + tiles ---
+    di
+    ld   (restore_sp+1),sp  ; save real SP
+    call execute_display     ; run the LDPUSH display code
+restore_sp:
+    ld   sp,$0000           ; restore SP
+    ei
+
+    call update_tiles        ; patch changed tiles into buffer B
+    call read_input          ; handle player input
+    call update_game_logic   ; move entities, check collisions
+
+    halt                    ; synchronise with next frame
+
+    ; --- Frame 2: remaining tiles + sprites ---
+    di
+    ld   (restore_sp2+1),sp
+    call execute_display     ; display the current frame
+restore_sp2:
+    ld   sp,$0000
+    ei
+
+    call finish_tiles        ; patch any remaining tiles
+    call erase_old_sprite    ; restore saved bytes
+    call render_sprite       ; patch sprite into new position
+    call update_sound        ; sound at 25 Hz (every other frame pair)
+
+    jr   main_loop

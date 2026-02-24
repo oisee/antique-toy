@@ -35,7 +35,7 @@ Compare POP to the alternatives. `LD A,(HL) : INC HL` fetches one byte in 11 T-s
 
 This means interrupts are fatal. If an interrupt fires while SP points into the address table, the Z80 pushes the return address onto the "stack" -- which is actually your data table. Two bytes of carefully computed screen addresses get overwritten with a return address, and the interrupt service routine proceeds to execute whatever garbage sits at the corrupted location. The result is anything from a garbled frame to a hard crash. The solution is simple and non-negotiable: `DI` before hijacking SP, `EI` after restoring it. Every POP-trick routine in every Spectrum demo follows this pattern:
 
-```z80
+```z80 id:ch10_stack_based_address_tables
     di
     ld   (.smc_sp+1), sp  ; save SP via self-modifying code
     ld   sp, table_addr    ; point SP at pre-computed data
@@ -45,7 +45,7 @@ This means interrupts are fatal. If an interrupt fires while SP points into the 
     ei
 ```
 
-The save/restore uses self-modifying code because there is no other fast way to preserve SP. `EX (SP),HL` requires a valid stack. `LD (addr),SP` does not exist on the Z80. The only option is `LD (.smc+1),SP`, which writes SP's value directly into the operand field of a later `LD SP,nnnn` instruction. This costs 20 T-states -- trivial overhead for a technique that saves thousands.
+The save/restore uses self-modifying code because it is the fastest way to both save and restore SP in one step. `EX (SP),HL` requires a valid stack. `LD (addr),SP` exists (opcode ED 73, 20 T-states), but it saves SP to a fixed address -- you would then need a separate `LD SP,(addr)` to restore it later (also 20 T-states), and the restore is no faster than the self-modifying approach. The SMC technique writes SP's value directly into the operand field of a later `LD SP,nnnn` instruction: `LD (.smc+1),SP` costs 20 T-states for the save, and the restore (`LD SP,nnnn` with the patched operand) costs just 10 T-states. The combined save+restore is 30 T-states versus 40 T-states for the LD (addr),SP / LD SP,(addr) pair -- a small saving that also avoids reserving a separate memory location.
 
 One subtle consequence: the DI/EI window blocks the frame interrupt. If the inner loop runs long, HALT at the top of the main loop will still catch the next interrupt -- but if the rendering overshoots an entire frame, you lose sync. This is why the budget arithmetic matters. You must know your worst-case timing before committing to the POP trick.
 
@@ -55,7 +55,7 @@ The bouncing motion is encoded entirely in the address table. Each entry is a sc
 
 Introspec's 2017 analysis of Illusion reveals the inner loop. One byte of font data contains 8 bits -- 8 pixels. `LD A,(BC)` reads the byte once, then RLA shifts one bit at a time through 8 unrolled iterations:
 
-```z80
+```z80 id:ch10_the_inner_loop
 ; Dotfield scroller inner loop (unrolled for one font byte)
 ; BC = pointer to font/texture data, SP = pre-built address table
 
@@ -108,7 +108,7 @@ The numbers work because two optimisations compound. Stack-based addressing elim
 
 The address table is where the art lives. To create the bouncing motion, a sine table offsets each column's vertical position:
 
-```
+```text
 y_offset = sin_table[(column * phase_freq + scroll_pos * speed_freq) & 255]
 ```
 
@@ -116,7 +116,7 @@ The two frequency parameters control the visual character of the wave. `phase_fr
 
 The sine table itself is a 256-byte array of signed offsets, page-aligned for fast lookup. Page alignment means the high byte of the table address is fixed; only the low byte changes, so the lookup reduces to:
 
-```z80
+```z80 id:ch10_how_the_bounce_is_encoded_2
     ld   hl, sin_table    ; H = page, L = don't care
     ld   l, a             ; A = (column * freq + phase) & $FF
     ld   a, (hl)          ; 7 T — one memory read, no arithmetic
@@ -132,7 +132,7 @@ The beauty of the pre-computed table approach is that the inner loop does not ca
 
 A **Lissajous pattern** adds a horizontal sine offset as well as the vertical one. Instead of each column mapping to a fixed x byte on screen, the x position also oscillates:
 
-```
+```text
 x_offset = sin_table[(column * x_freq + phase_x) & 255]
 y_offset = sin_table[(column * y_freq + phase_y) & 255]
 ```
@@ -141,7 +141,7 @@ When `x_freq` and `y_freq` are coprime (say 3 and 2), the dot field traces a Lis
 
 A **helix** or spiral effect uses a single phase that advances per column, but varies the amplitude:
 
-```
+```text
 amplitude = base_amp + sin_table[(column * 2 + time) & 255] * depth_scale
 y_offset = sin_table[(column * freq + phase) & 255] * amplitude / max_amp
 ```
@@ -150,7 +150,7 @@ This creates the illusion of dots receding into depth -- the wave flattens at th
 
 **Multi-wave superposition** is the simplest technique with the most dramatic payoff. Add two sine terms with different frequencies:
 
-```
+```text
 y_offset = sin_table[(col * 4 + phase1) & 255] + sin_table[(col * 7 + phase2) & 255]
 ```
 
@@ -198,7 +198,7 @@ Without the inversion step, "on" pixels would always show ink and "off" pixels w
 
 On the Spectrum, inversion is cheap. The attribute byte layout is `FBPPPIII` -- Flash, Bright, 3 bits of paper colour, 3 bits of ink colour. Swapping ink and paper means rotating the lower 6 bits: paper moves to ink position, ink moves to paper position, while Flash and Bright stay put. In code:
 
-```z80
+```z80 id:ch10_why_inversion_is_essential
 ; Swap ink and paper in attribute byte (A)
 ; Input:  A = F B P2 P1 P0 I2 I1 I0
 ; Output: A = F B I2 I1 I0 P2 P1 P0
@@ -224,11 +224,11 @@ The alternative is to pre-compute both normal and inverted attribute buffers at 
 
 ### Practical Cost
 
-Four pre-built attribute buffers, cycled once per frame. The per-frame cost is a block copy of 768 bytes into attribute RAM ($5800-$5AFF). Using LDIR, this costs 21 T-states per byte: 768 x 21 = 16,128 T-states. Using the PUSH trick (point SP at the end of attribute RAM, load register pairs, PUSH), you can move 768 bytes in roughly 4,500 T-states -- a 3.5x speedup that matters when the rest of your frame budget goes to a scroller or music player.
+Four pre-built attribute buffers, cycled once per frame. The per-frame cost is a block copy of 768 bytes into attribute RAM ($5800-$5AFF). Using LDIR, this costs 21 T-states per byte: 768 x 21 = 16,128 T-states. Using the stack trick (POP from the source buffer, switch SP, PUSH to attribute RAM, batching through register pairs and shadow registers), a realistic cost is around 11,000-13,000 T-states depending on batch size and loop overhead -- a modest 1.2-1.5x speedup over LDIR. The gain is smaller than you might expect because each batch requires two SP switches (save source position, load destination, then swap back), and that overhead largely offsets the raw speed advantage of POP+PUSH over LDIR. For a *fill* (writing the same value to every byte), the PUSH trick is far more effective -- load register pairs once, then PUSH repeatedly -- but a copy from varying source data cannot avoid the read cost.
 
 The cycle logic itself is trivial. A single variable holds the phase (0-3). Each frame, increment it and AND with 3 to wrap. Index into a 4-entry table of buffer base addresses:
 
-```z80
+```z80 id:ch10_practical_cost
     ld   a, (phase)
     inc  a
     and  3

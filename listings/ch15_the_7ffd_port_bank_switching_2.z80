@@ -1,0 +1,12 @@
+; Switch RAM page at $C000 to page number in A (0-7)
+; Preserves other $7FFD bits from shadow variable
+bank_switch:
+    ld   b, a                 ; 4T   save desired page
+    ld   a, (bank_shadow)     ; 13T  load current $7FFD state
+    and  %11111000            ; 7T   clear page bits (0-2)
+    or   b                    ; 4T   insert new page number
+    ld   (bank_shadow), a     ; 13T  update shadow
+    ld   bc, $7FFD            ; 10T
+    out  (c), a               ; 12T  do the switch
+    ret                       ; 10T
+                              ; --- 73T total

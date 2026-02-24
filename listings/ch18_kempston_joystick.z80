@@ -1,0 +1,12 @@
+; Kempston joystick port
+KEMPSTON_PORT  EQU  $1F
+
+; Read Kempston joystick
+; Returns: A = joystick state
+;   bit 0 = right, bit 1 = left, bit 2 = down, bit 3 = up, bit 4 = fire
+read_kempston:
+    in   a, (KEMPSTON_PORT)  ; 11T
+    and  %00011111           ; 7T   mask to 5 bits
+    ld   (input_flags), a    ; 13T
+    ret                      ; 10T
+    ; Total: 41T

@@ -1,0 +1,27 @@
+; Kick: tone sweep down over 4 frames
+; Call once per frame while kick_counter > 0
+kick_update:
+    ld   a, (kick_counter)
+    or   a
+    ret  z
+
+    dec  a
+    ld   (kick_counter), a
+
+    ; Sweep tone down (increase period)
+    ld   hl, (kick_period)
+    ld   de, 40          ; sweep speed
+    add  hl, de
+    ld   (kick_period), hl
+
+    ; Write to channel C
+    ld   a, R_TONE_C_LO
+    ld   e, l
+    call ay_write
+    ld   a, R_TONE_C_HI
+    ld   e, h
+    call ay_write
+    ret
+
+kick_counter: DB 0
+kick_period:  DW 0

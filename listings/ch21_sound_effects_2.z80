@@ -1,0 +1,13 @@
+; SFX: player jump -- ascending frequency sweep on channel C
+sfx_jump_data:
+    db   8                 ; duration: 8 frames
+    db   2                 ; channel C (0=A, 1=B, 2=C)
+    ; Per-frame: freq_lo, freq_hi, volume
+    db   $80, $01, 15      ; frame 1: low pitch, full volume
+    db   $60, $01, 14      ; frame 2: slightly higher
+    db   $40, $01, 13
+    db   $20, $01, 12
+    db   $00, $01, 10
+    db   $E0, $00, 8
+    db   $C0, $00, 5
+    db   $A0, $00, 2       ; frame 8: high pitch, fading out

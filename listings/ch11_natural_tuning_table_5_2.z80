@@ -1,0 +1,28 @@
+; Table #5: Natural tuning for AY clock = 1,520,640 Hz
+; 96 notes (8 octaves), C major / A minor
+; Ivan Roshin (concept, 2001), oisee/siril (VTi implementation, 2009)
+natural_note_table:
+    ; Octave 1: every period divisible by 16!
+    DW 2880, 2700, 2560, 2400, 2304, 2160
+    DW 2025, 1920, 1800, 1728, 1620, 1536
+    ; Octave 2
+    DW 1440, 1350, 1280, 1200, 1152, 1080
+    DW 1013,  960,  900,  864,  810,  768
+    ; Octave 3
+    DW  720,  675,  640,  600,  576,  540
+    DW  506,  480,  450,  432,  405,  384
+    ; Octave 4
+    DW  360,  338,  320,  300,  288,  270
+    DW  253,  240,  225,  216,  203,  192
+    ; Octave 5
+    DW  180,  169,  160,  150,  144,  135
+    DW  127,  120,  113,  108,  101,   96
+    ; Octave 6
+    DW   90,   84,   80,   75,   72,   68
+    DW   63,   60,   56,   54,   51,   48
+    ; Octave 7
+    DW   45,   42,   40,   38,   36,   34
+    DW   32,   30,   28,   27,   25,   24
+    ; Octave 8
+    DW   23,   21,   20,   19,   18,   17
+    DW   16,   15,   14,   14,   13,   12

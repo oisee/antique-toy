@@ -1,0 +1,34 @@
+; Load game data from esxDOS
+; All bank data stored in separate files on SD card
+load_from_esxdos:
+    ; Load bank 0: levels + tiles
+    ld   a, 0
+    call switch_bank
+    ld   ix, filename_bank0
+    call esx_open
+    ret  c                 ; error -- fall back to tape
+    push af                ; save file handle
+    ld   ix, $C000
+    ld   bc, BANK0_SIZE
+    pop  af                ; A = file handle (esxDOS preserves this)
+    push af
+    call esx_read
+    pop  af
+    call esx_close
+
+    ; Repeat for other banks...
+    ; Bank 1
+    ld   a, 1
+    call switch_bank
+    ld   ix, filename_bank1
+    call esx_open
+    ret  c
+    ; ... (same pattern) ...
+
+    ret
+
+filename_bank0:  db "IRONCLAW.B0", 0
+filename_bank1:  db "IRONCLAW.B1", 0
+filename_bank3:  db "IRONCLAW.B3", 0
+filename_bank4:  db "IRONCLAW.B4", 0
+filename_bank6:  db "IRONCLAW.B6", 0

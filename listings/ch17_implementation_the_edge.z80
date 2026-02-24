@@ -1,0 +1,8 @@
+; Shift 2 bytes left by 1 pixel with carry propagation
+; HL points to the right byte of the pair
+;
+    or   a                ; 4 T    clear carry
+    rl   (hl)             ; 15 T   right byte: shift left, bit 7 -> carry
+    dec  hl               ; 6 T
+    rl   (hl)             ; 15 T   left byte: carry -> bit 0, bit 7 lost
+                          ; total: 40 T per row (for 2-byte window)

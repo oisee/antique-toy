@@ -1,0 +1,7 @@
+; Fixed-point 8.8 addition: result = a + b
+; HL = first operand, DE = second operand
+    add  hl, de          ; that's it. 11 T-states.
+
+; Fixed-point 8.8 subtraction: result = a - b
+    or   a               ; clear carry
+    sbc  hl, de          ; 15 T-states.

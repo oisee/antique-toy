@@ -1,0 +1,15 @@
+    ; Determine surface type
+    ld   b, (ix+1)        ; player X
+    ld   a, (ix+3)        ; player Y
+    add  a, (ix+14)       ; + height (feet position)
+    inc  a                ; one pixel below feet
+    ld   c, a
+    call tile_at
+    cp   TILE_ICE
+    jr   z, .ice_friction
+    ; Default: heavy friction
+    call apply_friction
+    jr   .done
+.ice_friction:
+    call apply_friction_ice
+.done:

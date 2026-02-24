@@ -1,0 +1,2 @@
+    ld   a, $AF              ; opcode $3E, operand $AF
+                              ; BUT: $AF is XOR A

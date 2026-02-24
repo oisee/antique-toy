@@ -1,0 +1,7 @@
+    ld   a,c        ; 4T   column index
+    add  a,b        ; 4T   add row index (diagonal pattern)
+    add  a,d        ; 4T   add frame counter (animation)
+    and  7          ; 7T   clamp to 0-7
+    ld   (hl),a     ; 7T   write attribute
+    inc  hl         ; 6T   next attribute address
+                    ; --- 32T per byte

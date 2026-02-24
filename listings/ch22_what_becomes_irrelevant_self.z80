@@ -1,0 +1,3 @@
+; Spectrum: self-modifying code for speed
+    ld   a,0               ; operand patched at runtime
+    ; ... (the $00 after LD A is overwritten with the real value)
