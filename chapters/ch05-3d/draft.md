@@ -650,6 +650,8 @@ main_loop:
 
 This is the skeleton. Each `call` hides a procedure built from the techniques in this chapter and Chapter 4. The frame loop itself is clean --- update, compute, draw, repeat.
 
+![Rotating wireframe cube rendered on the ZX Spectrum using the midpoint method and perspective projection](../../build/screenshots/ch05_wireframe_cube.png)
+
 ---
 
 ## Historical Context: From Magazine to Demo

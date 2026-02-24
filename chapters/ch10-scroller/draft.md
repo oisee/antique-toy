@@ -85,6 +85,8 @@ The per-pixel cost, excluding the amortised byte-fetch:
 | Opaque pixel | `pop hl` + `rla` + `jr nc` (not taken) + `set ?,(hl)` | **36** |
 | Transparent pixel | `pop hl` + `rla` + `jr nc` (taken) | **26** |
 
+![Bouncing dotfield text scroller in action -- text rendered as individual pixels undulating on a sine wave](../../build/screenshots/ch10_dotscroll.png)
+
 The `LD A,(BC)` and `INC BC` cost 13 T-states amortised over 8 pixels -- about 1.6 T per pixel. Introspec's "36 T-states per pixel" is the worst-case cost within the unrolled byte, excluding that overhead.
 
 The SET bit position changes for each pixel (7, 6, 5 ... 0), which is why the loop is unrolled 8 times rather than repeated. You cannot parameterise the bit position in SET without IX/IY indexing (far too slow) or self-modifying code (overhead). Unrolling is the clean solution.

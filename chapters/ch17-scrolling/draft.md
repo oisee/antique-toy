@@ -708,6 +708,8 @@ shift_edge_columns:
     ret
 ```
 
+![Horizontal pixel scroller showing smooth combined character-plus-pixel scrolling over a tiled play area](../../build/screenshots/ch17_hscroll.png)
+
 ### Agon Version: Hardware Tilemap Scrolling
 
 The Agon version is dramatically simpler. The main loop calls `vsync`, increments a 16-bit scroll offset, sends it to the VDP via the `set_scroll_offset` routine (a handful of `vdu_write` calls), and every 8 pixels calls `ring_buffer_load` to update one column of tile indices. The entire scroll costs under 3,000 T-states per frame, leaving 365,000+ T-states for game logic, AI, physics, and rendering. The Spectrum version is a careful exercise in cycle-counting where every technique from Chapters 2 and 3 comes together to achieve what the Agon does with a hardware register.

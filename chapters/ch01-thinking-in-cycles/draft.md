@@ -249,6 +249,8 @@ start:
 
 Load this into your emulator. You will see a red stripe across the border. The height of that stripe is directly proportional to the number of T-states your test code consumed.
 
+![Border-colour timing harness — red stripe shows T-states consumed by the code under test](../../build/screenshots/ch01_timing_harness.png)
+
 ### Reading the Stripe
 
 Each scanline takes 224 T-states (on Pentagon). So if your red stripe is N scanlines tall, your code took approximately N x 224 T-states. The example above uses about 7,419 T-states, which is roughly 33 scanlines -- you should see a red band about one-sixth of the way down the border.

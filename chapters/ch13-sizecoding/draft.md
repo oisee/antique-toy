@@ -136,6 +136,8 @@ That leaves 122-165 bytes for the actual creative content -- the visual formula,
 
 Look at the companion example `intro256.a80`. Its pixel fill loop uses 18 bytes. The AY setup takes 20 bytes. The main loop framework (HALT, frame counter read, border update) is 8 bytes. The AY tone update is 13 bytes. The visual effect -- a Moire interference pattern computed purely from register arithmetic -- consumes 36 bytes. The frame counter writeback and loop jump take 8 bytes. Total: around 103 bytes of framework and 36 bytes of effect. That ratio -- roughly 3:1 framework to effect -- is typical. The better you compress the framework, the more room you have for creative expression.
 
+![Output of a 256-byte intro -- animated Moire interference pattern with colour cycling, generated entirely from register arithmetic](../../build/screenshots/ch13_intro256.png)
+
 ### Key Techniques at 256 Bytes
 
 **1. Use initial register and memory state.** After a standard tape load, registers hold known values: A often holds the last byte loaded, BC the block length, HL points near the end of loaded data. The system variables area ($5C00-$5CB5) contains known values. Screen memory is clear after CLS. Every known value you exploit instead of loading explicitly saves 1-3 bytes.

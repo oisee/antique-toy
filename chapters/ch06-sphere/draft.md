@@ -252,6 +252,8 @@ Once the code buffer is filled, call it as a subroutine:
 
 The generated code runs through the entire sphere, reading source pixels, packing them into screen bytes, and writing them to video memory. When it returns, the sphere is drawn.
 
+![Sphere outline rendered on the ZX Spectrum — monochrome texture mapped onto a rotating sphere using skip-table code generation](../../build/screenshots/ch06_sphere.png)
+
 For animation, increment the rotation angle, load the corresponding skip table (or regenerate it), regenerate the code, and render again.
 
 ### Step 5: Source Image Layout

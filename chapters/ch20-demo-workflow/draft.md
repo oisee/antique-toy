@@ -353,6 +353,8 @@ graph TD
 
 > **The iterative loop:** The path from implementation to timing check and back is where most development time is spent. The prototype stage (HTML/JS or quick Z80 sketch) validates the visual concept before committing to full implementation. The scene table makes reordering effects trivial during the polish phase.
 
+![Demo framework with effect slots driven by a scene table, showing the engine cycling through multiple visual effects](../../build/screenshots/ch20_demo_framework.png)
+
 ### Week 1: Foundation
 
 1. **Set up the toolchain.** Install sjasmplus, choose an emulator (Unreal Speccy, Fuse, or ZEsarUX), set up a project directory with a Makefile. Verify that you can assemble a minimal program and run it in the emulator.

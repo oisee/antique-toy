@@ -269,6 +269,8 @@ texture:
 
 The `inc l` instructions are the targets of the code generator. Before each frame, they are patched to the appropriate combination of `inc l`/`dec l`/`inc h`/`dec h`/`nop` based on the current angle. For non-cardinal angles, a Bresenham error accumulator distributes the minor-axis steps across the row, so each walk instruction in the unrolled loop may be different from its neighbours.
 
+![Rotozoomer output — the texture rotates and scales in real-time, rendered with 2x2 chunky pixels](../../build/screenshots/ch07_rotozoomer.png)
+
 **Main loop.** `HALT` for vsync, compute step vectors, generate walk code, render to buffer, stack-copy buffer to screen, increment frame counter, repeat.
 
 ---

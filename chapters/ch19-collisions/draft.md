@@ -119,6 +119,8 @@ check_aabb:
     ret                    ; 10T
 ```
 
+![AABB collision detection test with two entities, border colour changes on overlap](../../build/screenshots/ch19_aabb_test.png)
+
 The IX/IY indexed addressing is convenient but expensive -- 19 T-states per access versus 7 for `ld a, (hl)`. For a game with 8 enemies and 7 bullets, it is acceptable. Worst case (all four tests pass, collision detected): approximately 270 T-states. Best case (first test fails): approximately 91 T-states. For 8 enemies checked against the player, the average case is about 8 x 120 = 960 T-states -- 1.3% of the Pentagon frame budget. Collisions are cheap.
 
 **Overflow warning:** The `ADD A, (ix+13)` instructions compute `x + width` in an 8-bit register. If an entity is positioned at X=240 with width=24, the result wraps around to 8, producing incorrect comparisons. Ensure that entity positions are clamped so that `x + width` and `y + height` never exceed 255 -- typically by limiting the play area to leave a margin at the right and bottom edges. Alternatively, promote the comparison to 16-bit arithmetic at the cost of additional instructions.

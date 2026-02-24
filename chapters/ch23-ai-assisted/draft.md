@@ -136,6 +136,8 @@ fill_diagonal:
 
 Cleaner. No PUSH/POP. Diagonals run the right direction. The inner loop costs 4 + 4 + 7 + 4 + 7 + 7 + 6 + 4 + 13 = 56 T-states per byte -- not brilliant, but functional for a fill routine that runs once.
 
+![AI-generated diagonal fill pattern showing bright colour stripes across the ZX Spectrum attribute grid](../../build/screenshots/ch23_diagonal_fill.png)
+
 The point is not that the AI wrote bad code. The point is that the *loop* -- prompt, generate, assemble, test, fix, test again -- is the actual workflow. AI assistance does not eliminate the need to understand Z80. It shifts the bottleneck from writing code to evaluating code.
 
 ### What Makes the Loop Fast

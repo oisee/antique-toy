@@ -164,6 +164,8 @@ pixel_addr:
 
 91 T-states is not cheap. In a tight inner loop processing thousands of pixels, you would not call this routine per pixel. Instead, you calculate the starting address once and then navigate the screen using fast pointer manipulation -- which brings us to the most important routine in Spectrum graphics programming.
 
+![Pixel plotting demo — individual pixels placed on screen using the address calculation routine](../../build/screenshots/ch02_pixel_demo.png)
+
 ---
 
 ## DOWN_HL: Moving One Pixel Row Down
@@ -471,6 +473,8 @@ Cost: `LDIR` copies 767 bytes -- (767 - 1) x 21 + 16 = 16,102 T-states.
 ```
 
 Sets the border to blue (colour 1) to match the paper colour, creating a visually clean frame. Then loops forever, halting between frames. The `HALT` waits for the next maskable interrupt, which fires once per frame -- this is the idle heartbeat of every Spectrum program.
+
+![Screen fill with alternating bytes — checkerboard pattern in bright white on blue](../../build/screenshots/ch02_fill_screen.png)
 
 ### What to try
 

@@ -833,6 +833,8 @@ main_loop:
     jr   main_loop
 ```
 
+![OR+AND masked sprite with movement, showing eight animated sprites over a patterned background](../../build/screenshots/ch16_sprite_demo.png)
+
 **Cycle budget:**
 
 | Phase | Cost |

@@ -123,6 +123,8 @@ The player does not see any of this. They see a side-scrolling game with more co
 
 This is the point DenisGrachev's work makes forcefully: multicolor is not a demo trick. It is a game engine technique. The engineering is extreme --- double buffers, two-frame rendering, 25 Hz sound --- but the result is a playable game with visuals that genuinely break the Spectrum's perceived limits.
 
+![Multicolour effect — 8x2 attribute resolution gives each character cell up to eight colours instead of two](../../build/screenshots/ch08_multicolor.png)
+
 ---
 
 ## Ringo: A Different Kind of Multicolor
@@ -150,6 +152,8 @@ Combined with the `11110000b` pixel pattern, this gives:
 - Total: 4 independently coloured sub-cells per 8x8 character cell
 
 Over the full screen: 64 columns x 48 rows = **3,072 independently coloured pixels**, each 4x4 real pixels in size. The effective resolution is 64x48 with full per-pixel colour from the Spectrum's 15-colour palette.
+
+![Dual-screen multicolour on the 128K Spectrum — Ringo's two-screen switching produces a 64x48 grid with independent per-pixel colour](../../build/screenshots/ch08_multicolor_dualscreen.png)
 
 This is a fundamentally different approach from GLUF's 8x2 multicolor. GLUF changes attributes in sync with the beam, requiring precise timing and consuming massive cycle budgets. Ringo uses dual-screen hardware switching, which requires only a single `OUT` instruction every 4 scanlines. The CPU overhead for the screen switching itself is minimal.
 

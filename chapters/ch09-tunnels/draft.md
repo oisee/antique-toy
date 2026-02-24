@@ -287,6 +287,8 @@ main_loop:
 
 The different phase increments make the plasma terms rotate at different speeds. Experiment with these values -- even small changes produce dramatically different visual textures.
 
+![Attribute-based plasma effect — sine wave interference produces rippling colour patterns across the 32x24 attribute grid](../../build/screenshots/ch09_plasma.png)
+
 ### Key Insight
 
 The attribute grid IS your framebuffer for this effect. You never touch pixel memory after the initial checkerboard fill. The entire animation consists of writing 768 bytes per frame to `$5800`--`$5AFF`. The Z80's screen address interleaving, which makes pixel manipulation so painful, is completely irrelevant. The attribute area is linear. The copy is fast. The visual result, at 50Hz, is smooth and surprisingly compelling.

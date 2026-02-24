@@ -194,6 +194,8 @@ restore_sp:
 
 The 16-PUSH inner body writes 32 bytes in 176 T-states. Total for the full 6,144-byte pixel area: roughly 36,000 T-states. Compare LDIR: 6,144 x 21 - 5 = 129,019 T-states. The PUSH method is about 3.6x faster --- the difference between fitting in one frame and bleeding into the next.
 
+![PUSH-based screen fill — the entire pixel area filled in a single frame using the stack trick](../../build/screenshots/ch03_push_fill.png)
+
 ### POP as a fast read
 
 PUSH is the fastest write, but POP is the fastest *read*. POP loads 2 bytes from (SP) into a register pair in 10 T-states --- that is 5.0 T-states per byte. Compare the alternatives:
@@ -264,6 +266,8 @@ ldi_chain:
 ```
 
 This variable-length copy with zero per-byte loop overhead is a technique you simply cannot achieve with LDIR. It is one reason LDI is everyone's best friend in demoscene code.
+
+![LDI chain vs LDIR comparison — border stripes show the timing difference between the two approaches](../../build/screenshots/ch03_ldi_chain.png)
 
 ---
 

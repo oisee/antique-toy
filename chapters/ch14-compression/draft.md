@@ -270,6 +270,8 @@ compressed_screen:
         display "Total: ", /d, $ - start, " bytes"
 ```
 
+![ZX0 decompression demo -- a compressed loading screen unpacked to video memory in real time](../../build/screenshots/ch14_decompress.png)
+
 Use sjasmplus's DISPLAY directive to print size information during assembly. Always know exactly how large your compressed data is --- the difference between ZX0 and Exomizer on a single loading screen can be 400 bytes, and over 8 scenes that adds up.
 
 ### Choosing the right compressor

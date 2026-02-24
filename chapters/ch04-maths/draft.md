@@ -48,6 +48,8 @@ Study this carefully. The `RRA` instruction shifts A right, but also pushes A's 
 
 The cost is 196 to 204 T-states depending on how many multiplier bits are set -- each set bit costs one extra `ADD A,B` (4 T-states). The example at `chapters/ch04-maths/examples/multiply8.a80` shows a variant returning the result in HL.
 
+![8-bit multiply routine output — result of shift-and-add multiplication displayed on screen](../../build/screenshots/ch04_multiply8.png)
+
 For 16x16 producing a 32-bit result, Dark's MULU224 runs in 730 to 826 T-states. In practice, demoscene 3D engines avoid full 16x16 multiplies by keeping coordinates in 8.8 fixed-point and using 8x8 multiplies where possible.
 
 <!-- figure: ch04_multiply_walkthrough -->
@@ -613,6 +615,8 @@ For demos, simply initialise the generator's state to a known value and leave it
 For most demoscene work, **Patrik Rak's CMWC** is the clear winner: excellent quality, reasonable size, and a period so long it will never repeat during a demo. If code size is critical (size-coding, 256-byte intros), **Ion Random** packs remarkable quality into 15 bytes. XORshift is a fallback when you need something quick and do not care about visual quality.
 
 > **Credits:** PRNG collection, quality assessment, and bitmap testing by **Gogin**. Patrik Rak's CMWC generator is based on George Marsaglia's Complementary Multiply-With-Carry theory. Ion Random originates from **Ion Shell** for the TI-83 calculator.
+
+![PRNG output — random attribute colours fill the screen, revealing the generator's statistical quality](../../build/screenshots/ch04_prng.png)
 
 ---
 
