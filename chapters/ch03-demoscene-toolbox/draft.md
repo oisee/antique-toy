@@ -267,7 +267,7 @@ ldi_chain:
 
 This variable-length copy with zero per-byte loop overhead is a technique you simply cannot achieve with LDIR. It is one reason LDI is everyone's best friend in demoscene code.
 
-<!-- Screenshot removed: border-colour beam racing not capturable as static image -->
+![LDI chain vs LDIR — red stripes show LDI chain timing, blue stripes show LDIR; thinner red proves LDI is faster](../../build/screenshots/ch03_ldi_chain.png)
 
 ---
 

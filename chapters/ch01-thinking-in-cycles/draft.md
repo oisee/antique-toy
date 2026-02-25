@@ -249,7 +249,7 @@ start:
 
 Load this into your emulator. You will see a red stripe across the border. The height of that stripe is directly proportional to the number of T-states your test code consumed.
 
-<!-- Screenshot removed: border-colour beam racing not capturable as static image -->
+![Timing harness output — red border stripes show T-states consumed by the code under test, black gaps show idle time](../../build/screenshots/ch01_timing_harness.png)
 
 ### Reading the Stripe
 
