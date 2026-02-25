@@ -3,15 +3,11 @@
 ; Red border = code running, black border = idle.
 ; Wider red stripe = slower code.
 ;
-; Assembles with: mza --target zxspectrum
-;                 sjasmplus (use ORG $8000)
+; Assembles with: sjasmplus (use ORG $8000)
 
     ORG $8000
 
 start:
-    ; Wait for HALT (frame start — interrupt fires)
-    halt
-
     ; --- Set border to RED (code under test begins) ---
     ld   a, 2          ; red
     out  ($FE), a
@@ -35,5 +31,10 @@ start:
     xor  a
     out  ($FE), a
 
-    ; Loop forever
+    ; Idle gap (makes the black stripe visible)
+    ld   b, 0
+.idle:
+    djnz .idle          ; 256 * 13 - 5 = 3,323 T-states
+
+    ; Loop forever — the red/black stripes repeat every frame
     jr   start

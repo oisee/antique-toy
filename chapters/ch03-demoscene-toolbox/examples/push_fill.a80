@@ -10,8 +10,6 @@ SCREEN     EQU $4000
 SCREEN_END EQU $5800     ; $4000 + 6144
 
 start:
-    halt                 ; sync to frame
-
     ; Measure with border colour
     ld   a, 2
     out  ($FE), a        ; red = working
@@ -21,9 +19,8 @@ start:
     xor  a
     out  ($FE), a        ; black = done
 
-.wait:
-    halt
-    jr   .wait
+    ; Loop forever — red/black border stripes repeat each frame
+    jr   start
 
 ; ============================================================
 ; PUSH_FILL — Fill screen using PUSH
