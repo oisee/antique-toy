@@ -60,6 +60,8 @@ graph TD
 
 This is cheaper than a true geometric tunnel (which would require per-pixel distance and angle lookups) and produces a visually rich result. The trade-off is less geometric precision, but at 32x24 resolution, geometric precision was never on the table anyway.
 
+![Plasma algorithm — true-colour sine sum reference (left) vs ZX Spectrum 15-colour attribute output (right), showing how four-fold symmetry halves computation](../../build/screenshots/proto_ch09_plasma.png)
+
 ---
 
 ## Four-Fold Symmetry: Divide and Conquer

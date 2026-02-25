@@ -25,6 +25,8 @@ The font is stored as a bitmap texture in memory -- one bit per dot. If the bit 
 
 This means rendering cost is proportional to the number of visible dots, not the total area. A typical 8x8 character might have 20 set pixels out of 64. For a large scrolling message, this economy matters enormously. BC points to the font data; RLA shifts each bit into the carry flag to determine on or off.
 
+![Dotfield scroller prototype — each character rendered as individual pixels bouncing on a sine wave, producing the classic demoscene text effect](../../build/screenshots/proto_ch10_dotfield.png)
+
 ### Stack-Based Address Tables
 
 In a conventional scroller, each pixel's screen position is calculated from (x, y) coordinates using the Spectrum's interleaved address formula. That calculation involves shifts, masks, and lookups. Doing it for thousands of pixels per frame would consume the entire budget.

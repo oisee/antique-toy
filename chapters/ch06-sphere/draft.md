@@ -122,6 +122,8 @@ The generated code block is then called directly. The CPU executes the instructi
 
 The code generation pass itself is not free, but it runs once per frame (or once per rotation step), while the generated inner loop runs hundreds of times. The amortized cost is negligible.
 
+![Texture-mapped sphere prototype — skip tables encode spherical projection, runtime code generation emits pixel sequences](../../build/screenshots/proto_ch06_sphere.png)
+
 ## What Dark Knew: Spectrum Expert and the Building Blocks
 
 There is a detail in this story that transforms it from a technical curiosity into a narrative arc. Dark --- the coder behind Illusion's sphere effect --- is the same Dark who wrote the *Programming Algorithms* articles in Spectrum Expert #01, published in 1997.

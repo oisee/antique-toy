@@ -91,6 +91,8 @@ The programmer pays the price.
 
 ## The Bit Layout: Decoding (x, y) into an Address
 
+![ZX Spectrum screen memory layout — interleaved thirds with colour-coded address bit mapping](../../build/screenshots/proto_ch02_screen_layout.png)
+
 To understand the interleave precisely, look at how the Y coordinate maps into the 16-bit screen address. Consider a pixel at column `x` (0--255) and row `y` (0--191). The byte containing that pixel is at:
 
 ```text

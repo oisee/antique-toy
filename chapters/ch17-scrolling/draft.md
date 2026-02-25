@@ -145,6 +145,8 @@ For 192 rows: 192 x 670 = **128,640 T-states**. That is **179% of a frame**.
 
 A full-screen horizontal pixel scroll by one pixel does not fit in a single frame using RL chains. And this is *just the shifting* -- we have not drawn any new content on the right edge.
 
+![Horizontal scrolling prototype — tiled play area with byte-level shift visualisation showing how RL chain propagates the carry bit across adjacent bytes](../../build/screenshots/proto_ch17_scrolling.png)
+
 ### The Full Budget Calculation
 
 Let us lay out the complete per-row cost with all the overhead of navigating the interleaved screen:

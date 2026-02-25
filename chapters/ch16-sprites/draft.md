@@ -98,6 +98,8 @@ The drawing algorithm for each byte is:
 
 The result: the sprite appears on screen with transparent areas showing the background through. No XOR artifacts. No inverted pixels. Clean, professional-looking sprites.
 
+![AND+OR sprite compositing — the mask punches a transparent hole in the background (AND), then sprite data fills it (OR), preserving surrounding pixels at bit level](../../build/screenshots/proto_ch16_sprites.png)
+
 ### Data format
 
 For a 16x16 sprite, each row contains 4 bytes: mask-left, graphic-left, mask-right, graphic-right. The mask byte has `1` for transparent pixels and `0` for opaque pixels (because ANDing with 1 preserves the background, ANDing with 0 clears it). Total data per sprite: 16 rows x 4 bytes = 64 bytes.

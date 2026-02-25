@@ -17,6 +17,8 @@ The trick is obvious once you see it: if you change the attribute byte between r
 
 This is multicolor. It has been known since at least the early 2000s, when the Russian ZX magazine Black Crow published an algorithm and example code in its fifth issue. But for years, multicolor remained a curiosity --- impressive in demos, impractical in games, because the CPU spent so many T-states changing attributes that nothing was left for game logic.
 
+![Normal 8x8 attributes vs multicolour 8x2 beam-racing — the right panel shows how rewriting attributes between scanlines multiplies colour resolution](../../build/screenshots/proto_ch08_multicolor.png)
+
 Then DenisGrachev figured out how to make games with it.
 
 ---
