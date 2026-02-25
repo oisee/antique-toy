@@ -290,6 +290,14 @@ def run_pandoc(args, label):
                 print(f"  [warn] {line}")
 
 
+def _mermaid_filter():
+    """Return pandoc mermaid filter args if available."""
+    result = subprocess.run(["which", "mermaid-filter"], capture_output=True)
+    if result.returncode == 0:
+        return ["-F", "mermaid-filter"]
+    return []
+
+
 def _copy_stable(out, base, ext):
     """Copy build output to stable name: book-a4-v9-ES.pdf."""
     import shutil
@@ -306,7 +314,7 @@ def build_pdf_a4(meta, combined, vs, vtag, lang_suffix=""):
         "--pdf-engine=lualatex",
         "-V", "fontsize=11pt",
         "-V", "geometry=a4paper, margin=1in",
-    ], f"A4 PDF → {out.name}")
+    ] + _mermaid_filter(), f"A4 PDF → {out.name}")
     _copy_stable(out, f"book-a4-{vtag}{lang_suffix}", ".pdf")
     return out
 
@@ -319,7 +327,7 @@ def build_pdf_a5(meta, combined, vs, vtag, lang_suffix=""):
         "--pdf-engine=lualatex",
         "-V", "fontsize=10pt",
         "-V", "geometry=a5paper, top=15mm, bottom=15mm, left=18mm, right=15mm",
-    ], f"A5 PDF → {out.name}")
+    ] + _mermaid_filter(), f"A5 PDF → {out.name}")
     _copy_stable(out, f"book-a5-{vtag}{lang_suffix}", ".pdf")
     return out
 
@@ -330,7 +338,7 @@ def build_epub(meta, combined, vs, vtag, lang_suffix=""):
         str(meta), str(combined),
         "-o", str(out),
         "--epub-chapter-level=1",
-    ], f"EPUB → {out.name}")
+    ] + _mermaid_filter(), f"EPUB → {out.name}")
     _copy_stable(out, f"book-{vtag}{lang_suffix}", ".epub")
     return out
 

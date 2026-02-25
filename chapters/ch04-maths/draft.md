@@ -48,7 +48,7 @@ Study this carefully. The `RRA` instruction shifts A right, but also pushes A's 
 
 The cost is 196 to 204 T-states depending on how many multiplier bits are set -- each set bit costs one extra `ADD A,B` (4 T-states). The example at `chapters/ch04-maths/examples/multiply8.a80` shows a variant returning the result in HL.
 
-![8-bit multiply routine output — result of shift-and-add multiplication displayed on screen](../../build/screenshots/ch04_multiply8.png)
+<!-- Screenshot removed: result is border colour only, not capturable as static image -->
 
 For 16x16 producing a 32-bit result, Dark's MULU224 runs in 730 to 826 T-states. In practice, demoscene 3D engines avoid full 16x16 multiplies by keeping coordinates in 8.8 fixed-point and using 8x8 multiplies where possible.
 

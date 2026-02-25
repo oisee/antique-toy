@@ -47,13 +47,13 @@ ISR_STUB = BUILD_DIR / "isr_stub.bin"
 EXAMPLES = [
     # Ch01
     ("chapters/ch01-thinking-in-cycles/examples/timing_harness.a80", {
-        "frames": 20, "attrs": True,
-        "note": "Border-colour timing harness",
+        "frames": 20, "attrs": True, "set": "EI", "border": True,
+        "note": "Border-colour timing harness (needs EI for HALT, border for stripes)",
     }),
     # Ch02
     ("chapters/ch02-screen-as-puzzle/examples/fill_screen.a80", {
-        "frames": 5,
-        "note": "Screen fill with alternating bytes",
+        "frames": 5, "set": "EI", "border": True,
+        "note": "Checkerboard screen fill (needs EI for HALT)",
     }),
     ("chapters/ch02-screen-as-puzzle/examples/pixel_demo.a80", {
         "frames": 10, "attrs": True,
@@ -61,17 +61,17 @@ EXAMPLES = [
     }),
     # Ch03
     ("chapters/ch03-demoscene-toolbox/examples/push_fill.a80", {
-        "frames": 10, "attrs": True,
-        "note": "PUSH-based screen fill",
+        "frames": 10, "attrs": True, "set": "EI", "border": True,
+        "note": "PUSH-based screen fill (needs EI for HALT, border for timing stripe)",
     }),
     ("chapters/ch03-demoscene-toolbox/examples/ldi_chain.a80", {
-        "frames": 50, "attrs": True,
-        "note": "LDI chain vs LDIR comparison",
+        "frames": 50, "attrs": True, "set": "EI", "border": True,
+        "note": "LDI chain vs LDIR comparison (needs EI for HALT, border for stripes)",
     }),
     # Ch04
     ("chapters/ch04-maths/examples/multiply8.a80", {
-        "frames": 10, "attrs": True,
-        "note": "8-bit multiply routine",
+        "frames": 10, "attrs": True, "set": "EI", "border": True,
+        "note": "8-bit multiply routine (border = result AND 7)",
     }),
     ("chapters/ch04-maths/examples/prng.a80", {
         "frames": 30, "attrs": True,

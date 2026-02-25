@@ -1,8 +1,11 @@
 ; Chapter 2: Fill Screen + Attributes
-; Fills pixel area with a pattern, then sets attributes to white on blue.
+; Fills pixel area with a checkerboard, then sets attributes to white on blue.
 ;
-; Assembles with: mza --target zxspectrum
-;                 sjasmplus
+; Checkerboard trick: on the Spectrum, incrementing H moves down one
+; pixel line within a character cell.  H bit 0 tells us odd vs even
+; pixel line.  So: fill everything with $55, then XOR odd lines to $AA.
+;
+; Assembles with: sjasmplus
 
     ORG $8000
 
@@ -12,20 +15,38 @@ SCRLEN  EQU 6144        ; pixel bytes (256*192/8)
 ATTLEN  EQU 768         ; attribute bytes (32*24)
 
 start:
-    ; --- Fill pixels with checkerboard pattern ---
+    ; --- Pass 1: fill all pixels with $55 (01010101) ---
     ld   hl, SCREEN
     ld   de, SCREEN + 1
+    ld   (hl), $55
     ld   bc, SCRLEN - 1
-    ld   (hl), $55       ; checkerboard: 01010101
     ldir
 
-    ; --- Fill attributes: white ink on blue paper ---
-    ; Attribute byte: flash=0, bright=1, paper=001 (blue), ink=111 (white)
+    ; --- Pass 2: XOR odd pixel lines to get $AA ---
+    ; Odd pixel lines have H bit 0 set: $41xx, $43xx, $45xx, $47xx,
+    ; $49xx, $4Bxx, $4Dxx, $4Fxx, $51xx, $53xx, $55xx, $57xx
+    ; That's 12 pages x 256 bytes = 3072 bytes = half the screen.
+    ld   h, $41           ; first odd pixel line
+.xor_page:
+    ld   l, 0
+.xor_byte:
+    ld   a, (hl)
+    xor  $FF              ; $55 → $AA
+    ld   (hl), a
+    inc  l
+    jr   nz, .xor_byte
+    inc  h                 ; next page
+    inc  h                 ; skip even line (step by 2)
+    ld   a, h
+    cp   $58               ; past screen area?
+    jr   c, .xor_page
+
+    ; --- Fill attributes: bright white ink on blue paper ---
     ; = 01 001 111 = $4F
     ld   hl, ATTRS
     ld   de, ATTRS + 1
-    ld   bc, ATTLEN - 1
     ld   (hl), $4F
+    ld   bc, ATTLEN - 1
     ldir
 
     ; --- Border: blue ---
