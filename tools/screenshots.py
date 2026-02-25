@@ -4,12 +4,16 @@
 Compiles each .a80 example with sjasmplus, runs it in mzx (headless),
 and captures a PNG screenshot at the specified frame.
 
+Also generates build/screenshots/manifest.json linking each screenshot
+to its source file, chapter, and capture parameters.
+
 Usage:
     python3 tools/screenshots.py                  # all examples
     python3 tools/screenshots.py --chapter 9      # just ch09
     python3 tools/screenshots.py --name plasma    # just plasma
     python3 tools/screenshots.py --list           # show config
     python3 tools/screenshots.py --border         # include border
+    python3 tools/screenshots.py --manifest-only  # regenerate manifest without screenshots
 """
 
 import argparse
@@ -183,6 +187,60 @@ EXAMPLES = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Browser prototype screenshots (Chrome headless)
+# ---------------------------------------------------------------------------
+# Each entry: (html_path_relative, {options})
+#   chapter: int — chapter number (for id prefix)
+#   note: str — description
+#   needs_raf: bool — uses requestAnimationFrame (won't render in headless)
+
+PROTOTYPES = [
+    ("verify/ch02_screen_layout.html", {
+        "chapter": 2,
+        "note": "ZX Spectrum screen memory layout visualiser",
+    }),
+    ("verify/ch05_3d.html", {
+        "chapter": 5,
+        "note": "3D wireframe rotation prototype",
+        "needs_raf": True,
+    }),
+    ("verify/ch06_sphere.html", {
+        "chapter": 6,
+        "note": "Sphere outline rendering prototype",
+    }),
+    ("verify/ch07_rotozoomer.html", {
+        "chapter": 7,
+        "note": "Rotozoomer texture mapping prototype",
+        "needs_raf": True,
+    }),
+    ("verify/ch08_multicolor.html", {
+        "chapter": 8,
+        "note": "Multicolour beam-racing prototype",
+    }),
+    ("verify/ch09_plasma.html", {
+        "chapter": 9,
+        "note": "Attribute plasma effect prototype",
+    }),
+    ("verify/ch10_dotfield.html", {
+        "chapter": 10,
+        "note": "Bouncing dotfield scroller prototype",
+    }),
+    ("verify/ch16_sprites.html", {
+        "chapter": 16,
+        "note": "XOR/OR/AND sprite rendering prototype",
+    }),
+    ("verify/ch17_scrolling.html", {
+        "chapter": 17,
+        "note": "Horizontal pixel scrolling prototype",
+    }),
+    ("verify/torus.html", {
+        "chapter": 20,
+        "note": "Wireframe torus rotation prototype (Antique Toy demo)",
+    }),
+]
+
+
 def ensure_preloads():
     """Create pre-built binary files for screenshot pipeline."""
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
@@ -253,6 +311,74 @@ def get_chapter_num(src_path):
     return int(m.group(1)) if m else 0
 
 
+def build_manifest():
+    """Generate manifest.json linking screenshots to their sources."""
+    manifest = {}
+
+    # mzx screenshots
+    for rel_path, opts in EXAMPLES:
+        src = ROOT / rel_path
+        ch = get_chapter_num(src)
+        sid = f"ch{ch:02d}_{src.stem}"
+        png = SCREENSHOT_DIR / f"{sid}.png"
+
+        entry = {
+            "type": "mzx",
+            "id": sid,
+            "source": rel_path,
+            "chapter": ch,
+            "png": f"build/screenshots/{sid}.png",
+            "exists": png.exists(),
+            "frames": opts.get("frames", 50),
+            "model": opts.get("model", "48k"),
+            "border": opts.get("border", False),
+        }
+        if opts.get("skip"):
+            entry["skip"] = True
+            entry["skip_reason"] = opts.get("note", "")
+        if opts.get("note"):
+            entry["note"] = opts["note"]
+        if opts.get("set"):
+            entry["mzx_set"] = opts["set"]
+        if opts.get("attrs"):
+            entry["attrs"] = True
+
+        manifest[sid] = entry
+
+    # Browser prototypes
+    for rel_path, opts in PROTOTYPES:
+        src = ROOT / rel_path
+        ch = opts["chapter"]
+        stem = src.stem
+        sid = f"proto_{stem}"
+        png = SCREENSHOT_DIR / f"{sid}.png"
+
+        entry = {
+            "type": "browser",
+            "id": sid,
+            "source": rel_path,
+            "chapter": ch,
+            "png": f"build/screenshots/{sid}.png",
+            "exists": png.exists(),
+            "tool": "chrome-headless",
+        }
+        if opts.get("needs_raf"):
+            entry["needs_raf"] = True
+            entry["note"] = opts.get("note", "") + " (needs manual capture — rAF doesn't fire in headless)"
+        elif opts.get("note"):
+            entry["note"] = opts["note"]
+
+        manifest[sid] = entry
+
+    manifest_path = SCREENSHOT_DIR / "manifest.json"
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+
+    print(f"\nManifest: {manifest_path} ({len(manifest)} entries)")
+    return manifest_path
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Automated screenshot generator for book examples",
@@ -266,7 +392,15 @@ def main():
     parser.add_argument("--force", action="store_true", help="Regenerate even if PNG exists")
     parser.add_argument("--include-skipped", action="store_true",
                         help="Include audio-only examples")
+    parser.add_argument("--manifest-only", action="store_true",
+                        help="Regenerate manifest.json without taking screenshots")
     args = parser.parse_args()
+
+    # Manifest-only mode: just regenerate JSON and exit
+    if args.manifest_only:
+        SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        build_manifest()
+        return
 
     # Check tools
     for tool in [SJASMPLUS, MZX]:
@@ -347,6 +481,9 @@ def main():
 
     print(f"\n---")
     print(f"{ok} OK, {fail} failed, {skip} skipped")
+
+    # Always regenerate manifest after screenshots
+    build_manifest()
 
     sys.exit(1 if fail else 0)
 

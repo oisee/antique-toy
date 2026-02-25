@@ -337,6 +337,7 @@ def build_epub(meta, combined, vs, vtag, lang_suffix=""):
     run_pandoc([
         str(meta), str(combined),
         "-o", str(out),
+        "--from", "markdown-tex_math_dollars",
         "--epub-chapter-level=1",
     ] + _mermaid_filter(), f"EPUB → {out.name}")
     _copy_stable(out, f"book-{vtag}{lang_suffix}", ".epub")
