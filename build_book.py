@@ -176,6 +176,24 @@ def preprocess_listings(text, base_dir=ROOT):
     return '\n'.join(out)
 
 
+def strip_fence_tags(text):
+    """Strip everything after the language identifier on code fence lines.
+
+    Our source .md files use ```z80 id:ch01_xxx (and other tags) which pandoc
+    doesn't recognise — it expects ```z80 or ```{.z80 #id}. Without this fix,
+    pandoc treats the fence as inline code and collapses the block into one line.
+
+    Converts: ```z80 id:ch01_xxx src:path lines:1..5
+    To:        ```z80
+    """
+    return re.sub(
+        r'^(```\w+)\s+.+$',
+        r'\1',
+        text,
+        flags=re.MULTILINE,
+    )
+
+
 def combine_chapters(chapter_glob=CHAPTER_GLOB, extra_files=EXTRA_FILES,
                      appendix_glob=APPENDIX_GLOB):
     """Concatenate all chapters + extras into a single markdown string."""
@@ -382,6 +400,12 @@ def main():
 
     # Resolve src:-tagged code blocks with fresh source content
     text = preprocess_listings(text)
+
+    # Strip custom fence tags (id:, src:, lines:) so pandoc sees clean fences
+    text = strip_fence_tags(text)
+
+    # Fix image paths: chapters use ../../build/ which breaks in combined.md
+    text = text.replace('../../build/', 'build/')
 
     # Append changelog appendix (EN only, manually maintained CHANGELOG.md)
     if args.lang == "en" and not args.no_changelog and CHANGELOG_FILE.exists():
