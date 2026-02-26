@@ -24,11 +24,11 @@ Consider the simplest possible inner loop: clearing 256 bytes of memory.
 
 Each iteration costs 7 + 6 + 13 = 26 T-states to store a single byte. Only 7 of those T-states do the work --- the rest is overhead. That is 73% waste. For 256 bytes: 256 x 26 - 5 = 6,651 T-states. On a machine where you have 71,680 T-states per frame, those wasted T-states hurt.
 
-### Unrolling: trade ROM for speed
+### Unrolling: trade RAM for speed
 
 The solution is brutal and effective: write out the loop body N times and delete the loop.
 
-```z80 id:ch03_unrolling_trade_rom_for_speed
+```z80 id:ch03_unrolling_trade_ram_for_speed
 ; Unrolled version: clear 256 bytes at (HL)
     xor  a               ; 4 T
     ld   (hl), a         ; 7 T
@@ -42,7 +42,7 @@ The solution is brutal and effective: write out the loop body N times and delete
 
 Each byte now costs 7 + 6 = 13 T-states. No DJNZ. No loop counter. Total: 256 x 13 = 3,328 T-states --- half the looped version.
 
-The cost is code size: 256 repetitions occupy 512 bytes vs. 7 for the loop. You are trading ROM for speed.
+The cost is code size: 256 repetitions occupy 512 bytes vs. 7 for the loop. You are trading RAM for speed.
 
 **When to unroll:** Inner loops that execute thousands of times per frame --- screen clearing, sprite drawing, data copying.
 
@@ -239,7 +239,7 @@ For 256 bytes:
 - 256 x LDI: 256 x 16 = 4,096 T-states
 - Savings: 1,275 T-states (24%)
 
-A chain of individual LDI instructions is just 256 repetitions of the two-byte opcode `$ED $A0`. That is 512 bytes of code to save 24% --- the same ROM-for-speed trade-off as loop unrolling.
+A chain of individual LDI instructions is just 256 repetitions of the two-byte opcode `$ED $A0`. That is 512 bytes of code to save 24% --- the same RAM-for-speed trade-off as loop unrolling.
 
 ### When LDI chains shine
 

@@ -111,7 +111,7 @@ These techniques improve compression ratio by restructuring data before feeding 
 
 ## Minimal RLE Decompressor
 
-The simplest useful compressor. Under 30 bytes. Suitable for 256-byte intros or data with long runs of identical bytes. See Chapter 14 for a full discussion.
+The simplest useful compressor. Only 12 bytes of code. Suitable for 256-byte intros or data with long runs of identical bytes. See Chapter 14 for a full discussion.
 
 ```z80
 ; Minimal RLE decompressor
@@ -131,8 +131,9 @@ rle_decompress:
         inc     de              ;                         6T
         djnz    .fill           ; loop B times            13T/8T
         jr      rle_decompress  ; next pair               12T
-; Total: 23 bytes of code
-; Speed: ~26 T-states per output byte (within runs)
+; Total: 12 bytes of code
+; Speed: ~26 T-states per output byte (within long runs)
+;        + 46T overhead per [count, value] pair
 ```
 
 **Encoding tool** (Python one-liner for simple RLE):
@@ -153,6 +154,8 @@ def rle_encode(data):
 ```
 
 This naive RLE expands data with no runs (worst case: 2 bytes per 1 byte of input). For mixed data, use escape-byte RLE: a special byte signals a run, and all other bytes are literals. Or just use ZX0.
+
+**Transposition trick.** RLE benefits dramatically from column-major data layout. If you have a 32×24 attribute block where each row varies but columns are often constant, transposing the data (storing all column 0 values, then column 1, etc.) creates long runs that RLE compresses well. The trade-off: the Z80 must un-transpose the data after decompression, which costs an extra pass (~13 T-states per byte for a simple nested-loop copy). Count the total cost (decompressor code + un-transpose code + compressed data) against ZX0 (decompressor + compressed data, no transform needed) to see which wins for your specific data.
 
 ---
 

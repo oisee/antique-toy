@@ -58,6 +58,7 @@ This is the safest approach. Assembler behaviour can change between versions -- 
 | `--sym=FILE` | Write a symbol file (for debuggers) | `sjasmplus --sym=output.sym main.a80` |
 | `--fullpath` | Show full file paths in error messages | Useful with VS Code problem matcher |
 | `--msg=war` | Suppress info messages, show only warnings and errors | Cleaner build output |
+| `--syntax=abf` | Enable all syntax features (A as accumulator alias, brackets for indirection, full fake instructions) | Recommended for beginners; allows `add a, b` alongside `add b` |
 
 A typical build command for a chapter example:
 
@@ -115,7 +116,7 @@ Set up a build task so Ctrl+Shift+B compiles your current file. Create `.vscode/
         "owner": "z80",
         "fileLocation": "absolute",
         "pattern": {
-          "regexp": "^(.*)\\((\\d+)\\):\\s+(error|warning):\\s+(.*)$",
+          "regexp": "^(.*)\\((\\d+)\\):\\s+(error|warning)[^:]*:\\s+(.*)$",
           "file": 1,
           "line": 2,
           "severity": 3,

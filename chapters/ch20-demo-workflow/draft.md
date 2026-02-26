@@ -223,126 +223,24 @@ sync_table:
 
 The engine increments a frame counter each VBlank, compares it against the next entry in the table, and dispatches when the frame arrives. This is the simplest possible sync mechanism. It is also what every ZX Spectrum demo ultimately runs --- regardless of how those frame numbers were determined.
 
-The question is: how do you *find* the right frame numbers?
+The question is: how do you *find* the right frame numbers? Five approaches exist, from the simplest to the most sophisticated. (Appendix J covers each tool's full workflow, export pipelines, and step-by-step recipes.)
 
 **Approach 1: Vortex Tracker + manual timing.** Open your .pt3 in Vortex Tracker II. The bottom-right corner shows the current position (pattern, row, frame). Play the tune, note the frame numbers where beats, accents, and phrase transitions occur. Write them into your sync table. Rebuild, test, adjust. This is the approach most ZX demosceners use, including Kolnogorov (Vein): "Vortex + video editor. In Vortex the frame is shown in the bottom-right corner --- I looked at which frames to hook onto, created a table with `dw frame, action` entries, and synced from that."
 
 The advantage: you hear the music and see the numbers simultaneously. The disadvantage: iterating is slow --- every change requires rebuilding the demo and watching it from the beginning.
 
-**Approach 2: Video editor as sync planner.** diver4d's GABBA workflow (Section 20.3.2) recognised that frame-level synchronisation is a video editing problem. Capture each effect running in the emulator as a video clip. Import the clips and the music track into a video editor. Lay the clips on the timeline, scrub to find the perfect cut points, read off the frame numbers. Then write the sync table.
+**Approach 2: Video editor as sync planner.** diver4d's GABBA workflow recognised that frame-level synchronisation is a video editing problem. Capture each effect as a video clip, import the clips and music into a video editor (DaVinci Resolve, Blender VSE), scrub to find the perfect cut points, and read off the frame numbers. Kolnogorov: "I exported effect clips to video, assembled them in a video editor, attached the music track, and looked at what order the effects work best in, noting the frames where events should happen." The important word is *looked* --- this is a visual, intuitive process. (Appendix J.2--J.3 covers Blender VSE, DaVinci Resolve, and the GABBA workflow in detail.)
 
-**DaVinci Resolve** (free version) is the natural choice: it handles both editing and timeline markers. Place markers at sync points, export them as an Edit Decision List (.edl) or CSV --- you get a clean list of `(frame_number, label)` pairs ready for conversion to assembly. **Blender's Video Sequence Editor** (VSE) works similarly and is fully open-source.
+**Approach 3: GNU Rocket.** The standard sync tool across the PC and Amiga demoscenes --- a tracker-like editor where columns are named parameters and rows are time steps. You set keyframes with interpolation (step, linear, smooth, ramp) and edit live while the demo runs via TCP. A Z80 client is impractical, but the workflow transfers: design sync curves in Rocket, export keyframes, convert to Z80 `dw`/`db` tables with a Python script. (Appendix J.2 describes the full Rocket → Z80 pipeline; Appendix J.7 provides a step-by-step recipe.)
 
-The key insight from Kolnogorov: "I exported effect clips to video, assembled them in a video editor, attached the music track, and looked at what order the effects work best in, noting the frames where events should happen." The important word is *looked* --- this is a visual, intuitive process. You *see* where the beat hits the waveform, you *see* where the effect transition feels right, and you read the number. No calculations, no BPM-to-frame conversions.
+**Approach 4: Blender for pre-visualisation.** For complex demos, storyboard effects as colour-coded strips on the VSE timeline with the music track, animate placeholder parameters in the Graph Editor, then export frame numbers and keyframe values via Blender's Python API directly as Z80-ready data. (Appendix J.2--J.3 covers both the VSE and Graph Editor workflows.)
 
-**Approach 3: GNU Rocket (PC/Amiga demoscene standard).** On platforms with enough RAM and a TCP stack, GNU Rocket is the standard sync tool. It is a tracker-like editor where columns are named parameters (`camera:x`, `fade:alpha`, `effect:id`) and rows are time steps. You set keyframes and choose interpolation (step, linear, smooth, ramp). The demo connects to the editor via TCP during development; you edit values live while the demo runs. For release, keyframes export to compact binary files.
+**Approach 5: Game engines as data generators.** Unity and Unreal are overkill as *demo engines* but perfect as *data generators*: VR motion capture (draw trajectories with a controller), GPU particle simulation (export positions per frame), and shader prototyping (iterate an algorithm at full speed, then translate to Z80). Blender covers most of this for non-VR work. The export pipeline is always the same: float → 8-bit fixed-point → delta-encode → transpose → compress → INCBIN. (Appendix J.4 covers the full pipeline with comparison tables and a step-by-step VR capture recipe.)
 
-Rocket is used across the PC and Amiga scenes (Logicoma, Noice, Loonies, Adapt). It has been ported to C, C#, Python, Rust, and JavaScript. A Z80 client is not practical (TCP on a Spectrum?), but the *workflow concept* transfers directly: define sync parameters as interpolated curves, export them as data tables that the Z80 engine reads. The export format is trivially convertible to `dw`/`db` tables.
+> The PC demoscene has a parallel ecosystem of demo-making tools built on the same philosophy of procedural generation and extreme compression: Farbrausch's Werkkzeug/kkrunchy (open-sourced 2012), TiXL (node-based motion graphics, MIT), Bonzomatic (live shader coding), and music synths like Sointu and WaveSabre. None target Z80 directly, but the thinking is identical --- the ZX Spectrum equivalent of Werkkzeug's node graph is your Python build script that generates lookup tables and emits INCBIN directives. Appendix J.5 covers the history and Appendix J.6 surveys the music tools, including Furnace --- a modern tracker with direct AY-3-8910 support.
 
-For the ZX Spectrum specifically, the Rocket export workflow would look like:
-
-1. Design sync tracks in Rocket (on PC), scrubbing with the music
-2. Export keyframe data as binary
-3. Convert to Z80 assembly with a Python script: quantise floats to 8-bit or 16-bit fixed-point, emit `db`/`dw` tables
-4. INCBIN the tables into the demo
-
-This gives you Rocket's interactive editing experience with the Spectrum's minimal runtime overhead. The Z80 code just reads a table --- no TCP, no floats, no complexity.
-
-**Approach 4: Blender for pre-visualisation.** For complex demos with many effects and transitions, storyboarding in Blender provides a planning layer above the sync table:
-
-- Create a Blender scene per demo effect (simple coloured rectangles or Grease Pencil sketches --- fidelity is irrelevant)
-- Lay them on the VSE timeline with the music track
-- Animate placeholder parameters in the Graph Editor (e.g., a "scroll_speed" property keyframed to match the music's energy)
-- Scrub, adjust, iterate until the pacing feels right
-- Export frame numbers and keyframe values via Blender's Python API:
-
-```python
-for fcurve in bpy.data.actions['SyncAction'].fcurves:
-    for kf in fcurve.keyframe_points:
-        print(f"dw {int(kf.co.x)}, {int(kf.co.y)}")
-```
-
-This outputs Z80-ready sync data directly. The Blender project becomes your storyboard, your sync reference, and your data pipeline in one file.
-
-**Approach 5: Game engines as data generators.** Unity and Unreal Engine are not overkill for ZX Spectrum demos --- they are overkill as *demo engines*, but perfect as *data generators*. The distinction matters.
-
-Kolnogorov's precalculated vector animations are a case in point: the 3D geometry is computed offline (minutes of calculation are acceptable for a 4K intro), the resulting vertex trajectories are stored as compressed tables, and the Spectrum plays them back at 50fps. The question is: where do you compute those trajectories?
-
-A game engine provides capabilities that no other tool matches:
-
-- **VR motion capture** --- draw a trajectory in the air with a VR controller. The organic movement you get from a hand gesture is impossible to replicate with mathematical formulas. Unity's XR Toolkit or Unreal's OpenXR integration captures controller position at 90Hz; downsample to 50fps, quantise to 8-bit, delta-encode, compress. A 5-second hand-drawn trajectory becomes 250 bytes of packed data that *feels alive* on the Spectrum.
-- **GPU particle systems** --- prototype a particle fountain in Unreal's Niagara or Unity's VFX Graph, then export the particle positions per frame. On the Spectrum, you plot those positions as dots or attribute cells. The physics simulation that would take months to implement in Z80 runs in milliseconds on a GPU.
-- **Shader prototyping** --- write a plasma, tunnel, or rotozoomer as a fragment shader in Unity's ShaderGraph. Iterate in real-time until it looks right. Then translate the algorithm to Z80, knowing exactly what the target visual should be.
-
-The pipeline:
-
+<!-- figure: ch20_vortex_tracker_frame_counter -->
 ```text
-Unity/Unreal (prototype & capture)
-  → Export: CSV or binary (x, y, z per frame)
-    → Python: float → 8-bit fixed-point, delta-encode, transpose columns
-      → packbench analyze: verify entropy, suggest transforms
-        → zx0/pletter: compress
-          → sjasmplus: INCBIN into demo
-```
-
-Blender covers most of this (Geometry Nodes for procedural trajectories, Grease Pencil for hand-drawn animation, Python API for export). For pure data generation without VR, Blender is sufficient and fully open-source. Unity and Unreal add VR capture and GPU particle systems --- use them when you need those specific capabilities.
-
-> **Sidebar: The PC demoscene toolchain.** The PC demoscene has a parallel ecosystem of demo-making tools. Farbrausch open-sourced their entire toolchain in 2012 (github.com/farbrausch/fr_public): Werkkzeug (node-based procedural demo tool used for .the .product and .kkrieger), kkrunchy (64K exe packer), V2 synthesizer (softsynth for intros). The spiritual successor is TiXL (formerly Tooll3) by Still --- a node-based real-time motion graphics tool, open-source under MIT (github.com/tixl3d/tixl). For live shader coding, Bonzomatic by Gargaj powers every Shader Showdown competition. For music, Sointu (MIT, cross-platform 4K synth) and WaveSabre (MIT, 64K synth by Logicoma) are the modern standards.
->
-> None of these tools work for Z80 development directly --- they target x86/GPU platforms. But the *philosophy* is identical: procedural generation, extreme compression, creative constraint. The ZX Spectrum equivalent of Werkkzeug's node graph is your Python build script that generates lookup tables, compresses data, and emits INCBIN directives. The equivalent of Sointu is AY-beat (Chapter 13). Different tools, same thinking.
-
-<!-- figure: ch20_sync_tools_overview -->
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                    FIGURE: GNU Rocket sync editor                   │
-│                                                                     │
-│  Tracker-like grid with named columns:                              │
-│  [camera:x]  [camera:y]  [fade:alpha]  [effect:id]                 │
-│                                                                     │
-│  Rows = frames/time steps. Keyframes shown as bright cells.         │
-│  Between keyframes: interpolation curves (step/linear/smooth/ramp)  │
-│  visualised as lines connecting values.                             │
-│                                                                     │
-│  Bottom: transport controls (play, pause, scrub).                   │
-│  Connected to running demo via TCP — edit live.                     │
-│                                                                     │
-│  Screenshot needed: build GNU Rocket from source, create example    │
-│  project with 4 tracks, capture at a point showing all 4            │
-│  interpolation modes.                                               │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│                 FIGURE: Blender VSE — demo storyboard               │
-│                                                                     │
-│  Timeline with 4-5 colour-coded strips (one per effect):            │
-│  [TORUS: blue] [PLASMA: green] [DOTSCROLL: yellow] [ROTOZOOM: red]  │
-│                                                                     │
-│  Below: audio waveform strip (music.wav)                            │
-│  Vertical markers (green diamonds) at sync points.                  │
-│  Playhead at a transition point between effects.                    │
-│                                                                     │
-│  Screenshot needed: create Blender project with dummy strips +      │
-│  real AY music exported as WAV. Place ~8 markers at beat hits.      │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│              FIGURE: Blender Graph Editor — keyframe export         │
-│                                                                     │
-│  Graph with X = frame number, Y = parameter value.                  │
-│  3 curves: scroll_speed (smooth ease-in), fade_alpha (step at       │
-│  transitions), camera_z (linear ramp).                              │
-│                                                                     │
-│  Annotation showing the Python export:                              │
-│  for kf in fcurve.keyframe_points:                                  │
-│      print(f"dw {int(kf.co.x)}, {int(kf.co.y)}")                   │
-│                                                                     │
-│  Arrow pointing to resulting Z80 data:                              │
-│  dw 0, 0  /  dw 50, 128  /  dw 150, 255  /  ...                    │
-│                                                                     │
-│  Screenshot needed: same Blender project, switch to Graph Editor    │
-│  view with 3 animated custom properties.                            │
-└─────────────────────────────────────────────────────────────────────┘
-
 ┌─────────────────────────────────────────────────────────────────────┐
 │              FIGURE: Vortex Tracker II — frame counter              │
 │                                                                     │
@@ -359,6 +257,8 @@ Blender covers most of this (Geometry Nodes for procedural trajectories, Grease 
 │  mid-song position, capture with frame number visible.              │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+> *See Appendix J for pseudo-screenshots of GNU Rocket, Blender VSE, Blender Graph Editor, and TiXL, plus detailed tool descriptions and five step-by-step export recipes.*
 
 **The human touch.** Kolnogorov articulates a principle that all experienced demosceners understand but rarely state explicitly: "Even if we know the snare hits every 16 notes, and we flash the border every 16 notes --- it will look dead and robotic. The essence of sync is that it should be deliberately uneven and broken in places."
 
@@ -563,7 +463,7 @@ Your first entry is unlikely to place. Treat it as a learning exercise: the feed
 
 - **The standard toolchain** converges on sjasmplus (assembler), Unreal Speccy or Fuse (emulator), BGE or Multipaint (graphics), Ruby or Python scripts (conversion and code generation), ZX0 or hrust1opt (compression), and a Makefile (build automation). CI via GitHub Actions is increasingly common.
 
-- **Synchronisation** is the hardest part of a demo. The layered approach: determine frame numbers in Vortex Tracker or a video editor (DaVinci Resolve, Blender VSE), optionally plan interpolated parameter curves in GNU Rocket, export to Z80 `dw frame, action` tables. The final pass is always manual --- algorithmic sync feels robotic; human-placed sync follows phrases, not beats.
+- **Synchronisation** is the hardest part of a demo. The layered approach: determine frame numbers in Vortex Tracker or a video editor (DaVinci Resolve, Blender VSE), optionally plan interpolated parameter curves in GNU Rocket, export to Z80 `dw frame, action` tables. The final pass is always manual --- algorithmic sync feels robotic; human-placed sync follows phrases, not beats. (Appendix J covers all sync tools, data generation pipelines, and step-by-step export recipes.)
 
 - **Compo culture** centres on events like Chaos Constructions, DiHalt, Multimatograf, CAFe, and Revision. Entering your first compo requires choosing an appropriate event, following the rules, testing thoroughly, and submitting early.
 

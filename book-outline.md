@@ -394,6 +394,20 @@ A book that bridges two worlds: the hard-won wisdom of ZX Spectrum demoscene cod
 ### H: DivIDE/DivMMC and esxDOS API Reference
 - Automapping, RST $08 calls, file operations
 
+### I: Bytebeat and Algorithmic Music
+- Bytebeat formulas: `t*(t>>5|t>>8)` and beyond
+- From one-liners to structured compositions
+- Z80 implementation: runtime evaluation at sample rate
+- Floatbeat and granular extensions
+
+### J: Modern Tools for Retro Demo Production
+- Sync tools: GNU Rocket, Blender VSE, DaVinci Resolve, Vortex Tracker II
+- Pre-visualisation: Blender storyboarding, video editor rough-cuts, GABBA workflow
+- Data generators: Unity/Unreal VR capture, Blender Geometry Nodes, GPU particle export
+- PC demoscene toolchain history: Farbrausch (Werkkzeug, kkrunchy, V2) → TiXL, Bonzomatic, Crinkler
+- Music tools: Sointu, 4klang, WaveSabre, Oidos, Furnace (AY-3-8910 support)
+- Five practical recipes with step-by-step export pipelines
+
 ---
 
 ## Source Materials & Status

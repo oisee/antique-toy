@@ -24,7 +24,7 @@ Considera el bucle interno mas simple posible: borrar 256 bytes de memoria.
 
 Cada iteracion cuesta 7 + 6 + 13 = 26 T-states para almacenar un solo byte. Solo 7 de esos T-states hacen trabajo util --- el resto es sobrecarga. Eso es un 73% de desperdicio. Para 256 bytes: 256 x 26 - 5 = 6.651 T-states. En una maquina donde tienes 69.888 T-states por fotograma, esos T-states desperdiciados duelen.
 
-### Desenrollar: intercambiar ROM por velocidad
+### Desenrollar: intercambiar RAM por velocidad
 
 La solucion es brutal y efectiva: escribe el cuerpo del bucle N veces y elimina el bucle.
 
@@ -42,7 +42,7 @@ La solucion es brutal y efectiva: escribe el cuerpo del bucle N veces y elimina 
 
 Cada byte ahora cuesta 7 + 6 = 13 T-states. Sin DJNZ. Sin contador de bucle. Total: 256 x 13 = 3.328 T-states --- la mitad de la version con bucle.
 
-El coste es el tamano del codigo: 256 repeticiones ocupan 512 bytes frente a 7 del bucle. Estas intercambiando ROM por velocidad.
+El coste es el tamano del codigo: 256 repeticiones ocupan 512 bytes frente a 7 del bucle. Estas intercambiando RAM por velocidad.
 
 **Cuando desenrollar:** Bucles internos que se ejecutan miles de veces por fotograma --- borrado de pantalla, dibujado de sprites, copia de datos.
 
@@ -177,7 +177,7 @@ Para 256 bytes:
 - 256 x LDI: 256 x 16 = 4.096 T-states
 - Ahorro: 1.275 T-states (24%)
 
-Una cadena de instrucciones LDI individuales son solo 256 repeticiones del opcode de dos bytes `$ED $A0`. Eso son 512 bytes de codigo para ahorrar un 24% --- el mismo intercambio de ROM por velocidad que el desenrollado de bucles.
+Una cadena de instrucciones LDI individuales son solo 256 repeticiones del opcode de dos bytes `$ED $A0`. Eso son 512 bytes de codigo para ahorrar un 24% --- el mismo intercambio de RAM por velocidad que el desenrollado de bucles.
 
 ### Cuando las cadenas LDI brillan
 

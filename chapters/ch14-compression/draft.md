@@ -197,7 +197,9 @@ rle_decompress:
         jr      rle_decompress
 ```
 
-Under 30 bytes of decompressor code. RLE compresses beautifully when data contains long runs --- blank screens, solid-colour backgrounds, attribute fills. It compresses terribly on complex pixel art. The advantage over LZ: for size-coded intros where even ZX0's 70 bytes feel expensive, a custom RLE scheme frees precious space.
+Only 12 bytes of decompressor code. RLE compresses beautifully when data contains long runs --- blank screens, solid-colour backgrounds, attribute fills. It compresses terribly on complex pixel art. The advantage over LZ: for size-coded intros where even ZX0's 70 bytes feel expensive, a 12-byte RLE scheme frees precious space.
+
+RLE also benefits from **data transposition**: if your data is a 2D block (e.g., 32×24 attributes) where columns are more uniform than rows, transposing to column-major order creates longer runs. The cost is an un-transpose pass after decompression (~13 T-states/byte). Whether the total (12-byte decompressor + un-transpose code + compressed data) beats ZX0 (70-byte decompressor + compressed data) depends on your data --- measure both.
 
 ### Delta coding: store what changed
 

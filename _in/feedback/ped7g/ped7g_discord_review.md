@@ -34,13 +34,15 @@ Feedback won't be lost — goes into feedback/corrections folder as guardrails.
 Ped7g says: only IY is important (must point to sysvars or safe memory),
 shadow registers are preserved by ROM ISR.
 
-**Action needed**: Verify and fix in Appendix A.
+**Status**: ✅ Fixed (2026-02-26). Warning now correctly says IY is the concern,
+shadow registers are safe. Appendix A line ~447.
 
 ### 2. pixel_addr routine (p.464) — incomplete
 
 > Missing setting of upper 3 bits in L to Y:5:3
 
-**Action needed**: Check and fix pixel_addr in Appendix A.
+**Status**: ✅ Fixed (2026-02-26). Added Y[5:3] → L[7:5] computation using
+AND $38 + RLCA + RLCA, then OR with X/8 column bits. T-state cost updated to ~107T.
 
 ### 3. Quick Cost Comparisons — confusing
 
@@ -48,31 +50,35 @@ shadow registers are preserved by ROM ISR.
 > The two approaches are too different to compare without explanation.
 > Looks more like set/fill than copy.
 
-**Action needed**: Clarify or relabel in Appendix A.
+**Status**: ✅ Fixed (2026-02-26). Row relabeled to "Copy 1 byte (HL)→(DE)" with
+correct slow way: `LD A,(HL)`+`LD (DE),A`+`INC HL`+`INC DE` (26T, 4B) vs LDI (16T, 2B).
 
 ### 4. sjasmplus --syntax=abf
 
 > Would be happier if --syntax=abf was more promoted. More reasonable default
 > for people starting with sjasmplus.
 
-**Action needed**: Consider mentioning in Appendix D (dev setup).
+**Status**: ✅ Added (2026-02-26). Listed in Appendix D Key Flags table with
+description of what it enables.
 
 ### 5. VSCode problemMatcher regex
 
 > Current regex doesn't catch id-warnings like `warning[out0]`.
 > Suggested fix: `^(.*)\\((\\d+)\\):\\s+(error|warning)[^:]*:\\s+(.*)$`
 
-**Action needed**: Check and fix in Appendix D.
+**Status**: ✅ Fixed (2026-02-26). Applied Ped7g's suggested regex.
 
 ### 6. RLE routine in compression chapter
 
 > RLE routine offered for 256B intros is unnecessarily long and has
 > wrong T-states count.
 
-**Action needed**: Verify RLE routine in Ch.14 and Appendix C.
+**Status**: ✅ Fixed (2026-02-26). Code size corrected from "23 bytes" / "under 30 bytes"
+to correct "12 bytes". T-state annotation clarified with per-pair overhead note.
+Added transposition tip for improving RLE compression with 2D data.
 
 ### 7. Z80N instructions (Appendix F)
 
 > T-state counts "fly up and down" — possible first draft quality.
 
-**Action needed**: Full audit of Appendix F T-states.
+**Action needed**: Full audit of Appendix F T-states against official Next documentation.
