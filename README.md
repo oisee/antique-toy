@@ -12,7 +12,7 @@
 > 2. By Alice directly — where personal expertise is "good enough" or no available sources or in new areas
 > 3. Corrections and contributions on topic are welcome — PRs open
 
-**TL;DR:** 23 chapters + 9 appendices, ~184K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v0.8/book-a4-v0.8.pdf)
+**TL;DR:** 23 chapters + 10 appendices, ~184K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v17/book-a4-v17.pdf)
 
 This book lives on the **ZX Spectrum**. Most techniques -- DOWN_HL, attribute tricks, ULA timing, 128K bank juggling -- only make sense on this machine. That's where the demoscene is, and that's where the hard problems are.
 
@@ -30,7 +30,7 @@ Chapter 1 (T-state budgets) is the foundation -- read it first. Everything after
 
 | Language | Version | PDF | Words |
 |----------|---------|-----|-------|
-| English | **v0.8** | [book-a4-v0.8.pdf](https://github.com/oisee/antique-toy/releases/download/v0.8/book-a4-v0.8.pdf) | ~180K |
+| English | **v17** | [book-a4-v17.pdf](https://github.com/oisee/antique-toy/releases/download/v17/book-a4-v17.pdf) | ~184K |
 | Spanish | v0.6 | [book-a4_ES-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_ES-v0.6.pdf) | ~165K |
 | Russian | v0.6 | [book-a4_RU-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_RU-v0.6.pdf) | ~140K |
 | Ukrainian | v0.6 | [book-a4_UK-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_UK-v0.6.pdf) | ~142K |
@@ -39,7 +39,7 @@ English is the primary edition and always ahead. Translations catch up periodica
 
 ## Contents
 
-23 chapters + 9 appendices, ~184K words (English), 29 compilable assembly examples.
+23 chapters + 10 appendices, ~184K words (English), 29 compilable assembly examples.
 
 Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. **eZ80** = Agon Light 2.
 
@@ -82,6 +82,7 @@ Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. 
 | G: AY-3-8910 Register Reference | Done | Full register map, note table, TurboSound, envelope shapes |
 | H: Storage APIs | Done | TR-DOS (Beta Disk 128) and esxDOS (DivMMC) — ports, ROM API, code examples |
 | I: Bytebeat & AY-Beat | Done | Classic bytebeat, AY-beat engine, formula cookbook, music theory (scales, arpeggios, L-grammars), procedural sound |
+| J: Modern Tools | Done | ZX Spectrum Next IDE/SDK, DeZog, ZEsarUX, CSpect, ZX-Paintbrush, Multipaint, tools for modern retro dev |
 
 ## Building the book
 
@@ -169,6 +170,21 @@ The `tools/` directory contains Python utilities developed alongside the book:
 | `manage_listings.py` | Code listing extraction, injection, and verification across chapters |
 | `audit_tstates.py` | T-state annotation auditor — compares inline comments with computed cycle counts |
 | `autotag.py` | Semi-automatic code block classifier and tagger |
+
+## Changelog
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| **v17** | 2026-02-26 | Appendix J (modern tools), Ch.20 refactor (Unity/Unreal as data generators, Farbrausch sidebar), Ped7g feedback fixes |
+| v16 | 2026-02-26 | `packbench` tool, pre-compression data analysis, sync workflow |
+| v15 | 2026-02-25 | Screenshot manifest, EPUB TeX math fix |
+| v14 | 2026-02-25 | Code fence rendering fix, 28 illustrations, 10 JS prototypes |
+| v13 | 2026-02-24 | MinZ toolchain showcase, automated screenshot pipeline |
+| v12 | 2026-02-24 | Review fixes (12 HIGH, 19 MEDIUM), code block pipeline, mermaid LaTeX fix |
+| v11 | 2026-02-24 | Attribution fixes, MCC sidebar, ZXDN research |
+| v10 | 2026-02-24 | First numbered release, 29 examples compile |
+| v0.8 | 2026-02-24 | 9 appendices, AY-Beat engine, ~180K words |
+| v0.6 | 2026-02-23 | First translations (ES/RU/UK) |
 
 ## License
 
