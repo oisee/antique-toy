@@ -207,6 +207,109 @@ The Break Space Magen Fractal exploits this: 122 frames at 6,912 bytes each, com
 
 ---
 
+## Pre-Compression Data Preparation
+
+Delta coding is not the only trick. The compressor only sees the byte stream you feed it. If you restructure the data before compression, the same LZ algorithm can achieve dramatically different ratios. This is the art of pre-compression preparation --- and it is often more valuable than switching packers.
+
+### Entropy: the theoretical floor
+
+Shannon entropy measures the minimum bits per byte needed to represent your data, assuming an ideal encoder. A completely random byte stream has entropy 8.0 bits/byte --- incompressible. A file of identical bytes has entropy 0.0. Real Spectrum data falls somewhere between. A raw sine table might have entropy 6.75 bits/byte. Apply delta encoding, and it drops to 2.85. Apply the second derivative, and it falls to 1.49 --- an 78% reduction. That is the theoretical room the compressor has to work with.
+
+You do not need to compute entropy by hand. The formula is simple enough for a Python script:
+
+```python
+import math
+from collections import Counter
+
+def entropy(data: bytes) -> float:
+    """Shannon entropy in bits per byte. Lower = more compressible."""
+    counts = Counter(data)
+    n = len(data)
+    return -sum(c/n * math.log2(c/n) for c in counts.values())
+```
+
+Run this on your raw data, then on delta-encoded data, then on transposed data. The transform that gives the lowest entropy will compress best, regardless of which packer you use.
+
+### The second derivative: sinusoidal and quadratic data
+
+Delta encoding stores first differences: `d[i] = data[i] - data[i-1]`. For a linear ramp (0, 3, 6, 9...), the delta stream is constant (3, 3, 3...) --- perfect for compression. But sine waves and smooth curves produce a delta stream that itself varies smoothly. The second derivative (delta of delta) catches this:
+
+| Data type | Raw entropy | 1st derivative | 2nd derivative |
+|---|---|---|---|
+| Sine table (256B) | 6.75 | 2.85 | **1.49** |
+| Linear ramp | 7.00 | 0.00 | 0.00 |
+| Quadratic curve | 6.80 | 3.20 | **0.00** |
+| Random bytes | 8.00 | 8.00 | 8.00 |
+
+The second derivative of a quadratic function is a constant. This is not abstract calculus --- it is the difference between 6.80 and 0.00 bits per byte. A 256-byte quadratic lookup table, second-derivative encoded, compresses to almost nothing.
+
+Here is the creative insight: sinusoidal decay and quadratic decay are often visually indistinguishable in a demo effect. If you are animating a particle that slows down, the audience cannot tell whether you used `sin(t)` or `at² + bt + c`. But the compressor can: the quadratic version has a perfectly linear first derivative and a constant second derivative. If your animation can tolerate a quadratic approximation, you save bytes not by switching compressors, but by switching curves.
+
+### Transposition: column-major for tabular data
+
+Demoscene data is often tabular --- 3D vertex tables (X, Y, Z per vertex), animation keyframes (angle, radius, speed per frame), colour palettes (R, G, B per entry). When stored row-major (X₀ Y₀ Z₀ X₁ Y₁ Z₁...), consecutive bytes are from different columns with different statistical properties. Delta encoding makes this *worse*:
+
+```
+Row-major:  128 64 200 129 63 201 130 62 202 ...
+Delta:        64 136  57 190 138  57 190 138 ...  (wild jumps between columns)
+```
+
+Transpose to column-major (X₀ X₁ X₂... Y₀ Y₁ Y₂... Z₀ Z₁ Z₂...) and now consecutive bytes are from the same column. Delta encoding now sees smooth progressions:
+
+```
+Column-major: 128 129 130 131 ... 64 63 62 61 ... 200 201 202 203 ...
+Delta:          1   1   1   1 ...  -1  -1  -1 ...    1   1   1   1 ...  (trivial)
+```
+
+The numbers are striking. A 768-byte vertex table (256 vertices × 3 columns):
+
+| Layout | Entropy (raw) | Entropy (delta) |
+|---|---|---|
+| Row-major (X,Y,Z interleaved) | 7.52 | 7.66 (worse!) |
+| Column-major, stride 3 | 7.52 | **2.58** |
+
+Delta encoding on row-major data *increased* entropy. The same delta on transposed data reduced it by 65%. The compressor does not know your data is tabular --- you have to tell it, by reordering.
+
+The rule: if your data has columns with different patterns, **always transpose before compressing**. The stride (number of columns) does not need to be guessed --- try a few divisors of the data length and pick whichever gives the lowest delta entropy.
+
+On the Spectrum, the decompressor just writes bytes sequentially. The transposition happens in your build tools, not at runtime. Zero runtime cost.
+
+### Interleaving planes: masks and pixels
+
+Sprites with masks are a special case of transposition. Stored as mask-pixel-mask-pixel per row, consecutive bytes alternate between two completely different distributions (masks are mostly $FF or $00; pixels have diverse values). Separate all mask bytes from all pixel bytes:
+
+```
+Before: FF 3C FF 18 FF 00 ...  (mask, pixel, mask, pixel)
+After:  FF FF FF ... 3C 18 00 ...  (all masks, then all pixels)
+```
+
+The mask block compresses to nearly nothing (long runs of $FF). The pixel block compresses normally. Combined ratio improves 10--20% over interleaved storage, depending on sprite complexity.
+
+### Pattern detection: when not to compress
+
+Sometimes data has structure that a generator can reproduce more cheaply than a decompressor. If your data is periodic with period *P*, storing one period plus a tiny replay loop takes *P* + ~10 bytes. If *P* is small relative to the total data, this beats any compressor.
+
+Sine tables are the canonical case. A 256-byte sine table compresses to ~140 bytes with ZX0. But a Spectrum-friendly sine generator (using the ROM calculator or a CORDIC kernel) produces the same 256 bytes from under 30 bytes of code. For demo-quality accuracy, even a simple quadratic approximation per quarter-wave suffices.
+
+The decision tree: (1) Can you generate it from a formula in fewer bytes than compressed size? Generate. (2) Is the data periodic? Store one period + loop. (3) Is the data tabular? Transpose + delta + LZ. (4) Is the data sequential frames? Delta + LZ. (5) None of the above? Just compress it.
+
+### Practical transforms for common demo data
+
+| Data type | Best pre-transform | Why |
+|---|---|---|
+| Sine/cosine tables | 2nd derivative, or generate at runtime | Smooth acceleration → constant 2nd deriv |
+| 3D vertex tables | Transpose (stride = fields per vertex) + delta | Separates axes; smooth trajectories per axis |
+| Precalculated animation | Delta between frames + LZ | High inter-frame redundancy |
+| AY register dumps | Transpose (stride = 14, one per register) + delta | Each register varies smoothly between frames |
+| Colour ramps / gradients | 1st derivative | Linear or near-linear progression |
+| Tile maps | Transpose (stride = map width) + delta | Spatial locality: adjacent tiles are similar |
+| Bitmap font data | Separate bit-planes, or store as 1-bit + RLE | Lots of zero bytes in descenders |
+| Particle positions | Sort by one axis, then delta-encode each axis | Sorted order maximises delta compression |
+
+The key insight: **every byte you save with a free pre-transform is a byte you do not need a more expensive packer to save**. Transpose + delta + Pletter 5 (fast decompressor) often beats raw Exomizer (slow decompressor) on structured data. You get a better ratio *and* faster decompression.
+
+---
+
 ## The Practical Pipeline
 
 Understanding compression algorithms is useful. Integrating them into your build pipeline is essential.
@@ -331,5 +434,9 @@ The numbers are the answer. Not opinions, not folklore, not "I heard Exomizer is
 3. **Build a delta compressor.** Take two ZX Spectrum screens that differ slightly (save a game screen, move a sprite, save again). Write a simple tool (in Python or your language of choice) that produces a delta stream: a list of (offset, new_value) pairs for bytes that differ. Compare the size of the delta stream to the size of the full second screen. Then compress the delta stream with ZX0 and compare again.
 
 4. **Integrate compression into a Makefile.** Set up a project with a Makefile that automatically compresses assets as a build step. Change a source PNG, run `make`, and verify that the compressed binary is regenerated and the final .tap file is updated. This is the workflow you will use for every project from now on.
+
+5. **Transpose and measure.** Create a 768-byte file of 256 (X, Y, Z) triplets where X is a sine wave, Y is a cosine, and Z is a linear ramp. Measure the entropy of the raw file. Then transpose it (all X values, then all Y, then all Z) and measure again. Apply delta encoding to both versions and compare. You should see the transposed+delta version drop below 3 bits/byte, while the raw+delta version stays above 7. Compress both with ZX0 and compare the actual sizes --- the entropy numbers predict the winner.
+
+6. **The quadratic substitution.** Generate a 256-byte sine table and a 256-byte quadratic approximation (fit `ax² + bx + c` to one quarter-wave, mirror for the full cycle). Plot both --- they should be visually identical. Now compute the second derivative of each. The sine's second derivative has entropy ~1.5 bits/byte; the quadratic's is exactly 0. Compress both with ZX0. The quadratic version is smaller, and the animation looks the same.
 
 > **Sources:** Introspec "Data Compression for Modern Z80 Coding" (Hype, 2017); Introspec "Compression on the Spectrum: MegaLZ" (Hype, 2019); Break Space NFO (Thesuper, 2016); Einar Saukas, ZX0 (github.com/einar-saukas/ZX0)

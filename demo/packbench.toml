@@ -1,0 +1,79 @@
+# Antique Toy — packer benchmark & memory budget config
+#
+# Usage:
+#   python3 tools/packbench.py budget --config demo/packbench.toml
+#   python3 tools/packbench.py timeline --config demo/packbench.toml
+#   python3 tools/packbench.py timeline --config demo/packbench.toml --what-if
+
+[target]
+platform = "spectrum128"  # 69,888 T-states/frame
+
+# --- Reserved memory (not available for effects) ---
+[memory.reserved]
+screen       = { bank = 5, offset = 0, size = 6912 }
+attrs        = { bank = 5, offset = 6912, size = 768 }
+ring_buffer  = { address = "0xC000", size = 8192 }   # 8 × 768-byte slots
+workspace    = { address = "0xE000", size = 512 }     # effect state vars
+stack        = { address = "0xFE00", size = 512 }
+im2_vectors  = { address = "0xFE00", size = 257 }     # IM2 vector table
+music_player = { size = 2000 }                         # Vortex Tracker II player
+engine       = { size = 1500 }                         # timeline engine + dispatch
+decompressor = { size = 70 }                           # ZX0 decompressor
+
+# --- Custom packer binary paths (optional, auto-detected otherwise) ---
+# [packers]
+# zx0 = "/usr/local/bin/zx0"
+# exomizer = "/opt/exomizer/exomizer"
+
+# --- Effects in playback order ---
+
+[[effects]]
+name = "torus"
+# data = ["demo/data/torus_tables.bin"]     # uncomment when data files exist
+data_size_estimate = 4096                    # estimated raw data size
+code_size = 1200
+duration_frames = 500       # 10 seconds @ 50fps
+render_tstates = 55000      # heavy — 3D transform + line draw
+music_tstates = 5000
+packer = "zx0"
+streaming = true            # can start playing once tables partially ready
+
+[[effects]]
+name = "plasma"
+data_size_estimate = 2048
+code_size = 400
+duration_frames = 300       # 6 seconds
+render_tstates = 45000
+music_tstates = 5000
+packer = "zx0"
+streaming = false
+
+[[effects]]
+name = "dotscroll"
+data_size_estimate = 1536
+code_size = 600
+duration_frames = 400       # 8 seconds
+render_tstates = 40000
+music_tstates = 5000
+packer = "pletter"          # faster decompression, text scroll needs quick setup
+streaming = true
+
+[[effects]]
+name = "rotozoomer"
+data_size_estimate = 3072
+code_size = 800
+duration_frames = 400       # 8 seconds
+render_tstates = 50000
+music_tstates = 5000
+packer = "zx0"
+streaming = false
+
+[[effects]]
+name = "credits"
+data_size_estimate = 512
+code_size = 300
+duration_frames = 200       # 4 seconds
+render_tstates = 20000
+music_tstates = 5000
+packer = "zx0"
+streaming = false

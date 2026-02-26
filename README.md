@@ -12,7 +12,7 @@
 > 2. By Alice directly — where personal expertise is "good enough" or no available sources or in new areas
 > 3. Corrections and contributions on topic are welcome — PRs open
 
-**TL;DR:** 23 chapters + 9 appendices, ~180K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v0.7/book-a4-v0.7.pdf)
+**TL;DR:** 23 chapters + 9 appendices, ~184K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v0.8/book-a4-v0.8.pdf)
 
 This book lives on the **ZX Spectrum**. Most techniques -- DOWN_HL, attribute tricks, ULA timing, 128K bank juggling -- only make sense on this machine. That's where the demoscene is, and that's where the hard problems are.
 
@@ -39,7 +39,7 @@ English is the primary edition and always ahead. Translations catch up periodica
 
 ## Contents
 
-23 chapters + 9 appendices, ~180K words (English), 29 compilable assembly examples.
+23 chapters + 9 appendices, ~184K words (English), 29 compilable assembly examples.
 
 Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. **eZ80** = Agon Light 2.
 
@@ -58,7 +58,7 @@ Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. 
 | 11 | Sound Architecture (AY, TurboSound, Triple AY) | ZX |
 | 12 | Digital Drums and Music Sync | ZX |
 | 13 | The Craft of Size-Coding | **Z80** / ZX |
-| 14 | Compression (ZX0, Exomizer, LZ4, decision tree) | **Z80** |
+| 14 | Compression (ZX0, Exomizer, LZ4, pre-compression transforms, decision tree) | **Z80** |
 | 15 | Anatomy of Two Machines (128K banking, ports) | ZX |
 | 16 | Fast Sprites (OR/AND, compiled, masking) | ZX |
 | 17 | Scrolling (pixel, tile, hardware tricks) | ZX |
@@ -148,9 +148,27 @@ The book is about Z80 as a processor, not just ZX Spectrum as a platform. If you
 
 Translations are managed via `translations/manifest.py` (SHA256-based staleness tracking). See `translations/PROGRESS.md` for details.
 
-## Companion demo
+## Companion projects
 
-"Antique Toy" -- an AI-assisted multi-effect ZX Spectrum demo in `demo/src/`. Currently includes a wireframe torus with real-time rotation. More effects planned (plasma, backface culling).
+### Antique Toy (demo)
+
+An AI-assisted multi-effect ZX Spectrum demo in `demo/src/`. Currently includes a wireframe torus with real-time rotation. More effects planned (plasma, backface culling).
+
+### Clockwork (demo toolchain)
+
+[Clockwork](https://github.com/oisee/clockwork) is the companion toolchain for ZX Spectrum demo production. It connects the book's theory to practical demo-making workflow: timeline editing, music sync, memory budgeting, and asset pipeline management. The `--json` output from `tools/packbench.py` feeds directly into Clockwork's memory planner.
+
+### Tools
+
+The `tools/` directory contains Python utilities developed alongside the book:
+
+| Tool | Purpose |
+|------|---------|
+| `packbench.py` | Packer benchmark, memory budget, streaming decompression estimator, pre-compression data analysis |
+| `screenshots.py` | Automated screenshot generation for book illustrations (28 examples, headless emulator) |
+| `manage_listings.py` | Code listing extraction, injection, and verification across chapters |
+| `audit_tstates.py` | T-state annotation auditor — compares inline comments with computed cycle counts |
+| `autotag.py` | Semi-automatic code block classifier and tagger |
 
 ## License
 

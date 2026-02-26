@@ -1,5 +1,31 @@
 # What's New
 
+## v16 (2026-02-26)
+
+**Pre-compression data preparation + packer benchmark tool.**
+
+**Chapter 14 (Compression) expanded** with new section "Pre-Compression Data Preparation":
+- Shannon entropy as theoretical floor for compression — with Python code to compute it
+- Second derivative encoding: sine vs quadratic decay insight (visually identical curves, but quadratic has constant 2nd derivative → compresses to near-zero)
+- Transposition for tabular data: column-major reordering of interleaved XYZ vertex tables, AY register dumps, animation keyframes — with concrete entropy measurements (7.52 → 2.58 bits/byte)
+- Mask/pixel plane separation for sprites (10–20% ratio improvement)
+- Practical transforms table for 8 common demo data types
+- Key insight: transpose + delta + fast packer often beats raw + slow packer (better ratio AND faster decompression)
+- Two new exercises: transpose-and-measure, quadratic substitution
+
+**New tool: `tools/packbench.py`** — packer benchmark and streaming decompression estimator:
+- `bench` mode: run real packer binaries on data files, measure compressed sizes (falls back to Introspec's benchmark ratios when binaries unavailable)
+- `budget` mode: 128K memory map from TOML config — reserved areas, per-effect compressed storage, bank utilization
+- `timeline` mode: streaming decompression scheduler — models overlap/pause/streaming phases for seamless demo effect transitions; `--what-if` compares all 9 packers per effect
+- `analyze` mode: pre-compression data analysis — entropy comparison across transforms (raw/delta/delta²/XOR), stride-based transposition testing, curve fitting (linear/quadratic R²), periodicity detection, actionable suggestions
+- All modes support `--json` for Clockwork integration
+- 9 packer profiles from Introspec's benchmark + Ped7g's upkr feedback
+- 4 platform presets (spectrum48, spectrum128, pentagon128, next)
+
+**New config: `demo/packbench.toml`** — Antique Toy demo memory budget and timeline preset (5 effects: torus, plasma, dotscroll, rotozoomer, credits).
+
+**New Makefile targets:** `packbench`, `packbench-budget`, `packbench-timeline`, `packbench-analyze`.
+
 ## v12 (2026-02-24)
 
 **Comprehensive review pass.** Full technical audit of all 23 chapters with systematic fixes:

@@ -206,6 +206,70 @@ Your Makefile must automate the full pipeline: source assets to conversion scrip
 
 CI via GitHub Actions is increasingly common. A workflow that builds on every push catches implicit dependencies -- the demo assembles on your machine but fails on a clean environment because of an undeclared tool version. Lo-Fi Motion's source is on GitHub, published as a reference implementation: clone it, run `make`, get a working binary. This openness is unusual in the demoscene and valuable for learning.
 
+### Synchronisation and Compositing
+
+The hardest part of a demo is not the effects --- it is the *timing*. When to start the plasma. When to cut to the scroller. Which beat triggers the colour flash. This is synchronisation, and the ZX Spectrum scene has evolved a layered approach that combines demoscene-specific tools with general-purpose video editing.
+
+**The sync table.** At the Z80 level, synchronisation is a data table:
+
+```z80
+sync_table:
+    dw 0,     effect_logo       ; frame 0: show logo
+    dw 150,   effect_plasma     ; frame 150: start plasma
+    dw 312,   flash_border      ; frame 312: beat hit, flash
+    dw 500,   effect_scroll     ; frame 500: start scroller
+    dw 0                        ; end marker
+```
+
+The engine increments a frame counter each VBlank, compares it against the next entry in the table, and dispatches when the frame arrives. This is the simplest possible sync mechanism. It is also what every ZX Spectrum demo ultimately runs --- regardless of how those frame numbers were determined.
+
+The question is: how do you *find* the right frame numbers?
+
+**Approach 1: Vortex Tracker + manual timing.** Open your .pt3 in Vortex Tracker II. The bottom-right corner shows the current position (pattern, row, frame). Play the tune, note the frame numbers where beats, accents, and phrase transitions occur. Write them into your sync table. Rebuild, test, adjust. This is the approach most ZX demosceners use, including Kolnogorov (Vein): "Vortex + video editor. In Vortex the frame is shown in the bottom-right corner --- I looked at which frames to hook onto, created a table with `dw frame, action` entries, and synced from that."
+
+The advantage: you hear the music and see the numbers simultaneously. The disadvantage: iterating is slow --- every change requires rebuilding the demo and watching it from the beginning.
+
+**Approach 2: Video editor as sync planner.** diver4d's GABBA workflow (Section 20.3.2) recognised that frame-level synchronisation is a video editing problem. Capture each effect running in the emulator as a video clip. Import the clips and the music track into a video editor. Lay the clips on the timeline, scrub to find the perfect cut points, read off the frame numbers. Then write the sync table.
+
+**DaVinci Resolve** (free version) is the natural choice: it handles both editing and timeline markers. Place markers at sync points, export them as an Edit Decision List (.edl) or CSV --- you get a clean list of `(frame_number, label)` pairs ready for conversion to assembly. **Blender's Video Sequence Editor** (VSE) works similarly and is fully open-source.
+
+The key insight from Kolnogorov: "I exported effect clips to video, assembled them in a video editor, attached the music track, and looked at what order the effects work best in, noting the frames where events should happen." The important word is *looked* --- this is a visual, intuitive process. You *see* where the beat hits the waveform, you *see* where the effect transition feels right, and you read the number. No calculations, no BPM-to-frame conversions.
+
+**Approach 3: GNU Rocket (PC/Amiga demoscene standard).** On platforms with enough RAM and a TCP stack, GNU Rocket is the standard sync tool. It is a tracker-like editor where columns are named parameters (`camera:x`, `fade:alpha`, `effect:id`) and rows are time steps. You set keyframes and choose interpolation (step, linear, smooth, ramp). The demo connects to the editor via TCP during development; you edit values live while the demo runs. For release, keyframes export to compact binary files.
+
+Rocket is used across the PC and Amiga scenes (Logicoma, Noice, Loonies, Adapt). It has been ported to C, C#, Python, Rust, and JavaScript. A Z80 client is not practical (TCP on a Spectrum?), but the *workflow concept* transfers directly: define sync parameters as interpolated curves, export them as data tables that the Z80 engine reads. The export format is trivially convertible to `dw`/`db` tables.
+
+For the ZX Spectrum specifically, the Rocket export workflow would look like:
+
+1. Design sync tracks in Rocket (on PC), scrubbing with the music
+2. Export keyframe data as binary
+3. Convert to Z80 assembly with a Python script: quantise floats to 8-bit or 16-bit fixed-point, emit `db`/`dw` tables
+4. INCBIN the tables into the demo
+
+This gives you Rocket's interactive editing experience with the Spectrum's minimal runtime overhead. The Z80 code just reads a table --- no TCP, no floats, no complexity.
+
+**Approach 4: Blender for pre-visualisation.** For complex demos with many effects and transitions, storyboarding in Blender provides a planning layer above the sync table:
+
+- Create a Blender scene per demo effect (simple coloured rectangles or Grease Pencil sketches --- fidelity is irrelevant)
+- Lay them on the VSE timeline with the music track
+- Animate placeholder parameters in the Graph Editor (e.g., a "scroll_speed" property keyframed to match the music's energy)
+- Scrub, adjust, iterate until the pacing feels right
+- Export frame numbers and keyframe values via Blender's Python API:
+
+```python
+for fcurve in bpy.data.actions['SyncAction'].fcurves:
+    for kf in fcurve.keyframe_points:
+        print(f"dw {int(kf.co.x)}, {int(kf.co.y)}")
+```
+
+This outputs Z80-ready sync data directly. The Blender project becomes your storyboard, your sync reference, and your data pipeline in one file.
+
+**The human touch.** Kolnogorov articulates a principle that all experienced demosceners understand but rarely state explicitly: "Even if we know the snare hits every 16 notes, and we flash the border every 16 notes --- it will look dead and robotic. The essence of sync is that it should be deliberately uneven and broken in places."
+
+Algorithmic sync --- trigger on every beat, fade on every phrase boundary --- feels mechanical. The best demo sync follows musical *phrases*, not individual beats. Some events fire slightly before the beat (building tension). Some fire after (surprise). Some phrases have no visual change at all (creating anticipation for the next hit). This is why manual sync tables, tediously assembled by a human watching and listening, consistently produce better results than any automated system.
+
+The practical consequence: even if you use Rocket or Blender to plan your sync, the final pass is always manual. Watch the demo with the music. Adjust frame numbers by ear. Add the off-beat hits and the deliberate silences that make the sync feel alive.
+
 ---
 
 ## 20.5 Compo Culture
@@ -402,6 +466,8 @@ Your first entry is unlikely to place. Treat it as a learning exercise: the feed
 - **Making-of culture is a strength of the ZX scene.** Detailed technical writeups -- from Eager's NFO to GABBA's video-editor workflow to NHBF's 256-byte puzzle -- serve as education, documentation, and community building.
 
 - **The standard toolchain** converges on sjasmplus (assembler), Unreal Speccy or Fuse (emulator), BGE or Multipaint (graphics), Ruby or Python scripts (conversion and code generation), ZX0 or hrust1opt (compression), and a Makefile (build automation). CI via GitHub Actions is increasingly common.
+
+- **Synchronisation** is the hardest part of a demo. The layered approach: determine frame numbers in Vortex Tracker or a video editor (DaVinci Resolve, Blender VSE), optionally plan interpolated parameter curves in GNU Rocket, export to Z80 `dw frame, action` tables. The final pass is always manual --- algorithmic sync feels robotic; human-placed sync follows phrases, not beats.
 
 - **Compo culture** centres on events like Chaos Constructions, DiHalt, Multimatograf, CAFe, and Revision. Entering your first compo requires choosing an appropriate event, following the rules, testing thoroughly, and submitting early.
 
