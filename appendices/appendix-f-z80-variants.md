@@ -38,17 +38,17 @@ On a standard Spectrum, calculating a screen address from pixel coordinates take
 
 | Instruction | Bytes | T | What it replaces |
 |-------------|-------|---|------------------|
-| `PIXELDN` | 2 | 4 | The 10+ instruction `DOWN_HL` sequence (check third boundary, handle wrap, adjust H and L). Moves HL one pixel row down in screen memory. |
-| `PIXELAD` | 2 | 4 | Full screen address calculation from (D,E) coordinates. Replaces the `pixel_addr` routine (~55T, 15+ instructions). |
-| `SETAE` | 2 | 4 | Sets the appropriate pixel bit in A based on the low 3 bits of E (the x-coordinate). Replaces a lookup table or shift sequence. |
+| `PIXELDN` | 2 | 8 | The 10+ instruction `DOWN_HL` sequence (check third boundary, handle wrap, adjust H and L). Moves HL one pixel row down in screen memory. |
+| `PIXELAD` | 2 | 8 | Full screen address calculation from (D,E) coordinates. Replaces the `pixel_addr` routine (~55T, 15+ instructions). |
+| `SETAE` | 2 | 8 | Sets the appropriate pixel bit in A based on the low 3 bits of E (the x-coordinate). Replaces a lookup table or shift sequence. |
 
 With these three instructions, the entire pixel-plotting sequence that consumed 70+ T-states and 20+ bytes on the original Z80 becomes:
 
 ```z80
-; Z80N: plot pixel at (D=y, E=x) — 12T total
-    pixelad             ; 4T  HL = screen address from (D,E)
-    setae               ; 4T  A = pixel bit mask from E
-    or   (hl)           ; 4T  set pixel (non-destructive)
+; Z80N: plot pixel at (D=y, E=x) — 23T total
+    pixelad             ; 8T  HL = screen address from (D,E)
+    setae               ; 8T  A = pixel bit mask from E
+    or   (hl)           ; 7T  set pixel (non-destructive)
     ; ... ld (hl), a to write
 ```
 
@@ -58,11 +58,11 @@ The single most CPU-intensive operation in any Spectrum game or demo is the mask
 
 | Instruction | Bytes | T | What it replaces |
 |-------------|-------|---|------------------|
-| `LDIX` | 2 | 5 | `LDI` but skips the copy if `(HL) == A`. One-instruction transparent copy: load A with the transparent colour, point HL at source, DE at destination, and each byte is copied only if it is not the transparent value. |
-| `LDDX` | 2 | 5 | Same as LDIX but decrementing (like `LDD`). |
-| `LDIRX` | 2 | 5/byte | Repeating LDIX. Hardware masked sprite blit in a single instruction. Copies BC bytes from (HL) to (DE), skipping any byte equal to A. |
-| `LDDRX` | 2 | 5/byte | Repeating LDDX. |
-| `LDPIRX` | 2 | 5/byte | Pattern fill with transparency from an 8-byte aligned source. Reads from `(HL & $FFF8) + (E & 7)`, copies to (DE) if not equal to A, increments DE, decrements BC. Hardware tiled background renderer. |
+| `LDIX` | 2 | 16 | `LDI` but skips the copy if `(HL) == A`. One-instruction transparent copy: load A with the transparent colour, point HL at source, DE at destination, and each byte is copied only if it is not the transparent value. |
+| `LDDX` | 2 | 16 | Same as LDIX but decrementing (like `LDD`). |
+| `LDIRX` | 2 | 21/16 | Repeating LDIX. Hardware masked sprite blit in a single instruction. Copies BC bytes from (HL) to (DE), skipping any byte equal to A. 21T per byte while BC>0, 16T on the final iteration. |
+| `LDDRX` | 2 | 21/16 | Repeating LDDX. |
+| `LDPIRX` | 2 | 21/16 | Pattern fill with transparency from an 8-byte aligned source. Reads from `(HL & $FFF8) + (E & 7)`, copies to (DE) if not equal to A, increments DE, decrements BC. Hardware tiled background renderer. 21T per byte while BC>0, 16T on the final iteration. |
 
 `LDIRX` alone replaces the most heavily optimised inner loop in decades of Spectrum game code. `LDPIRX` is even more exotic --- it treats the source as a repeating 8-byte pattern, effectively giving you a hardware tile renderer with transparency. Combined with the Next's Layer 2 and tilemap hardware, these instructions make the Spectrum Next a qualitatively different platform for sprite-heavy games.
 
@@ -80,11 +80,11 @@ Eight T-states. At 28 MHz, that is 286 nanoseconds. The same operation on a stan
 
 | Instruction | Bytes | T | What it replaces |
 |-------------|-------|---|------------------|
-| `MIRROR` | 2 | 4 | Reverses all 8 bits of A. Horizontal sprite flip without a 256-byte lookup table. On the standard Z80, bit-reversing A requires either an unrolled 18-instruction sequence (`LD B,A : XOR A` then 8× `RR B : RLA`, ~104T) or a 256-byte lookup table (11T but costs 256 bytes of RAM). |
-| `SWAPNIB` | 2 | 4 | Swaps the high and low nibbles of A. Replaces `RLCA : RLCA : RLCA : RLCA` (16T, 4 bytes). |
-| `TEST nn` | 3 | 7 | `AND A, nn` without storing the result --- sets flags but preserves A. Like a CP for bitwise AND. Similar to the eZ80's TST instruction. |
+| `MIRROR` | 2 | 8 | Reverses all 8 bits of A. Horizontal sprite flip without a 256-byte lookup table. On the standard Z80, bit-reversing A requires either an unrolled 18-instruction sequence (`LD B,A : XOR A` then 8× `RR B : RLA`, ~104T) or a 256-byte lookup table (11T but costs 256 bytes of RAM). |
+| `SWAPNIB` | 2 | 8 | Swaps the high and low nibbles of A. Replaces `RLCA : RLCA : RLCA : RLCA` (16T, 4 bytes). |
+| `TEST nn` | 3 | 11 | `AND A, nn` without storing the result --- sets flags but preserves A. Like a CP for bitwise AND. Similar to the eZ80's TST instruction. |
 
-`MIRROR` is particularly valuable for games. Without it, every horizontally flipped sprite either needs a pre-flipped copy in memory (doubling sprite data) or a 256-byte bit-reversal lookup table plus per-byte table lookups. With it, you can flip sprites on the fly at 4T per byte.
+`MIRROR` is particularly valuable for games. Without it, every horizontally flipped sprite either needs a pre-flipped copy in memory (doubling sprite data) or a 256-byte bit-reversal lookup table plus per-byte table lookups. With it, you can flip sprites on the fly at 8T per byte.
 
 ### Barrel Shifts (the multi-bit shift problem)
 
@@ -92,11 +92,11 @@ On the standard Z80, shifting a 16-bit value by more than one bit requires a loo
 
 | Instruction | Bytes | T | What it replaces |
 |-------------|-------|---|------------------|
-| `BSLA DE,B` | 2 | 4 | Shift DE left by B bits. Replaces `B * (SLA E : RL D)`. |
-| `BSRA DE,B` | 2 | 4 | Arithmetic shift DE right by B bits (sign-extending). |
-| `BSRL DE,B` | 2 | 4 | Logical shift DE right by B bits (zero-filling). |
-| `BSRF DE,B` | 2 | 4 | Shift DE right by B bits, filling with bit 15. |
-| `BRLC DE,B` | 2 | 4 | Rotate DE left by B bits (circular). |
+| `BSLA DE,B` | 2 | 8 | Shift DE left by B bits. Replaces `B * (SLA E : RL D)`. |
+| `BSRA DE,B` | 2 | 8 | Arithmetic shift DE right by B bits (sign-extending). |
+| `BSRL DE,B` | 2 | 8 | Logical shift DE right by B bits (zero-filling). |
+| `BSRF DE,B` | 2 | 8 | Shift DE right by B bits, filling with bit 15. |
+| `BRLC DE,B` | 2 | 8 | Rotate DE left by B bits (circular). |
 
 These are enormously useful in fixed-point arithmetic, pixel sub-positioning, and any code that converts between integer scales. A common operation like "multiply by 5 and shift right 3" that would take ~50T on a standard Z80 becomes trivial.
 
@@ -104,13 +104,13 @@ These are enormously useful in fixed-point arithmetic, pixel sub-positioning, an
 
 | Instruction | Bytes | T | What it replaces |
 |-------------|-------|---|------------------|
-| `PUSH nn` | 4 | 11 | Push a 16-bit immediate value onto the stack. No register needed. Saves the `LD rr, nn : PUSH rr` pattern (21T, 4 bytes on the original Z80 --- same byte count, but 10T faster and does not clobber a register pair). |
-| `ADD HL,A` | 2 | 4 | Add A to HL. Replaces the 5-instruction, 23T sequence: `ADD A,L : LD L,A : ADC A,H : SUB L : LD H,A` (or the equivalent using a spare register). |
-| `ADD DE,A` | 2 | 4 | Same as ADD HL,A but for DE. |
-| `ADD BC,A` | 2 | 4 | Same for BC. |
-| `NEXTREG reg,val` | 4 | 12 | Direct write to a Next hardware register. No I/O port setup needed. Replaces `LD BC,$243B : OUT (C),reg : LD BC,$253B : OUT (C),val` --- four instructions, 8 bytes, ~48T. |
-| `NEXTREG reg,A` | 3 | 8 | Write A to a Next hardware register. |
-| `OUTINB` | 2 | 5 | `OUT (C),(HL) : INC HL` combined. Useful for streaming data to I/O ports. |
+| `PUSH nn` | 4 | 23 | Push a 16-bit immediate value onto the stack. No register needed. Saves the `LD rr, nn : PUSH rr` pattern (21T, 4 bytes on the original Z80 --- same byte count, 2T *slower*, but does not clobber a register pair). When the register pair is already in use, PUSH nn saves a PUSH/POP pair around the LD+PUSH, which more than compensates. |
+| `ADD HL,A` | 2 | 8 | Add A to HL. Replaces the 5-instruction, 23T sequence: `ADD A,L : LD L,A : ADC A,H : SUB L : LD H,A` (or the equivalent using a spare register). |
+| `ADD DE,A` | 2 | 8 | Same as ADD HL,A but for DE. |
+| `ADD BC,A` | 2 | 8 | Same for BC. |
+| `NEXTREG reg,val` | 4 | 20 | Direct write to a Next hardware register. No I/O port setup needed. Replaces `LD BC,$243B : OUT (C),reg : LD BC,$253B : OUT (C),val` --- four instructions, 8 bytes, ~48T. |
+| `NEXTREG reg,A` | 3 | 17 | Write A to a Next hardware register. |
+| `OUTINB` | 2 | 16 | `OUT (C),(HL) : INC HL` combined. Useful for streaming data to I/O ports. |
 
 ### The Big Picture
 
@@ -186,16 +186,16 @@ The historical significance is immense. Without these clones, the ZX Spectrum ec
 | Address space | 64 KB | 64 KB + Next regs | 16 MB | 64 KB |
 | Hardware multiply | No | `MUL D,E` (8T) | `MLT rr` (6T) | `MULUB` (14T), `MULUW` (36T) |
 | 16x16 multiply | No | No | No | `MULUW` (36T, 32-bit result) |
-| Barrel shift | No | `BSLA/BSRA/BSRL/BSRF/BRLC DE,B` (4T) | No | No |
+| Barrel shift | No | `BSLA/BSRA/BSRL/BSRF/BRLC DE,B` (8T) | No | No |
 | Block copy with mask | No | `LDIRX`, `LDPIRX` | No | No |
 | Screen address helpers | No | `PIXELDN`, `PIXELAD`, `SETAE` | No | No |
-| Bit reverse | No | `MIRROR` (4T) | No | No |
-| Nibble swap | No | `SWAPNIB` (4T) | No | No |
+| Bit reverse | No | `MIRROR` (8T) | No | No |
+| Nibble swap | No | `SWAPNIB` (8T) | No | No |
 | 24-bit mode | No | No | ADL mode | No |
-| Push immediate | No | `PUSH nn` (11T) | No | No |
-| Add 8-bit to 16-bit | No | `ADD HL/DE/BC, A` (4T) | No | No |
-| Test (non-destructive AND) | No | `TEST nn` (7T) | `TST` (7T) | No |
-| Hardware register I/O | No | `NEXTREG` (8-12T) | `IN0`/`OUT0` | No |
+| Push immediate | No | `PUSH nn` (23T) | No | No |
+| Add 8-bit to 16-bit | No | `ADD HL/DE/BC, A` (8T) | No | No |
+| Test (non-destructive AND) | No | `TEST nn` (11T) | `TST` (7T) | No |
+| Hardware register I/O | No | `NEXTREG` (17-20T) | `IN0`/`OUT0` | No |
 | Designed for | General computing | ZX Spectrum Next | Embedded systems | MSX turboR |
 
 ### Effective Multiply Performance
@@ -232,5 +232,7 @@ The fundamentals do not change. The instructions get better.
 - **Chapter 22: Porting --- Agon Light 2** --- practical porting walkthrough covering both eZ80 and Z80N extensions in context.
 
 ---
+
+> **T-state audit note:** Z80N T-state values in this appendix were corrected using the official documentation at wiki.specnext.dev. The initial values (approximately halved across the board) were identified as incorrect by Ped7g (Peter Helcmanovsky).
 
 > **Sources:** Zilog Z80 CPU User Manual (UM0080); Zilog eZ80 CPU User Manual (UM0077); ZX Spectrum Next User Manual, Issue 2; ZX Spectrum Next Extended Instruction Set Documentation (wiki.specnext.dev); Victor Trucco, Fabio Belavenuto et al., Z80N instruction set design notes; ASCII Corporation R800 Technical Reference (1990); Sean Young, "The Undocumented Z80 Documented" (2005); Introspec, "Once more about DOWN_HL" (Hype, 2020); Dark / X-Trade, "Programming Algorithms" (Spectrum Expert #01, 1997)

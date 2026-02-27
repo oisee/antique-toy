@@ -201,6 +201,71 @@ Only 12 bytes of decompressor code. RLE compresses beautifully when data contain
 
 RLE also benefits from **data transposition**: if your data is a 2D block (e.g., 32×24 attributes) where columns are more uniform than rows, transposing to column-major order creates longer runs. The cost is an un-transpose pass after decompression (~13 T-states/byte). Whether the total (12-byte decompressor + un-transpose code + compressed data) beats ZX0 (70-byte decompressor + compressed data) depends on your data --- measure both.
 
+> **Sidebar: Ped7g's Self-Modifying RLE --- 9 Bytes That Rewrite Themselves**
+>
+> For 256-byte intros, even 12 bytes feels expensive. Ped7g (Peter Helcmanovsky, sjasmplus maintainer) contributed a self-modifying RLE depacker that compresses the decoder itself to **9 bytes of core code** --- and the exit mechanism is built into the data stream.
+>
+> The trick: the RLE data lives in memory *before* the depacker code. The data stream ends with the bytes `$18, $00`, which the depacker writes into the target buffer at a calculated position so that the bytes overwrite the `ld (hl),c` instruction. The byte sequence `$18, $23` assembles to `jr +$23`, which jumps forward past the depacker into the intro's main code. The data literally rewrites the code to terminate itself.
+>
+> Here is the complete working mini-intro --- a 120-byte binary that fills the screen with coloured stripes using only the self-modifying RLE:
+>
+> ```z80 id:ch14_ped7g_rle_mini_intro
+> ; Ped7g's self-modifying RLE mini-intro
+> ; Assemble with sjasmplus: sjasmplus rle_intro.a80
+> ;
+> ; The RLE data is a stream of (value, count) pairs read via POP BC.
+> ; SP walks through the data as a read pointer.
+> ; The db $18,$00 at the end of the data stream overwrites ld (hl),c
+> ; to become jr +$23, exiting the depack loop into intro_start.
+> ;
+> ; Contributed by Ped7g (Peter Helcmanovsky) — sjasmplus maintainer
+> ; and ZX Spectrum Next contributor. Used with permission.
+>
+>     DEVICE ZXSPECTRUM48, $8000
+>
+> target  EQU $4000
+>     ORG $5B00              ; loading address → print buffer
+>
+> intro_data:
+>     dw  target             ; initial HL value (POP HL)
+> ; RLE pairs: value, count (count=0 means 256 iterations)
+>     .(4*3) db $AA, 0, $00, 0    ; alternating stripe pattern
+>     db  $43, 32*2, $44, 32*4, $45, 32*3, $46, 32*2, $47, 32*2
+>     db  $46, 32*2, $45, 32*3, $44, 32*4, $43, 32*2
+>     db  $18, $00           ; data that will overwrite ld (hl),c
+>                            ; creating jr rle_loop_inner+$25
+> rle_start:
+>     ei                     ; simulate post-LOAD BASIC environment
+>     ld  sp, intro_data
+>     pop hl                 ; HL = target address
+> rle_loop_outer:
+>     pop bc                 ; C = value, B = repeat count
+> rle_loop_inner:
+>     ld  (hl), c            ; ← THIS instruction gets overwritten
+>     inc hl                 ;   by the $18,$00 data to become
+>     djnz rle_loop_inner    ;   jr +$23, jumping to intro_start
+>     jr  rle_loop_outer
+> ; 31 bytes of space — fill with helper code
+>     ds  $1F
+> intro_start:
+>     assert $ == rle_loop_inner + 2 + $23
+>     inc a
+>     and 7
+>     out (254), a           ; cycle border colours
+>     jr  intro_start
+>
+>     SAVESNA "rle_intro.sna", rle_start
+>     SAVEBIN "rle_intro.bin", intro_data, $ - intro_data
+> ```
+>
+> **Byte count analysis.** The depack loop is 9 bytes: `pop bc` (1) + `ld (hl),c` (1) + `inc hl` (1) + `djnz` (2) + `jr` (2) + `pop hl` (1) + `ld sp,nn` (3) = 9 core + 6 setup = **15 bytes total** for a self-contained RLE decoder with built-in exit. Compare to the 12-byte minimal RLE from the previous section, which still needs external setup and a termination check.
+>
+> **Interrupt safety.** SP is used as a data pointer, so interrupts will corrupt the stack. The `ei` at the start is intentional --- in a 256-byte intro loaded from BASIC, interrupts are already enabled. The occasional interrupt writes to already-consumed data behind the SP pointer, so the depack completes correctly. For the intro code itself, SP has moved past the data and the stack works normally. But do not combine this technique with IM2 or interrupt-driven music.
+>
+> **Advanced variants.** Ped7g notes several alternative exit strategies: (1) if the target area extends behind the depack code, the RLE data can overwrite the `jr rle_loop_outer` offset to jump further; (2) the `jp $C3C3` trick --- place `$C3` values in the data with exact counts so that DJNZ terminates when `jp $C3C3` assembles in memory, and align the intro so address $C3C3 is the continuation code. As Ped7g says: "you can invent many such things --- it always depends on the specific situation."
+>
+> **Credit:** Contributed by Ped7g (Peter Helcmanovsky) --- sjasmplus maintainer and ZX Spectrum Next contributor. Used with permission.
+
 ### Delta coding: store what changed
 
 Delta coding stores differences between consecutive values rather than absolute values. Two animation frames that are 90% identical? Store only the changed bytes --- a list of (position, new_value) pairs. If only 691 bytes differ out of 6,912, the delta is 2,073 bytes (3 bytes per change) instead of a full frame. Apply LZ on top of the delta stream and it compresses further --- the difference stream has more zeros and repeated small values than raw frame data.
@@ -441,4 +506,4 @@ The numbers are the answer. Not opinions, not folklore, not "I heard Exomizer is
 
 6. **The quadratic substitution.** Generate a 256-byte sine table and a 256-byte quadratic approximation (fit `ax² + bx + c` to one quarter-wave, mirror for the full cycle). Plot both --- they should be visually identical. Now compute the second derivative of each. The sine's second derivative has entropy ~1.5 bits/byte; the quadratic's is exactly 0. Compress both with ZX0. The quadratic version is smaller, and the animation looks the same.
 
-> **Sources:** Introspec "Data Compression for Modern Z80 Coding" (Hype, 2017); Introspec "Compression on the Spectrum: MegaLZ" (Hype, 2019); Break Space NFO (Thesuper, 2016); Einar Saukas, ZX0 (github.com/einar-saukas/ZX0)
+> **Sources:** Introspec "Data Compression for Modern Z80 Coding" (Hype, 2017); Introspec "Compression on the Spectrum: MegaLZ" (Hype, 2019); Break Space NFO (Thesuper, 2016); Einar Saukas, ZX0 (github.com/einar-saukas/ZX0); Ped7g (Peter Helcmanovsky), self-modifying RLE depacker (contributed with permission, 2026)

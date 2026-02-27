@@ -268,7 +268,7 @@ The beauty of this architecture is its simplicity at the macro level. The engine
 
 ## 12.4 GABBA's Innovation: The Video Editor as Timeline Tool
 
-In 2019, diver4d (of 4th Dimension) took first place at CAFe with GABBA, a gabber-themed demo with punishingly tight audio-visual synchronisation. The sync was so precise that every visual hit landed exactly on the musical beat, every transition matched a phrase boundary, and the whole production felt like a music video rather than a demo.
+In 2019, diver4d (of 4D+TBK) took first place at CAFe with GABBA, a gabber-themed demo with punishingly tight audio-visual synchronisation. The sync was so precise that every visual hit landed exactly on the musical beat, every transition matched a phrase boundary, and the whole production felt like a music video rather than a demo.
 
 The technical surprise was in the workflow, not the code.
 

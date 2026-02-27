@@ -112,6 +112,132 @@ For texture mapping, plasma, scrollers -- use the fast multiply. For wireframe 3
 
 ---
 
+## Signed Multiply
+
+A chapter that teaches unsigned multiplication and then uses it to rotate 3D coordinates has a gap: rotation matrices operate on signed values. X can be -40 or +40, sine values range from -128 to +127. Every `call mul_signed` in Chapter 5 depends on the routine you are about to see. As Ped7g put it during his review: "a chapter that teaches 3D rotation without showing signed multiply is like a cookbook that lists ingredients but forgets the oven."
+
+### Two's Complement in Practice
+
+The Z80 represents signed integers in two's complement. The rules are simple:
+
+- Bit 7 is the sign bit: 0 = positive, 1 = negative
+- Positive values are the same as unsigned: $00 = 0, $01 = 1, ..., $7F = 127
+- Negative values count down from $FF: $FF = -1, $FE = -2, ..., $80 = -128
+- `NEG` computes the absolute value of a negative number (negate A: A = 0 - A). Cost: 8T
+
+The critical insight for arithmetic: **ADD and SUB do not care about signedness.** Adding $FF (-1) to $03 (+3) gives $02 (+2) --- correct in both signed and unsigned interpretation. The hardware addition is identical. Only multiplication requires explicit sign handling, because the shift-and-add loop treats the multiplier bits as unsigned positional values.
+
+### Sign Extension: The `rla / sbc a,a` Idiom
+
+When you multiply an 8-bit signed value by another 8-bit signed value, you need to know the signs. The cheapest way to extract the sign bit on the Z80:
+
+```z80
+; Sign extension: A → D (0 if positive, $FF if negative)
+; Cost: 8T, 2 bytes. Branchless.
+    rla                 ; 4T  rotate sign bit into carry
+    sbc  a, a           ; 4T  A = 0 if carry clear, $FF if set
+```
+
+After `sbc a,a`, A is $00 for positive inputs or $FF for negative inputs. This is the standard sign-extension byte used across the Z80 demoscene.
+
+### `mul_signed` --- Signed 8×8 Multiply
+
+The algorithm: XOR the two inputs to determine the result sign, take absolute values, multiply unsigned, negate the result if the sign was negative. This is the routine that Chapter 5 calls six times per vertex rotation and twice per backface cull.
+
+```z80 id:ch04_mul_signed
+; mul_signed — 8x8 signed multiply
+; Input:  B = signed multiplicand, C = signed multiplier
+; Output: HL = signed 16-bit result
+; Cost:   ~240-260 T-states (Pentagon)
+;
+; Algorithm: determine sign, abs both, unsigned multiply, negate if needed.
+
+mul_signed:
+    ld   a, b
+    xor  c               ; 4T  bit 7 = result sign (1 = negative)
+    push af              ; 11T save sign flag
+
+    ; Absolute value of B
+    ld   a, b
+    or   a
+    jp   p, .b_pos       ; 10T skip if positive
+    neg                  ; 8T  A = |B|
+.b_pos:
+    ld   b, a
+
+    ; Absolute value of C
+    ld   a, c
+    or   a
+    jp   p, .c_pos
+    neg
+.c_pos:
+    ld   c, a
+
+    ; Unsigned 8x8 multiply: B * C -> A:C (high:low)
+    ld   a, 0
+    ld   d, 8
+.mul_loop:
+    rr   c
+    jr   nc, .noadd
+    add  a, b
+.noadd:
+    rra
+    dec  d
+    jr   nz, .mul_loop
+
+    ; A:C = unsigned product. Move to HL.
+    ld   h, a
+    ld   l, c
+
+    ; Negate result if sign was negative
+    pop  af              ; 10T recover sign
+    or   a
+    jp   p, .done        ; 10T skip if positive
+    ; Negate HL: HL = 0 - HL
+    xor  a
+    sub  l
+    ld   l, a
+    sbc  a, a
+    sub  h
+    ld   h, a
+.done:
+    ret
+```
+
+The core is the same shift-and-add loop from `mulu112`, wrapped with sign detection and conditional negation. The overhead is ~40-60 T-states beyond the unsigned multiply, depending on how many operands need negation.
+
+### `mul_signed_c` --- Thin Wrapper for Backface Culling
+
+Chapter 5's backface culling passes the first operand in A rather than B. A thin wrapper avoids restructuring the caller:
+
+```z80 id:ch04_mul_signed_c
+; mul_signed_c — signed multiply with A,C inputs
+; Input:  A = signed multiplicand, C = signed multiplier
+; Output: HL = signed 16-bit result
+; Cost:   ~250-270 T-states (Pentagon)
+
+mul_signed_c:
+    ld   b, a            ; 4T
+    jr   mul_signed      ; 12T  fall through to mul_signed
+```
+
+### Cost Comparison
+
+| Routine | Input | Result | T-states | Notes |
+|---------|-------|--------|----------|-------|
+| `mulu112` (unsigned) | B, C | A:C (16-bit) | 196--204 | Chapter 4 shift-and-add |
+| `mulu_fast` (square table) | B, C | HL (16-bit) | ~61 | Needs 512-byte table; rounding error |
+| `mul_signed` | B, C (signed) | HL (signed 16-bit) | ~240--260 | Sign handling adds ~40--60T |
+| `mul_signed_c` | A, C (signed) | HL (signed 16-bit) | ~250--270 | Wrapper for backface culling |
+
+The signed multiply is roughly 25% more expensive than unsigned. For a wireframe cube with 8 vertices and 6 multiplies per axis rotation (12 total per full 3D rotation), the per-vertex cost is ~3,120 T-states --- still comfortably within the frame budget.
+
+The rotation matrices in Chapter 5 call `mul_signed` six times per vertex for Z-axis and perspective, and `mul_signed_c` twice per face for backface culling. Now you know exactly what those calls do.
+
+> **Credit:** The signed arithmetic gap was identified by Ped7g (Peter Helcmanovsky) during his review of the book.
+
+---
+
 ## Division on Z80
 
 Division on the Z80 is even more painful than multiplication. No divide instruction, and the algorithm is inherently serial -- each quotient bit depends on the previous subtraction. Dark again presents two methods: accurate and fast.
@@ -621,3 +747,5 @@ For most demoscene work, **Patrik Rak's CMWC** is the clear winner: excellent qu
 ---
 
 *All cycle counts in this chapter are for Pentagon timing (no wait states). On a standard 48K Spectrum or Scorpion with contended memory, expect higher counts for code executing in the lower 32K of RAM. See Appendix A for the complete timing reference.*
+
+> **Sources:** Dark / X-Trade, "Programming Algorithms" (Spectrum Expert #01, 1997); Gogin, PRNG collection and quality assessment; Patrik Rak (Raxoft), CMWC generator; Ped7g (Peter Helcmanovsky), signed arithmetic gap identification and review

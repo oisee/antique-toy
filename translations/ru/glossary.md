@@ -117,10 +117,12 @@
 | Dark | Кодер, X-Trade. Автор статей по программированию в Spectrum Expert. Кодер Illusion. | Гл01, Гл04, Гл05, Гл06, Гл07, Гл10 |
 | Introspec (spke) | Кодер, Life on Mars. Провёл реверс-инжиниринг Illusion. Автор статей на Hype (технические анализы, серия GO WEST, DOWN_HL). Кодер демо Eager. | Гл01--Гл12, Гл15, Гл23 |
 | n1k-o | Музыкант, Skrju. Сочинил саундтрек Eager. Разработал технику гибридных барабанов совместно с Introspec'ом. | Гл09, Гл12 |
-| diver4d | Кодер, 4th Dimension. Демо GABBA (CAFe 2019). Первопроходец рабочего процесса синхронизации через видеоредактор (Luma Fusion). | Гл09, Гл12 |
+| diver4d | Кодер, 4D+TBK (Triebkraft). Демо GABBA (CAFe 2019). Первопроходец рабочего процесса синхронизации через видеоредактор (Luma Fusion). | Гл09, Гл12 |
 | DenisGrachev | Кодер. Old Tower, движок GLUF, движок Ringo, Dice Legends. Техника RET-цепочки. | Гл03, Гл08 |
 | Robus | Кодер. Система многопоточности Z80, демо WAYHACK. | Гл12 |
-| sq (psndcj) | Кодер. Исследование оптимизации крупнопиксельной графики (Born Dead #05, Hype). Руководство по среде разработки. | Гл01, Гл07 |
+| psndcj (cyberjack) | Кодер, 4D+TBK (Triebkraft). Экспертиза AY/TurboSound. Демо Break Space (эффект Magen Fractal). | Гл01, Гл07, Гл14 |
+| Screamer (sq) | Кодер, Skrju. Исследование оптимизации крупнопиксельной графики (Born Dead #05, Hype). Руководство по среде разработки. | Гл01, Гл07 |
+| Ped7g | Peter Helcmanovsky. Мейнтейнер sjasmplus, контрибьютор ZX Spectrum Next. Фидбек по знаковой арифметике и RLE. | Гл04, Гл14, Прил. F |
 | RST7 | Кодер. Оптимизация DOWN_HL с двойным счётчиком. | Гл02 |
 
 ### Ключевые демо и продукции
@@ -129,7 +131,7 @@
 |------|-------------|------|----------|
 | Illusion | X-Trade (Dark) | 1996 | Гл01, Гл04, Гл05, Гл06, Гл07, Гл10 |
 | Eager (to live) | Introspec / Life on Mars | 2015 | Гл02, Гл03, Гл09, Гл10, Гл12 |
-| GABBA | diver4d / 4th Dimension | 2019 | Гл12 |
+| GABBA | diver4d / 4D+TBK | 2019 | Гл12 |
 | WAYHACK | Robus | -- | Гл12 |
 | Old Tower | DenisGrachev | -- | Гл08 |
 | Lo-Fi Motion | -- | -- | Гл20 |

@@ -132,7 +132,7 @@ Eager fue desarrollado entre junio y agosto de 2015. Introspec ha dicho que la i
 
 La música vino de n1k-o (de Skrju), cuyo track le dio a la demo su estructura rítmica. La técnica híbrida de tambor -- muestra digital para el ataque transitorio, envolvente AY para la caída -- fue la innovación de n1k-o, e impulsó toda la decisión arquitectónica de construir un motor de generación asíncrona de fotogramas. Sin los tambores, Eager podría haber sido una demo más simple. Con ellos, se convirtió en lo que Introspec llamó "lo más difícil que he hecho en una demo."
 
-El desarrollo se comprimió en aproximadamente diez semanas. La versión de party, enviada a 3BM Open Air 2015, todavía tenía errores -- el file_id.diz llevaba una nota agradeciendo a diver de 4th Dimension "por el consejo genial" y disculpándose por la inestabilidad. La versión final corrigió los problemas de temporización entre modelos de Spectrum (128K, +2, +2A/B, +3, Pentagon -- todos solo a 3,5MHz, sin turbo). Esa polinización cruzada -- un scener de un grupo pasando un dato técnico a un programador de otro -- es cómo evoluciona la demoscene del ZX.
+El desarrollo se comprimió en aproximadamente diez semanas. La versión de party, enviada a 3BM Open Air 2015, todavía tenía errores -- el file_id.diz llevaba una nota agradeciendo a diver de 4D+TBK "por el consejo genial" y disculpándose por la inestabilidad. La versión final corrigió los problemas de temporización entre modelos de Spectrum (128K, +2, +2A/B, +3, Pentagon -- todos solo a 3,5MHz, sin turbo). Esa polinización cruzada -- un scener de un grupo pasando un dato técnico a un programador de otro -- es cómo evoluciona la demoscene del ZX.
 
 ---
 

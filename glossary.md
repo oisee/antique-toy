@@ -117,10 +117,12 @@ Technical vocabulary used throughout *Coding the Impossible*. Terms are grouped 
 | Dark | Coder, X-Trade. Author of Spectrum Expert programming articles. Coder of Illusion. | Ch01, Ch04, Ch05, Ch06, Ch07, Ch10 |
 | Introspec (spke) | Coder, Life on Mars. Reverse-engineered Illusion. Authored Hype articles (technical analyses, GO WEST series, DOWN_HL). Coded Eager demo. | Ch01--Ch12, Ch15, Ch23 |
 | n1k-o | Musician, Skrju. Composed Eager soundtrack. Developed hybrid drum technique with Introspec. | Ch09, Ch12 |
-| diver4d | Coder, 4th Dimension. GABBA demo (CAFe 2019). Pioneered video-editor sync workflow (Luma Fusion). | Ch09, Ch12 |
+| diver4d | Coder, 4D+TBK (Triebkraft). GABBA demo (CAFe 2019). Pioneered video-editor sync workflow (Luma Fusion). | Ch09, Ch12 |
 | DenisGrachev | Coder. Old Tower, GLUF engine, Ringo engine, Dice Legends. RET-chaining technique. | Ch03, Ch08 |
 | Robus | Coder. Z80 threading system, WAYHACK demo. | Ch12 |
-| sq (psndcj) | Coder. Chunky pixel optimisation research (Born Dead #05, Hype). Development environment guide. | Ch01, Ch07 |
+| psndcj (cyberjack) | Coder, 4D+TBK (Triebkraft). AY/TurboSound expertise. Break Space demo (Magen Fractal effect). | Ch01, Ch07, Ch14 |
+| Screamer (sq) | Coder, Skrju. Chunky pixel optimisation research (Born Dead #05, Hype). Development environment guide. | Ch01, Ch07 |
+| Ped7g | Peter Helcmanovsky. sjasmplus maintainer, ZX Spectrum Next contributor. Signed arithmetic and RLE feedback. | Ch04, Ch14, App F |
 | RST7 | Coder. Dual-counter DOWN_HL optimisation. | Ch02 |
 
 ### Key Demos & Productions
@@ -129,7 +131,7 @@ Technical vocabulary used throughout *Coding the Impossible*. Terms are grouped 
 |------|-------------|------|----------|
 | Illusion | X-Trade (Dark) | 1996 | Ch01, Ch04, Ch05, Ch06, Ch07, Ch10 |
 | Eager (to live) | Introspec / Life on Mars | 2015 | Ch02, Ch03, Ch09, Ch10, Ch12 |
-| GABBA | diver4d / 4th Dimension | 2019 | Ch12 |
+| GABBA | diver4d / 4D+TBK | 2019 | Ch12 |
 | WAYHACK | Robus | -- | Ch12 |
 | Old Tower | DenisGrachev | -- | Ch08 |
 | Lo-Fi Motion | -- | -- | Ch20 |

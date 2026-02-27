@@ -276,7 +276,7 @@ A demo without a compo is a video on YouTube. A demo at a compo is a performance
 
 The ZX Spectrum demo scene is served by a handful of recurring parties, each with its own character.
 
-**Chaos Constructions (CC)** is the largest and most prestigious ZX demo event, held in Saint Petersburg, Russia. The ZX demo compo at CC draws the strongest entries: Break Space (2016), Eager's successors, and productions from groups like Thesuper, 4th Dimension, and Placeholders. CC is where you go to compete at the highest level. The audience is large, knowledgeable, and unforgiving.
+**Chaos Constructions (CC)** is the largest and most prestigious ZX demo event, held in Saint Petersburg, Russia. The ZX demo compo at CC draws the strongest entries: Break Space (2016), Eager's successors, and productions from groups like Thesuper, 4D+TBK, and Placeholders. CC is where you go to compete at the highest level. The audience is large, knowledgeable, and unforgiving.
 
 **DiHalt** is held in Nizhny Novgorod, Russia, and has both a summer event and a "Lite" winter edition. DiHalt tends to be more experimental than CC -- the audience is welcoming to first-time entrants, and the atmosphere encourages risk-taking. Lo-Fi Motion was released at DiHalt 2020. If you are entering your first compo, DiHalt Lite is a good choice.
 

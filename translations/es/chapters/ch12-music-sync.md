@@ -254,7 +254,7 @@ La belleza de esta arquitectura es su simplicidad a nivel macro. El motor es un 
 
 ## 12.4 La innovación de GABBA: El editor de vídeo como herramienta de línea de tiempo
 
-En 2019, diver4d (de 4th Dimension) obtuvo el primer lugar en CAFe con GABBA, una demo temática de gabber con una sincronización audiovisual brutalmente precisa. La sincronización era tan exacta que cada golpe visual aterrizaba exactamente en el pulso musical, cada transición coincidía con un límite de frase, y toda la producción se sentía como un videoclip en lugar de una demo.
+En 2019, diver4d (de 4D+TBK) obtuvo el primer lugar en CAFe con GABBA, una demo temática de gabber con una sincronización audiovisual brutalmente precisa. La sincronización era tan exacta que cada golpe visual aterrizaba exactamente en el pulso musical, cada transición coincidía con un límite de frase, y toda la producción se sentía como un videoclip en lugar de una demo.
 
 La sorpresa técnica estaba en el flujo de trabajo, no en el código.
 

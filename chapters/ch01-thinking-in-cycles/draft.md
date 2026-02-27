@@ -87,7 +87,7 @@ The Pentagon 128, the most popular Soviet ZX Spectrum clone, took a different ap
 
 This is why the Pentagon has a different frame length -- 71,680 T-states, 320 scanlines. The ULA timing is slightly different because there is no need to interleave CPU and ULA access. But the payoff is enormous: you can count cycles with absolute confidence. When your inner loop says it costs 36 T-states per iteration, it costs 36 T-states per iteration, every single time, everywhere in the frame.
 
-This clean timing is why the Pentagon became the standard platform for the ZX Spectrum demoscene, particularly in the Former Soviet Union where these clones were ubiquitous. When you watch demos from groups like X-Trade, 4th Dimension, or Life on Mars, they are overwhelmingly targeting Pentagon timing. When Introspec wrote his legendary technical teardown of Illusion by X-Trade, the cycle counts he quoted assumed Pentagon.
+This clean timing is why the Pentagon became the standard platform for the ZX Spectrum demoscene, particularly in the Former Soviet Union where these clones were ubiquitous. When you watch demos from groups like X-Trade, 4D+TBK (Triebkraft), or Life on Mars, they are overwhelmingly targeting Pentagon timing. When Introspec wrote his legendary technical teardown of Illusion by X-Trade, the cycle counts he quoted assumed Pentagon.
 
 For learning, the Pentagon model is ideal: you can focus on understanding what instructions cost without worrying about contention effects. All the T-state tables in this book assume Pentagon timing unless stated otherwise. When we need to discuss the differences (and we will, in Chapter 15), we will be explicit.
 

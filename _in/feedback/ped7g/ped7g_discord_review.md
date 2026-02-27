@@ -81,7 +81,12 @@ Added transposition tip for improving RLE compression with 2D data.
 
 > T-state counts "fly up and down" — possible first draft quality.
 
-**Action needed**: Full audit of Appendix F T-states against official Next documentation.
+**Status**: ✅ IMPLEMENTED (2026-02-27). Full audit of all Z80N T-state values against
+wiki.specnext.dev. Nearly all values were halved; corrected PIXELDN/PIXELAD/SETAE (4→8T),
+LDIX/LDDX (5→16T), LDIRX/LDDRX/LDPIRX (5→21/16T), MIRROR/SWAPNIB (4→8T), TEST (7→11T),
+BSLA/BSRA/BSRL/BSRF/BRLC (4→8T), PUSH nn (11→23T), ADD HL/DE/BC,A (4→8T),
+NEXTREG reg,val (12→20T), NEXTREG reg,A (8→17T), OUTINB (5→16T). MUL D,E (8T) was already correct.
+Ped7g audit credit added to Sources section.
 
 ---
 
@@ -177,7 +182,60 @@ Ped7g notes this is harder to describe in a book because:
 
 ### Permission
 
-Asked to use in book with credit — awaiting response.
+**Permission GRANTED** (2026-02-27): "samozrejme, urob s nim co chces, je to sucast feedbacku"
+(= "of course, do whatever you want with it, it's part of the feedback")
 
-**Status**: Reviewing for inclusion in compression chapter. Great example of self-modifying
-code technique for size-optimized intros.
+### Additional RLE exit variations (2026-02-27)
+
+Ped7g suggests more exit strategies beyond the `jr` self-modify:
+1. **Target area behind code** — RLE depacker at the end, overwrite `jr rle_loop_outer`
+   offset so it jumps further to intro code without needing the 31-byte padding window
+2. **`jp $C3C3` trick** — place `$C3` values in RLE data with exact repeat count so DJNZ
+   terminates exactly when `jp $C3C3` opcode is assembled in memory; align the whole intro
+   so address $C3C3 is the continuation of the intro. Eliminates both padding AND explicit
+   exit code.
+3. General principle: "takych veci sa da vymysliet... vzdy zalezi na konkretnej situacii"
+   (you can invent many such things, always depends on the specific situation)
+
+**Status**: ✅ IMPLEMENTED (2026-02-27). Added as sidebar in Ch.14 (compression) with
+complete working mini-intro (120 bytes), byte count analysis, interrupt safety note,
+advanced variants, and full credit/permission attribution.
+
+---
+
+## Signed arithmetic gap (2026-02-27)
+
+> "nasobenie je vzdy len unsigned a neskor uz sa len vola napr. nejake rotate ale nikde
+> sa nerozobera priamo ako riesit signed cisla"
+>
+> (multiplication is always only unsigned, and later it just calls e.g. some rotate
+> but nowhere is there a direct discussion of how to handle signed numbers)
+
+### Analysis
+
+**Confirmed gap.** Ch04 covers unsigned multiply (shift-and-add, square table). Ch05 calls
+`mul_signed` / `mul_signed_c` but **never shows the implementation**. No dedicated section on:
+- Two's complement fundamentals (what it is, why $FF = -1)
+- Sign extension (byte→16-bit: `bit 7,a / sbc a,a / ld d,a`)
+- NEG instruction and when to use it vs XOR+INC
+- Signed multiply algorithm (abs+multiply+sign-correct, or Booth's)
+- Signed 8.8 fixed-point multiplication
+- Signed division
+
+Ch19 (collisions) uses SRA for signed right shift but doesn't teach it systematically.
+
+### Action needed
+
+Add a dedicated "Signed Arithmetic" section to Ch04, covering:
+1. Two's complement primer (3-4 paragraphs)
+2. Sign extension patterns with code
+3. `mul_signed` implementation (the one Ch05 calls!)
+4. Cost comparison table: signed vs unsigned operations
+5. Worked example: signed coordinate rotation
+
+**Status**: ✅ IMPLEMENTED (2026-02-27). Added dedicated "Signed Multiply" section to Ch04
+with two's complement primer, sign extension idiom (rla/sbc a,a), mul_signed implementation
+(matching Ch05 calling convention: B,C → HL), mul_signed_c wrapper (A,C → HL for backface
+culling), cost comparison table, and Ped7g credit.
+
+**Priority: HIGH** — this is a fundamental building block that multiple later chapters depend on.

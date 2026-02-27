@@ -155,7 +155,7 @@ Eager was developed between June and August 2015. Introspec has said the initial
 
 The music came from n1k-o (of Skrju), whose track gave the demo its rhythmic structure. The hybrid drum technique -- digital sample for the attack transient, AY envelope for the decay -- was n1k-o's innovation, and it drove the entire architectural decision to build an asynchronous frame generation engine. Without the drums, Eager could have been a simpler demo. With them, it became what Introspec called "the hardest thing I've done in a demo."
 
-The development was compressed into roughly ten weeks. The party version, submitted to 3BM Open Air 2015, still had bugs -- the file_id.diz carried a note thanking diver of 4th Dimension "for the cool tip" and apologising for the instability. The final version fixed the timing issues across Spectrum models (128K, +2, +2A/B, +3, Pentagon -- all at 3.5MHz only, no turbo). That cross-pollination -- a scener from one group passing a technical insight to a coder from another -- is how the ZX demoscene evolves.
+The development was compressed into roughly ten weeks. The party version, submitted to 3BM Open Air 2015, still had bugs -- the file_id.diz carried a note thanking diver of 4D+TBK "for the cool tip" and apologising for the instability. The final version fixed the timing issues across Spectrum models (128K, +2, +2A/B, +3, Pentagon -- all at 3.5MHz only, no turbo). That cross-pollination -- a scener from one group passing a technical insight to a coder from another -- is how the ZX demoscene evolves.
 
 ---
 
