@@ -177,21 +177,34 @@ def preprocess_listings(text, base_dir=ROOT):
 
 
 def strip_fence_tags(text):
-    """Strip everything after the language identifier on code fence lines.
+    """Strip custom tags from code fence lines so pandoc sees clean fences.
 
     Our source .md files use ```z80 id:ch01_xxx (and other tags) which pandoc
-    doesn't recognise — it expects ```z80 or ```{.z80 #id}. Without this fix,
+    doesn't recognise — it expects ```z80 or ```{.mermaid}. Without this fix,
     pandoc treats the fence as inline code and collapses the block into one line.
 
-    Converts: ```z80 id:ch01_xxx src:path lines:1..5
-    To:        ```z80
+    For mermaid blocks, we convert to pandoc attribute syntax so that the
+    mermaid-filter can recognise them:
+        ```mermaid id:ch14_xxx  →  ```{.mermaid}
+
+    For all other languages, we simply strip the tags:
+        ```z80 id:ch01_xxx  →  ```z80
     """
-    return re.sub(
+    # Mermaid: convert to pandoc attribute syntax for mermaid-filter
+    text = re.sub(
+        r'^```mermaid\s+.*$',
+        r'```{.mermaid}',
+        text,
+        flags=re.MULTILINE,
+    )
+    # Everything else: strip tags after language identifier
+    text = re.sub(
         r'^(```\w+)\s+.+$',
         r'\1',
         text,
         flags=re.MULTILINE,
     )
+    return text
 
 
 def combine_chapters(chapter_glob=CHAPTER_GLOB, extra_files=EXTRA_FILES,
