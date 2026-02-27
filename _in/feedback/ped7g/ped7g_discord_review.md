@@ -82,3 +82,102 @@ Added transposition tip for improving RLE compression with 2D data.
 > T-state counts "fly up and down" — possible first draft quality.
 
 **Action needed**: Full audit of Appendix F T-states against official Next documentation.
+
+---
+
+## RLE depacker for 256B intros — detailed follow-up (2026-02-27)
+
+Ped7g clarifies his earlier RLE comment wasn't just "a feeling" that RLE is big for 256 bytes,
+but that the code is genuinely long and complex. Provides a complete working example.
+
+### Minimal self-modifying RLE depacker (9 bytes core)
+
+```z80
+target:
+  ds <size needed + stack>
+intro_data:
+  dw target
+  db value, rep
+  ..
+  db 0x18,0 ; must reach `ld (hl),c` and overwrite it to create opcode `18 23` -> `jr rle_loop_inner+0x25`
+rle_start:
+  ld sp,intro_data
+  pop hl
+rle_loop_outer:
+  pop bc
+rle_loop_inner:
+  ld (hl),c
+  inc hl
+  djnz rle_loop_inner
+  jr rle_loop_outer
+; 0x1F bytes to fill with other helper code
+  ds 0x1F
+intro_start:
+  assert $ == rle_loop_inner + 2 + 0x23 ; make sure we are at exiting `jr` target
+  ...
+```
+
+### Byte count analysis
+
+- Book's "minimal RLE decompressor": 13 bytes (but HL+DE pre-set, needs outer call)
+- Ped7g's skeleton: `db 0x18,0` (jr in data) + `rle_loop_outer` code → 2+1+1+1+2+2 = **9 bytes** core
+- SP+HL setup adds +6 → **15 bytes total** for self-contained RLE decoder
+- Awkward 31-byte window that must be jumped over and filled with code; worst case +4 bytes (2x jr)
+
+### Complete working example (120 bytes .bin)
+
+```z80
+    DEVICE ZXSPECTRUM48, $8000
+
+target  EQU $4000
+  ; start RLE with filling screen
+    ORG $5B00       ; loading address of intro -> print buffer
+intro_data:
+    dw target
+; bitmap stripes every other line
+    .(4*3) db $AA, 0, $00, 0
+    db $43, 32*2, $44, 32*4, $45, 32*3, $46, 32*2, $47, 32*2
+    db $46, 32*2, $45, 32*3, $44, 32*4, $43, 32*2
+    db 0x18,0 ; must reach `ld (hl),c` and overwrite it to create opcode `18 23` -> `jr rle_loop_inner+0x25`
+rle_start:
+  ei  ; simulate BASIC environment after LOAD including enabled interrupts during depack
+  ld sp,intro_data
+  pop hl
+rle_loop_outer:
+  pop bc
+rle_loop_inner:
+  ld (hl),c
+  inc hl
+  djnz rle_loop_inner
+  jr rle_loop_outer
+; 0x1F bytes to fill with other helper code
+  ds 0x1F
+intro_start:
+  assert $ == rle_loop_inner + 2 + 0x23 ; make sure we are at exiting `jr` target
+    inc a
+    and 7
+    out (254),a
+    jr intro_start
+
+    SAVESNA "temp.sna", rle_start
+    SAVEBIN "temp.bin", intro_data, $-intro_data    ; real intro binary
+```
+
+Result: 120 bytes .bin (including 31 bytes padding that could contain code).
+Screenshot: colored stripes filling screen via attribute values.
+
+### Complexity notes for the book
+
+Ped7g notes this is harder to describe in a book because:
+1. Part of the data IS the mechanism (the `db 0x18,0` overwrites the depack loop to create a `jr` exit)
+2. User must understand the buffer must end "in the code" to overwrite the depack loop
+3. Advanced users will immediately ask "wait, he changes SP, what about interrupts?" —
+   the interrupt does occasionally overwrite something, but only data already consumed,
+   so the stack remains functional for the intro code itself
+
+### Permission
+
+Asked to use in book with credit — awaiting response.
+
+**Status**: Reviewing for inclusion in compression chapter. Great example of self-modifying
+code technique for size-optimized intros.
