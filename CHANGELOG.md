@@ -1,5 +1,38 @@
 # What's New
 
+## v18 (2026-02-27)
+
+**Ped7g feedback patches + scene identity fixes.**
+
+**Chapter 4 (Maths): Signed multiply section** — fills a gap identified by Ped7g where Ch05 calls `mul_signed` 8 times but it was never implemented:
+- Two's complement primer (bit 7 = sign, $FF = -1, NEG for abs)
+- Sign extension idiom: `rla / sbc a,a` (2 bytes, 8T, branchless)
+- `mul_signed` (B,C signed → HL, ~240-260T) and `mul_signed_c` wrapper (A,C → HL) matching Ch05 calling conventions
+- Cost comparison table: unsigned vs signed vs square-table
+
+**Chapter 14 (Compression): Ped7g's self-modifying RLE sidebar** — complete 120-byte working mini-intro contributed with permission:
+- 9-byte core depacker using SP as data pointer and `db $18,0` → `jr` self-modifying exit trick
+- Byte count analysis, interrupt safety note, advanced variants (`jp $C3C3` trick)
+
+**Appendix F: Z80N T-state audit** — nearly all values were wrong (halved). Corrected against wiki.specnext.dev:
+- PIXELDN/PIXELAD/SETAE: 4→8T; LDIX/LDDX: 5→16T; LDIRX/LDDRX/LDPIRX: 5→21/16T
+- MIRROR/SWAPNIB: 4→8T; TEST: 7→11T; barrel shifts: 4→8T
+- PUSH nn: 11→23T; ADD HL/DE/BC,A: 4→8T; NEXTREG: 12→20T / 8→17T; OUTINB: 5→16T
+- MUL D,E (8T) was the only correct one
+
+**Scene identity corrections** across glossary, 5 chapters, and all 3 translations:
+- sq ≠ psndcj: sq = Screamer (Skrju), psndcj = cyberjack (TBK/Triebkraft + 4D)
+- "4th Dimension" → "4D+TBK (Triebkraft)" throughout
+- Added Ped7g and Screamer (sq) to glossary Key People tables
+
+## v17 (2026-02-27)
+
+**Appendix J (modern tools), Ch.20 refactor, Ped7g feedback fixes.**
+
+- New Appendix J: Modern Development Tools
+- Ch.20 refactored with Unity/Unreal as data generators, Farbrausch sidebar
+- Ped7g feedback: shadow register warning fix, pixel_addr fix, Quick Cost table fix, --syntax=abf, VSCode regex, RLE byte count correction
+
 ## v16 (2026-02-26)
 
 **Pre-compression data preparation + packer benchmark tool.**
