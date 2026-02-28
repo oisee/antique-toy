@@ -392,12 +392,14 @@
 ### Практические трюки
 
 **Проверка A на ноль без CP 0:**
+
 ```z80
     or   a              ; 4T  sets Z if A=0, clears C
     and  a              ; 4T  same effect, but also sets H
 ```
 
 **Проверка переноса после 16-битного INC/DEC:** Невозможно. `INC rr`/`DEC rr` не устанавливают флаги. Чтобы проверить, достиг ли 16-битный регистр нуля:
+
 ```z80
     ld   a, b           ; 4T
     or   c              ; 4T  Z set if BC = 0
@@ -444,7 +446,7 @@
 
 `EXX` меняет BC/DE/HL на BC'/DE'/HL' за **4T**. Это даёт тебе шесть дополнительных 8-битных регистров (или три дополнительные 16-битные пары) практически бесплатно. Типичное использование: хранить указатели в теневом наборе и переключать по мере необходимости.
 
-**Внимание:** Обработчик прерываний ROM Spectrum (IM1) использует теневые регистры. Если прерывания разрешены, данные `EXX`/`EX AF,AF'` будут повреждены при каждом прерывании. Всегда делай `DI` перед использованием теневых регистров или переключайся на IM2 с собственным обработчиком.
+**Внимание:** Обработчик прерываний ROM Spectrum (IM1) использует IY (он должен указывать на системные переменные по адресу $5C3A или на безопасную область памяти). Теневые регистры BC'/DE'/HL' и AF' сохраняются обработчиком ROM и безопасны для использования при разрешённых прерываниях. Если твой код использует IY для других целей, сначала запрети прерывания (`DI`) или переключись на IM2 с собственным обработчиком.
 
 ### Привязка регистровых пар к инструкциям
 
@@ -468,26 +470,32 @@
 ; pixel_addr: calculate screen address from coordinates
 ; Input:  B = Y (0-191), C = X (0-255)
 ; Output: HL = byte address, A = pixel bit position
-; Cost:   ~55 T-states
+; Cost:   ~107 T-states
 ;
 pixel_addr:
     ld   a, b           ; 4T   A = Y
-    and  $07             ; 7T   scanline within char cell (SSS)
+    and  $07             ; 7T   scanline within char cell (Y:2-0)
     or   $40             ; 7T   add screen base ($4000 high byte)
     ld   h, a           ; 4T   H = 010 00 SSS (partial)
     ld   a, b           ; 4T   A = Y again
     rra                 ; 4T   \
-    rra                 ; 4T    | shift character row (TTRR RRR)
-    rra                 ; 4T   /  to bits 4-3
-    and  $18             ; 7T   mask TT (third bits)
+    rra                 ; 4T    | shift right 3
+    rra                 ; 4T   /
+    and  $18             ; 7T   mask Y:4-3 (third bits)
     or   h              ; 4T   H = 010 TT SSS
     ld   h, a           ; 4T
+    ld   a, b           ; 4T   A = Y again
+    and  $38             ; 7T   mask Y:5-3 (character row within third)
+    rlca                ; 4T   \  rotate left 2 to get
+    rlca                ; 4T   /  Y:5-3 in bits 7-5
+    ld   l, a           ; 4T   L = RRR 00000 (partial)
     ld   a, c           ; 4T   A = X
     rra                 ; 4T   \
     rra                 ; 4T    | X / 8
     rra                 ; 4T   /
     and  $1F             ; 7T   mask to 5-bit column
-    ld   l, a           ; 4T   L = 000 CCCCC
+    or   l              ; 4T   combine row and column
+    ld   l, a           ; 4T   L = RRR CCCCC
 ```
 
 ### DOWN_HL: сдвиг на одну строку пикселей вниз
@@ -648,7 +656,7 @@ iterate_screen:
 |-----------|----------|----------|---------|
 | Обнулить A | `LD A,0` (7T, 2B) | `XOR A` (4T, 1B) | 3T, 1B |
 | Проверить A=0 | `CP 0` (7T, 2B) | `OR A` (4T, 1B) | 3T, 1B |
-| Скопировать 1 байт в память | `LD (HL),A`+`INC HL` (13T) | `LDI` (16T) | LDI медленнее, но автоинкрементирует и DE |
+| Скопировать 1 байт (HL)→(DE) | `LD A,(HL)`+`LD (DE),A`+`INC HL`+`INC DE` (26T, 4B) | `LDI` (16T, 2B) | 10T, 2B на байт |
 | Скопировать N байт | `LDIR` (21T/байт) | N x `LDI` (16T/байт) | На 24% быстрее, стоит 2N байт кода |
 | Заполнить 2 байта | `LD (HL),A`+`INC HL` x2 (26T) | `PUSH rr` (11T) | На 58% быстрее, нужен перехват SP |
 | 8-битный цикл | `DEC B`+`JR NZ` (16T, 3B) | `DJNZ` (13T, 2B) | 3T, 1B за итерацию |

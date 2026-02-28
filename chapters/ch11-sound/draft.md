@@ -4,7 +4,7 @@
 
 ---
 
-The AY-3-8910 is the voice of the ZX Spectrum 128K. General Instrument designed it in 1978 as a Programmable Sound Generator (PSG) -- a single chip that could produce music and sound effects without a dedicated sound CPU. By the time Amstrad put it into the Spectrum 128K in 1986, it was already a proven workhorse: Intellivision, MSX, Atari ST, and dozens of arcade machines all used it or its pin-compatible variants (YM2149 in the Atari ST, AY-3-8912 with fewer I/O ports).
+The AY-3-8912 is the voice of the ZX Spectrum 128K. General Instrument designed the AY-3-8910 family in 1978 as a Programmable Sound Generator (PSG) -- a single chip that could produce music and sound effects without dedicating the CPU to sound generation. Investronica first put the AY into the Spanish Spectrum 128K, Sinclair adopted the design, and by the time Amstrad inherited it for the +2/+3, the chip was already a proven workhorse: Intellivision, MSX, Atari ST, and dozens of arcade machines all used it or its pin-compatible variants (YM2149 in the Atari ST). The Spectrum 128K specifically uses the AY-3-8912, which has fewer I/O ports than the 8910 but is otherwise identical in sound capabilities.
 
 Fourteen registers. Three square-wave tone channels. One noise generator. One envelope generator. That is all you get. Everything you have ever heard in a Spectrum 128K chiptune -- the pumping basslines, the rapid-fire arpeggiated chords, the snappy drums -- comes from programming these fourteen registers fifty times per second.
 

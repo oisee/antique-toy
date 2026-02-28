@@ -115,116 +115,140 @@
   },
   "ru": {
     "chapters/ch01-thinking-in-cycles": {
-      "source_sha256": "50736432451bc83ef7d26a6b612a20e8eaa297a333aae8f2130af2a815555c07",
-      "translation_sha256": "e416e30a2039e9d8e0839b98da0f8cfc129f4878d220f4fd5ceea01c9ab34985"
+      "source_sha256": "bc79bf2720698a218eaabfac774ff9c4acc5b3efcb6afa8069aacc7adcf0148b",
+      "translation_sha256": "0d29e0a00daa69f135ab2ae42e384831858357229527f090fb51cad042da08c4"
     },
     "chapters/ch02-screen-as-puzzle": {
-      "source_sha256": "fdf7f29e8da791d1f14b72404c1f7aad5def0f6fc87aaa40833652818e1fe1a0",
-      "translation_sha256": "84f03b6bd7c724ac6923ad0cbe444ae01e6cb0729de3176a4558785fd5d0ad3c"
+      "source_sha256": "c7ad5c4d870cba08aab682ecee116aa54a26b513f015c6249d19fff345f9c8d9",
+      "translation_sha256": "d66fa8501df11c70b8f5d0d117af9155f40198c01e9e34910601777e5b150bcf"
     },
     "chapters/ch03-demoscene-toolbox": {
-      "source_sha256": "69e51b79481d6c4e6bcb86473121bc00127a7eaa46f7a2be6a0cb398502398c6",
-      "translation_sha256": "25272946f25929293e28212e9404c495ebe28fcdc78abab58d792b4b8cadc582"
+      "source_sha256": "86859e5d04943dda5a91ccfe085cae1e09c59762ec8f0d54445f5ec8ca574567",
+      "translation_sha256": "ee7a266c1538dc927e42032c174336f24b21e3664c453e211c20e5b747cef3b2"
     },
     "chapters/ch04-maths": {
-      "source_sha256": "2f3acc48d57f178e8b9982ac5fcfccf44972faa2dad567ba2c551d14acc8bf1f",
-      "translation_sha256": "337a0e648739844e9159b5eaf89e329fa66bd57d28f5b059903fcfe668ef2d9a"
+      "source_sha256": "82a0735ce40c7e928b321ef5f10684f282c5d984337141d38f6e43fda2a4ef46",
+      "translation_sha256": "82cbc30b27ecf79144c5c3182cd0911518d27f0d62df0ca9319a7c295cc60a72"
     },
     "chapters/ch05-3d": {
-      "source_sha256": "3337167f98fc92b5927d42cf6f6d3bfa3a3c9d7891c7c59d16389886f83cebe0",
-      "translation_sha256": "d9037ada62f87faebab85d3637d6ecf4bc70bb8155fd08cac7f3224afec14204"
+      "source_sha256": "7e281b2ee14a8ca10681bfadd179c0c3439f56a5408a133c3434de6d3b5d98cf",
+      "translation_sha256": "11a4249300901ca295825e73a468978d054cb78ed339d08135ffa2778dd6ec7c"
     },
     "chapters/ch06-sphere": {
-      "source_sha256": "18b9074575d50d4e3e9d4aeaf701f7fa558485dfd14b193209e72e4a3a5e717c",
-      "translation_sha256": "9acc544656e5ab1b5e41f4413cd68693fc346367afbb7806556251375ddfc267"
+      "source_sha256": "418bee6d59c1bd6c30e08ac144be56b3cfed0814a31fa359e2b4dba63725192d",
+      "translation_sha256": "d56c6ff23b24901ce002387c7d45fe2e633a42fd5e90bddb328e9861d29a5fa6"
     },
     "chapters/ch07-rotozoomer": {
-      "source_sha256": "44d6686170aa72f635196cbac381d7a8613cecea9fd93055106fb3f6967c273d",
-      "translation_sha256": "409f08a2a4fdf53c286086916126330cbc2a9ffbf2cb5c7a6d722fcd3d3cc7b5"
+      "source_sha256": "2d22f748be6fe7b01e55617a2bca61e685e207458af43c1e410533ae3db5dfd2",
+      "translation_sha256": "a72ca36a7027c8c805ea9b808676f98af6dc777786b8fb78bab605bcb59cd6a5"
     },
     "chapters/ch08-multicolor": {
-      "source_sha256": "8b521b5cd28f2cb832a26919f48f5c6a1dea93e7457077d992c0dcda99b30cb9",
-      "translation_sha256": "ee70c2474ed3226660969e58e985c0b76727454feff66078710988b8659e7189"
+      "source_sha256": "07eac085de7889cc8e515e400b6a6fa4569fce0c729e2f5a2f0a9565e32fd049",
+      "translation_sha256": "b09c62e73bdef20e803749a83b62dd2b6108f84f868923cbc7ef58bc37e38a81"
     },
     "chapters/ch09-tunnels": {
-      "source_sha256": "8654f14988f572df34ad466f438ca1291d4928a0018238ab4c7256359bb1cf7c",
-      "translation_sha256": "1307797dc572c8dbe1351f99b1c535e00d2fb07565e755cd0a326a8605b88854"
+      "source_sha256": "8be4ef2359373fe9e0ef50f0ba2422e0555900a105978defe43f9eaa5fca37b7",
+      "translation_sha256": "0a2f235bfebdbf56ed25e2d0bee2f0b5bcffad66e7babebd340c273f8ce845c1"
     },
     "chapters/ch10-scroller": {
-      "source_sha256": "552c244a4d268bb7e78bd446f355757966920d5f78870ed84ea492ff3b2913ce",
-      "translation_sha256": "19900c3cc8ff6000730e77bb4d4a1ed8cabc8face5237b80175350083ffc9869"
+      "source_sha256": "2a9482d7536813431a63cb61beb098fff8eb7f367fcdc6094f805deedf916379",
+      "translation_sha256": "7b5db026abd3eec2e31ffc8dfca2f06c7a0759d03b3cb41beaf5b4a7c263f5a9"
     },
     "chapters/ch11-sound": {
-      "source_sha256": "f6b7fc6ae181fc9224d8b633b3d779c7dd1a879729ac14a12983163af805ab4f",
-      "translation_sha256": "6a37e301488279900982c7063fdb86678090a4b16f1a2191611d151a1f138fd2"
+      "source_sha256": "32b2f4db2ca37cd294bba84351dad79a4f27ea8da51cbaaef4b6ccb31e8b9750",
+      "translation_sha256": "b44181d258d7b4dacfae2dcdb4347e109362ebeed780e2ccd82912d62bd43133"
     },
     "chapters/ch12-music-sync": {
-      "source_sha256": "11abb51cd63e2f6bf548755db7183d5343dbdd00c856845e1b1721bb03f09120",
-      "translation_sha256": "44504817b410299bbcdace9290593f96bf99020f8d19ecbacc173de5ea748972"
+      "source_sha256": "a9fceedc1c8076ddf4423f8f6fad1cf698a287bc7eb3b14707e6d4fba267147b",
+      "translation_sha256": "800f73ca1cfbf93a3b611071e6093ec1a7f5235a2126e15427b984a8d59e4933"
     },
     "chapters/ch13-sizecoding": {
-      "source_sha256": "98ad8d61882732306cbb6fe0f57c854cfbabbe7da780b0e258ad9a7894965c29",
-      "translation_sha256": "57bce51f26ec09e860a62925714aa3eed506f06fdd3727db862f49c1d1dd8d58"
+      "source_sha256": "906529bf5547a7fbc549c1c531d83c1dd6156f81150c48eec3945129b6d7ba4e",
+      "translation_sha256": "85ebf208fe793f5b47faa0204116a646f1c599e4ed56958a198c72df0db19e8a"
     },
     "chapters/ch14-compression": {
-      "source_sha256": "c317e2a7f0d4a94005c69bc213f6a277b8bd93922f828150e075cee3e182dfd0",
-      "translation_sha256": "d824b9fc5f60b3e9d8cccae6b6c6a64a73e7e34cc2268e71d23c79a8f582fe7f"
+      "source_sha256": "97272510b063e864118340ba112cd169c974febb221d3088a084f579bb80763f",
+      "translation_sha256": "026c0e00c785efec129123002717fbbb884d60979636ad188ff2069afa5504b4"
     },
     "chapters/ch15-anatomy": {
-      "source_sha256": "d282505e53bebfe41e08ae5395cd49d8190057fba3d6df28505febaacc4d63b1",
-      "translation_sha256": "efb02b21885a4de45aac0e1034dd11a1c8503a711edb03d6e33f269cc129ec82"
+      "source_sha256": "6f924baa9217352832b59b550404046a63931a15d7f0477209e4a683f3aa71c8",
+      "translation_sha256": "2b2f78b30a98c185a8fe16690cc49731643aedf57a886031dcde57e4837e5f75"
     },
     "chapters/ch16-sprites": {
-      "source_sha256": "b0fc8cb8d6164899f231e63cf6625faa7a321749819211f64fdfc8e601410df9",
-      "translation_sha256": "565b1b814910b6e53f0153b8067a6217423f2d50c9a71a8633ab73361bade811"
+      "source_sha256": "39c719cb73e3cd37c3b7d6cf8f3f5ce23aa3b22e8dbb918dbb2fb2821b0203cd",
+      "translation_sha256": "75e85dfa2b6b63cf655a2c32386d6b404cdf0a1ba302b9818435591cfd8fa3be"
     },
     "chapters/ch17-scrolling": {
-      "source_sha256": "4c28ebc25b1d4c91b246993d58f190258c7b1657c93e2c45148278b46475cbc2",
-      "translation_sha256": "f48f007e2ad6c7876c118f0e7583cb60135fba4fa48ce907accd30d9126c9f62"
+      "source_sha256": "e9a1791e61188577eb5a2235321d2da4d05ebd4128fa8cbe011e5f76db50bb30",
+      "translation_sha256": "d3d835b71600203c961eb39b8a0af313b115d80aca4b47fa8e53a243f4fcff0a"
     },
     "chapters/ch18-gameloop": {
-      "source_sha256": "c717a2495a52343629832dcf11b7e90020bf5c54e67d33a2315295800b2aab86",
-      "translation_sha256": "0f8784f07cb8092bcace10cc8be50977840f8201494b9f75ab650eed3f329982"
+      "source_sha256": "2935aa88afb7f6369f1ebe543bdcb4697d2241de8523e0d2bf7a28f3db7ede7f",
+      "translation_sha256": "d0a985d5b9a02cda638daf530242588e68b866512195931385b77aa0dc45c048"
     },
     "chapters/ch19-collisions": {
-      "source_sha256": "bb205f2ebaba78a365ac5675a6bd22cf083c0fa2fb4eb112c58223eaf68576eb",
-      "translation_sha256": "181e9b95c1de5ee898d7b326aae236d842022122f84b2df1cf4453d42f814c87"
+      "source_sha256": "9631a22051bd9a6eb2edfb3c6afbbe93c65122223b3a4047ec3ce1034aae6dd7",
+      "translation_sha256": "b5af5bab63ef1494736b6f833b707a7b11488cc1454210e68fdf7943472a7b4b"
     },
     "chapters/ch20-demo-workflow": {
-      "source_sha256": "4a68271bfc1de53d3ae5365ad136829be11df28505f69c68a703ba4249f2f15f",
-      "translation_sha256": "e3755827d0885a0dc38655097a1bf5c0eba5461f568f23f9a044f1e6d418dcd9"
+      "source_sha256": "c360ff6dc4ddcd39d7d29500e946ff7e0d65e1ec8dd7735a12db9c1a9eac1f14",
+      "translation_sha256": "253f869280e4bec9f45bbe526b00ae5ce3a56f57cd510c80d8d38d2553521ceb"
     },
     "chapters/ch21-full-game": {
-      "source_sha256": "184ea5b26a1ca24fa2fc414eda2088e8e08e1f1812a007e4dbaa007ada76aabc",
-      "translation_sha256": "7c1e740f97b22aa09048f615ba052cb32350f42191eec72596e260a9c7e7d50a"
+      "source_sha256": "343d39517b14fe638c1c78685a5c8f56baf1ec128518ddec44bf92ae6edf13bc",
+      "translation_sha256": "c89736ab0bf98bd37856f5165093f42af789b25797f909b8d9514fb78e7db3d6"
     },
     "chapters/ch22-porting-agon": {
-      "source_sha256": "774344c9cea76ac2572aa913b4b0c46de38965b28670f100533ad5de73451197",
-      "translation_sha256": "83b8694662a124452eb7d378a8e0be5a5962fc44a9123b1c56f3422a4f25e240"
+      "source_sha256": "74683a625e64d2661ec4eac3104c446159ed81e11b8ed2809095450525e07aad",
+      "translation_sha256": "8f97b099cf5e09f5e8cb894b62a6ff35ee4b6f95dd68ffbbb804a6560c64d291"
     },
     "chapters/ch23-ai-assisted": {
-      "source_sha256": "1f3ca2081abb17aae0a4033d2f71c13a349b214fcd309f057b18f607d13658d5",
-      "translation_sha256": "471d91357e252e48abec067831a97428e5b4a3e38bae9f4f894ad0f7dda7c8d4"
+      "source_sha256": "95b0e3af269634c936f9abc74a27190a4fac48af7de367d72e63c919126b9625",
+      "translation_sha256": "9e153d5c672d91c4d25e45df74b66dfdd259e4ae31bf8f09a19fe279f8f0295c"
     },
     "appendices/appendix-a-z80-reference": {
-      "source_sha256": "81fa93515eba88e023420e2d8fefec25ef9a23f4292322287630cc31b10771dd",
-      "translation_sha256": "7a2d796b858f075a8eac9f1f903c2fb5a1ba45a32b0e06f11e42b46b2291aabe"
+      "source_sha256": "843b5400a996b4a715e0cefe11d42cd7115472fbf41a42fa7d499f324ce1fa63",
+      "translation_sha256": "fadd0dd5e3c3283431ffbed7eac1092734c6fa1bb60302a04f247b847743537e"
     },
     "appendices/appendix-b-sine-tables": {
       "source_sha256": "b690f6af10f6901449d82aa0ed93751f0d4b1242cb54da7c1e235e6a0bf2fa62",
       "translation_sha256": "014b915ff401a63911c22f894e513951ca1490901b533d845568d1fe7a7cabb6"
     },
     "appendices/appendix-c-compression": {
-      "source_sha256": "0eb3271c7f1d1225eb7e225436482902bb72a24f2dd60c7207b323597574ac97",
-      "translation_sha256": "8ffbaa597a4eab4d4247705471732ffa14f858e1bb5468455ec8a7282dd068dc"
+      "source_sha256": "96f904baad5c547d7e808733fe187faa1a490e405629672de34f20f337e5e1bb",
+      "translation_sha256": "7a5237901ff0be27bf0be8433695992cf5e066419632be5a8dddd74c2cb91efb"
     },
     "appendices/appendix-g-ay-registers": {
       "source_sha256": "9735f280f9a1e24a033fa07bfa917d60a2efa2a87d60df5d12e54405375b5f5c",
       "translation_sha256": "07390bcae24ca1f88616e74393f8122a7117caddddd727116351fd8fbd21a9f3"
     },
     "glossary": {
-      "source_sha256": "e90a190d328017f008a1604d042c22e80e211e8e2cb1dc18f2c337f3f58c460e",
-      "translation_sha256": "b49f41d087ebdb7107264d193e239f574f8684a7b0a1d739ca5270615fb18572"
+      "source_sha256": "a756a157d041f57acf9aeaea2c00b376bff28fa9e21ecd2593e826b1e68ce72c",
+      "translation_sha256": "2eba1f85273b878e51b9ed3afd1b606ba5201b873e365769a470489f0752b2c2"
+    },
+    "appendices/appendix-d-dev-setup": {
+      "source_sha256": "a3066937048e676121e7493003116226f7d028c0ab58f3d785dfd50eb80b86ef",
+      "translation_sha256": "66d2b902ddd22d2d1facaeafb475a75483e492f77f7f4bf93ebf58637eafc270"
+    },
+    "appendices/appendix-e-ez80-reference": {
+      "source_sha256": "00cea27d7e661f0c63b40d44fb64f553a62a1d356334f1f6ea655c2fc86b416c",
+      "translation_sha256": "298e4da47060b248a8fa05eb0376eb068bba3fd6df08fdb96af2164d6886bf74"
+    },
+    "appendices/appendix-f-z80-variants": {
+      "source_sha256": "4b04a299243b3b65b06c2c936d9beb479045c32435ee9a7277a52bbc7a44b170",
+      "translation_sha256": "33fed169c34aec104dd74e4c7ab469a13694b754cb5183d37165afcf82bc358b"
+    },
+    "appendices/appendix-h-storage-apis": {
+      "source_sha256": "d8104417ba59c81baaf3efcb358dc52ab0f4a92f45a874b3b6480087153f8341",
+      "translation_sha256": "bc5ee06f0a231ce3bea8da5866228c4f786e43c15031bf52981a680d6cf9ed0a"
+    },
+    "appendices/appendix-j-modern-tools": {
+      "source_sha256": "e02b6605984f350b0b57d3150b9903db3bc72bd58c3e2f5b81b684b51b8a90b3",
+      "translation_sha256": "72b41a042c3269138745da6adea4dac5baa06f3161e78ddc05e764d50e5408a5"
+    },
+    "appendices/appendix-i-bytebeat": {
+      "source_sha256": "84d18cc1b353907190955dd208091a54445663433c730f5a3ed2a7550bf63965",
+      "translation_sha256": "152518dcc95a26591f69a35e4f0bb98a8e776e967cbea6fd5bf2d6c0f2d0daf9"
     }
   },
   "uk": {

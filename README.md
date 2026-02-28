@@ -30,12 +30,12 @@ Chapter 1 (T-state budgets) is the foundation -- read it first. Everything after
 
 | Language | Version | PDF | Words |
 |----------|---------|-----|-------|
-| English | **v17** | [book-a4-v17.pdf](https://github.com/oisee/antique-toy/releases/download/v17/book-a4-v17.pdf) | ~184K |
+| English | **v20** | [book-a4-v20.pdf](https://github.com/oisee/antique-toy/releases/download/v20/book-a4-v20.pdf) | ~184K |
+| Russian | **v20** | [book-a4-v20_RU.pdf](https://github.com/oisee/antique-toy/releases/download/v20/book-a4-v20_RU.pdf) | ~140K |
 | Spanish | v0.6 | [book-a4_ES-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_ES-v0.6.pdf) | ~165K |
-| Russian | v0.6 | [book-a4_RU-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_RU-v0.6.pdf) | ~140K |
 | Ukrainian | v0.6 | [book-a4_UK-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_UK-v0.6.pdf) | ~142K |
 
-English is the primary edition and always ahead. Translations catch up periodically, every few releases.
+English is the primary edition and always ahead. Translations catch up periodically using the Translation Memory tool (`translations/tm.py`) which reuses unchanged blocks and only retranslates the delta -- see `translations/README-tm.md`.
 
 ## Contents
 
@@ -147,7 +147,11 @@ make demo       # build the "Antique Toy" demo
 
 The book is about Z80 as a processor, not just ZX Spectrum as a platform. If you have materials on other Z80 machines -- Amstrad CPC, MSX, ZX Next, Robotron KC85, or anything else with a Z80 inside -- PRs are welcome. Clone the repo, add your chapter or appendix, rebuild the book.
 
-Translations are managed via `translations/manifest.py` (SHA256-based staleness tracking). See `translations/PROGRESS.md` for details.
+Translations are managed via two tools:
+- `translations/manifest.py` -- SHA256-based file-level staleness tracking
+- `translations/tm.py` -- paragraph-level Translation Memory for incremental retranslation (87% reuse rate, ~89% cost savings vs full retranslation)
+
+See `translations/README-tm.md` for the TM workflow.
 
 ## Companion projects
 
@@ -170,12 +174,16 @@ The `tools/` directory contains Python utilities developed alongside the book:
 | `manage_listings.py` | Code listing extraction, injection, and verification across chapters |
 | `audit_tstates.py` | T-state annotation auditor — compares inline comments with computed cycle counts |
 | `autotag.py` | Semi-automatic code block classifier and tagger |
+| `translations/tm.py` | Translation Memory: paragraph-level diff, delta export, merge for incremental retranslation |
 
 ## Changelog
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| **v17** | 2026-02-26 | Appendix J (modern tools), Ch.20 refactor (Unity/Unreal as data generators, Farbrausch sidebar), Ped7g feedback fixes |
+| **v20** | 2026-02-28 | Russian translation updated to v20 via Translation Memory tool (87% block reuse, 6 new appendices) |
+| v19 | 2026-02-28 | z80-optimizer sidebar (Ch.23), Appendix J entry, mermaid fix |
+| v18 | 2026-02-27 | Ped7g feedback: signed multiply (Ch.4), RLE sidebar (Ch.14), Z80N T-state audit, scene identity fixes |
+| v17 | 2026-02-26 | Appendix J (modern tools), Ch.20 refactor (Unity/Unreal as data generators, Farbrausch sidebar), Ped7g feedback fixes |
 | v16 | 2026-02-26 | `packbench` tool, pre-compression data analysis, sync workflow |
 | v15 | 2026-02-25 | Screenshot manifest, EPUB TeX math fix |
 | v14 | 2026-02-25 | Code fence rendering fix, 28 illustrations, 10 JS prototypes |

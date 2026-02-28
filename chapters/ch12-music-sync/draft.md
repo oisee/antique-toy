@@ -19,7 +19,7 @@ Together, these three techniques represent the architectural thinking that separ
 
 ### The Problem: The AY Cannot Play Samples
 
-The AY-3-8910, as we covered in Chapter 11, is a synthesiser. It generates square waves, noise, and envelope shapes. It has no sample playback capability, no DAC, no waveform RAM. Every sound it makes is built from those primitive sources in real time. If you want a realistic kick drum -- the kind with a sharp transient punch followed by a resonant decay -- the AY's noise generator and envelope can approximate it, but the result sounds unmistakably synthetic. It lacks the weight of a real percussive hit.
+The AY-3-8910, as we covered in Chapter 11, is a PSG (Programmable Sound Generator). It generates square waves, noise, and envelope shapes. It has no sample playback capability, no DAC, no waveform RAM. Every sound it makes is built from those primitive sources in real time. If you want a realistic kick drum -- the kind with a sharp transient punch followed by a resonant decay -- the AY's noise generator and envelope can approximate it, but the result sounds unmistakably synthetic. It lacks the weight of a real percussive hit.
 
 But there is a back door.
 

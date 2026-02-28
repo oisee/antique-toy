@@ -16,11 +16,11 @@
 
 Каждая игра на ZX Spectrum следует одному фундаментальному ритму:
 
-```
-1. HALT          -- ждать прерывания кадра
-2. Read input    -- чего хочет игрок?
-3. Update state  -- перемещение сущностей, ИИ, проверка столкновений
-4. Render        -- отрисовка кадра
+```text
+1. HALT          -- wait for the frame interrupt
+2. Read input    -- what does the player want?
+3. Update state  -- move entities, run AI, check collisions
+4. Render        -- draw the frame
 5. Go to 1
 ```
 
@@ -28,7 +28,7 @@
 
 Вот минимальная реализация:
 
-```z80
+```z80 id:ch18_the_main_loop_2
     ORG  $8000
 
     ; Install IM1 interrupt handler (standard for games)
@@ -79,6 +79,7 @@ main_loop:
 
 На Agon та же игровая логика занимает малую долю бюджета. Обновление сущностей, обнаружение столкновений и чтение ввода могут потребовать 15 000 тактов суммарно --- около 4% бюджета кадра Agon. VDP обрабатывает рендеринг спрайтов на сопроцессоре ESP32, так что затраты на спрайты со стороны процессора сводятся к накладным расходам на VDU-команды. У тебя огромный запас для более сложного ИИ, большего числа сущностей или просто меньшего стресса.
 
+<!-- figure: ch18_game_loop -->
 ![Game loop architecture](illustrations/output/ch18_game_loop.png)
 
 ---
@@ -91,7 +92,7 @@ main_loop:
 
 ### Определения состояний
 
-```z80
+```z80 id:ch18_state_definitions
 ; Game states (byte values, used as table offsets)
 STATE_TITLE     EQU  0
 STATE_MENU      EQU  2      ; x2 because each table entry is 2 bytes
@@ -105,7 +106,7 @@ game_state:     DB   STATE_TITLE
 
 ### Таблица переходов
 
-```z80
+```z80 id:ch18_the_jump_table
 ; Table of handler addresses, indexed by state
 state_table:
     DW   state_title        ; STATE_TITLE   = 0
@@ -119,7 +120,7 @@ state_table:
 
 Главный цикл становится диспетчером, который читает текущее состояние и переходит к соответствующему обработчику:
 
-```z80
+```z80 id:ch18_the_dispatcher
 main_loop:
     halt                    ; sync to frame
 
@@ -141,7 +142,7 @@ main_loop:
 
 Каждый обработчик выполняет свою логику и затем возвращается к `main_loop`:
 
-```z80
+```z80 id:ch18_the_dispatcher_2
 state_title:
     call draw_title_screen
     call read_input
@@ -202,7 +203,7 @@ state_gameover:
 
 Может возникнуть соблазн написать диспетчер так:
 
-```z80
+```z80 id:ch18_why_not_a_chain_of
     ld   a, (game_state)
     cp   STATE_TITLE
     jp   z, state_title
@@ -221,7 +222,7 @@ state_gameover:
 
 Переходы между состояниями выполняются записью нового значения в `game_state`. Обычно при этом вызывается процедура инициализации нового состояния:
 
-```z80
+```z80 id:ch18_state_transitions
 ; Transition: Game -> Game Over
 game_over_transition:
     ld   a, STATE_GAMEOVER
@@ -255,7 +256,7 @@ game_over_transition:
 
 Стандартные игровые управления --- Q/A/O/P для вверх/вниз/влево/вправо и SPACE для огня --- охватывают три полуряда. Вот процедура, которая их считывает и упаковывает результат в один байт:
 
-```z80
+```z80 id:ch18_zx_spectrum_keyboard
 ; Input flag bits
 INPUT_RIGHT  EQU  0
 INPUT_LEFT   EQU  1
@@ -317,7 +318,7 @@ read_keyboard:
 
 Интерфейс Kempston ещё проще. Одно чтение порта возвращает все пять направлений плюс огонь:
 
-```z80
+```z80 id:ch18_kempston_joystick
 ; Kempston joystick port
 KEMPSTON_PORT  EQU  $1F
 
@@ -334,7 +335,7 @@ read_kempston:
 
 Обрати внимание на удобное совпадение: расположение бит Kempston совпадает с нашими определениями `INPUT_*`. Это не случайность --- интерфейс Kempston был разработан с учётом этого стандарта, и большинство игр для Spectrum используют тот же порядок бит. Если ты поддерживаешь и клавиатуру, и джойстик, можно объединить результаты через OR:
 
-```z80
+```z80 id:ch18_kempston_joystick_2
 read_input:
     call read_keyboard       ; D = keyboard flags
     push de
@@ -353,7 +354,7 @@ read_input:
 
 Техника: сохраняем ввод предыдущего кадра рядом с текущим и XOR-им их, чтобы найти изменившиеся биты:
 
-```z80
+```z80 id:ch18_edge_detection_press_vs_hold
 input_flags:      DB  0    ; current frame
 input_prev:       DB  0    ; previous frame
 input_pressed:    DB  0    ; newly pressed this frame (edges)
@@ -384,7 +385,7 @@ Agon читает свою PS/2-клавиатуру через MOS (Machine Ope
 
 Системная переменная MOS `sysvar_keyascii` (по адресу $0800 + смещение) хранит ASCII-код последней нажатой клавиши или 0, если ни одна клавиша не нажата. Для игрового управления обычно опрашивают эту переменную или используют вызовы MOS API `waitvblank` / keyboard:
 
-```z80
+```z80 id:ch18_agon_light_2_ps_2_keyboard
 ; Agon: Read keyboard via MOS sysvar
 ; MOS sysvar_keyascii at IX+$05
 read_input_agon:
@@ -416,7 +417,7 @@ Agon также поддерживает чтение состояний отд�
 
 Вот структура сущности, которую мы будем использовать во всех главах о разработке игр:
 
-```
+```text
 Offset  Size  Name        Description
 ------  ----  ----------  -------------------------------------------
  +0     2     x           X position, 8.8 fixed-point (high=pixel, low=subpixel)
@@ -434,7 +435,7 @@ Offset  Size  Name        Description
 
 Битовые флаги в байте `flags`:
 
-```
+```text id:ch18_structure_layout_2
 Bit 0: ACTIVE      -- entity is alive and should be updated/rendered
 Bit 1: VISIBLE     -- entity should be rendered (active but invisible = logic only)
 Bit 2: COLLIDABLE  -- entity participates in collision detection
@@ -448,7 +449,7 @@ Bit 6-7: reserved
 
 Десять байт --- осознанный выбор. Это достаточно мало, чтобы 16 сущностей занимали всего 160 байт --- ничтожно в терминах памяти. Важнее то, что умножение индекса сущности на 10 для нахождения смещения --- простая задача на Z80:
 
-```z80
+```z80 id:ch18_why_10_bytes
 ; Calculate entity address from index in A
 ; Input: A = entity index (0-15)
 ; Output: HL = address of entity structure
@@ -482,7 +483,7 @@ get_entity_addr:
 
 Арифметика с фиксированной точкой была введена в Главе 4. Вот краткий обзор того, как она применяется к движению сущностей:
 
-```z80
+```z80 id:ch18_the_8_8_fixed_point_system
 ; Move entity right at velocity dx
 ; HL points to entity X (2 bytes: low=fractional, high=pixel)
 ; A = dx (signed velocity, treated as fractional byte)
@@ -518,7 +519,7 @@ move_entity_x:
 
 Сущности живут в статически выделенном массиве. Никакого динамического выделения памяти, никаких связных списков, никакой кучи. Статические массивы --- стандартный подход на Z80 по уважительной причине: они быстрые, предсказуемые и не могут фрагментироваться.
 
-```z80
+```z80 id:ch18_the_entity_array
 ; Entity array: 16 entities, 10 bytes each = 160 bytes
 MAX_ENTITIES    EQU  16
 ENTITY_SIZE     EQU  10
@@ -531,7 +532,7 @@ entity_array:
 
 Слот 0 --- всегда игрок. Слоты 1--8 --- враги. Слоты 9--15 --- снаряды и эффекты (пули, взрывы, всплывающие очки). Это фиксированное разделение упрощает код: когда нужно перебрать врагов для ИИ, ты перебираешь слоты 1--8. Когда нужно создать пулю, ты ищешь в слотах 9--15. Игрок всегда по известному адресу.
 
-```z80
+```z80 id:ch18_entity_slot_allocation
 ; Fixed slot assignments
 SLOT_PLAYER      EQU  0
 SLOT_ENEMY_FIRST EQU  1
@@ -544,7 +545,7 @@ SLOT_PROJ_LAST   EQU  15
 
 Основной цикл обновления проходит по каждому слоту сущности, проверяет флаг ACTIVE и вызывает соответствующий обработчик обновления:
 
-```z80
+```z80 id:ch18_iterating_entities
 ; Update all active entities
 ; Total cost: ~2,500T for 16 entities (most inactive), up to ~8,000T (all active)
 update_entities:
@@ -576,7 +577,7 @@ update_entities:
 
 У каждого типа сущности свой обработчик обновления. Мы используем ту же технику таблицы переходов, что и для конечного автомата игры:
 
-```z80
+```z80 id:ch18_update_dispatch_by_type
 ; Entity type constants
 TYPE_INACTIVE  EQU  0
 TYPE_PLAYER    EQU  1
@@ -614,7 +615,7 @@ update_by_type:
 
 Вот типичное обновление игрока --- чтение флагов ввода, применение движения, обновление анимации:
 
-```z80
+```z80 id:ch18_the_player_update_handler
 ; Update player entity
 ; IX = entity pointer (slot 0)
 update_player:
@@ -665,7 +666,7 @@ update_player:
 
 ### Создание пули
 
-```z80
+```z80 id:ch18_spawning_a_bullet
 ; Spawn a bullet at position (B=x_pixel, C=y)
 ; moving in direction determined by player facing
 ; Returns: carry set if no free slot available
@@ -678,9 +679,10 @@ spawn_bullet:
     bit  0, a               ; 8T   ACTIVE?
     jr   z, .found          ; 12/7T found an inactive slot
 
-    ld   e, ENTITY_SIZE     ; 7T
-    add  ix, de             ; 15T  next slot (note: DE high byte may be nonzero,
-                            ;      but we only care about the low 8 bits of offset)
+    push de                 ; 11T  save loop counter (D)
+    ld   de, ENTITY_SIZE    ; 10T  DE = 10 (D=0, E=10)
+    add  ix, de             ; 15T  next slot
+    pop  de                 ; 10T  restore loop counter
     dec  d                  ; 4T
     jr   nz, .find_slot     ; 12T
 
@@ -717,7 +719,7 @@ spawn_bullet:
 
 Когда пуля покидает экран или взрыв завершает анимацию, деактивация --- одна инструкция:
 
-```z80
+```z80 id:ch18_deactivating_an_entity
 ; Deactivate entity at IX
 deactivate_entity:
     ld   (ix + 9), 0        ; 19T  clear all flags (ACTIVE=0)
@@ -728,7 +730,7 @@ deactivate_entity:
 
 ### Обработчик обновления пули
 
-```z80
+```z80 id:ch18_bullet_update_handler
 ; Update a bullet entity
 ; IX = entity pointer
 update_bullet:
@@ -777,7 +779,7 @@ update_bullet:
 
 Взрывы, всплывающие очки и эффекты частиц используют те же слоты сущностей, что и пули. Разница --- в их обработчиках обновления: они проходят через последовательность кадров анимации и затем самоуничтожаются.
 
-```z80
+```z80 id:ch18_explosion_and_effect_entities
 ; Update an explosion entity
 ; IX = entity pointer
 update_explosion:
@@ -798,7 +800,7 @@ update_explosion:
 
 Чтобы создать взрыв при гибели врага:
 
-```z80
+```z80 id:ch18_explosion_and_effect_entities_2
 ; Spawn explosion at the enemy's position
 ; IX currently points to the dying enemy
 spawn_explosion_at_entity:
@@ -844,7 +846,7 @@ spawn_explosion_at_entity:
 
 Вот полный каркас игры, связывающий всё воедино. Это компилируемый фреймворк со всеми частями: конечный автомат, ввод, система сущностей и главный цикл.
 
-```z80
+```z80 id:ch18_putting_it_all_together_the
     ORG  $8000
 
 ; ============================================================
@@ -881,7 +883,10 @@ FLAG_FACING_L   EQU  3
 ; ============================================================
 entry:
     di
-    ld   sp, $FFFF          ; set stack
+    ld   sp, $C000          ; set stack (below banked memory on 128K)
+                            ; NOTE: $FFFF is in banked page on 128K Spectrum,
+                            ; which causes stack corruption during bank switches.
+                            ; Use $C000 (or $BFFF) for 128K compatibility.
     im   1
     ei
 
@@ -1285,11 +1290,10 @@ spawn_bullet:
     ld   a, (ix + 9)
     bit  FLAG_ACTIVE, a
     jr   z, .found
-    ld   e, ENTITY_SIZE
-    push de
-    pop  de                  ; (DE preserved; only low byte matters for add ix,de)
-    ld   e, ENTITY_SIZE
+    push de                  ; save loop counter in D
+    ld   de, ENTITY_SIZE     ; DE = 10 (D=0, E=10)
     add  ix, de
+    pop  de                  ; restore loop counter
     dec  d
     jr   nz, .find
     ; No free slot
@@ -1438,7 +1442,7 @@ IX-индексированная адресация удобна, но доро
 
 Но в цикле рендеринга, где ты можешь трогать 4--6 полей сущности для каждого из 8 видимых спрайтов, стоимость накапливается. Техника: в начале прохода рендеринга для каждой сущности копируй нужные поля в регистры:
 
-```z80
+```z80 id:ch18_when_to_use_hl_instead_of_ix
     ; Copy entity fields to registers for fast rendering
     ld   l, (ix + 0)        ; 19T  X lo
     ld   h, (ix + 1)        ; 19T  X hi

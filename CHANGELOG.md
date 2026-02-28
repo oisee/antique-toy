@@ -1,5 +1,38 @@
 # What's New
 
+## v20 (2026-02-28)
+
+**Russian translation updated to v20 + community feedback fixes.**
+
+### Community feedback (Aki, Rombor via SinDiKat Slack)
+
+**Ch11 (Sound Architecture):** AY history corrected -- Investronica first integrated the AY into the Spanish Spectrum 128K, Sinclair adopted it, Amstrad inherited it for +2/+3. Chip variant clarified: the Spectrum 128K uses the AY-3-8912 (fewer I/O ports), not the 8910. "Without a dedicated sound CPU" reworded to "without dedicating the CPU to sound generation."
+
+**Ch12 (Music & Sync):** "synthesiser" corrected to "PSG (Programmable Sound Generator)" for consistency with Ch11.
+
+**Ch02 illustration:** Pixel row 109 → 107 in `ch02_screen_layout.png` (reported by Rombor). Address bits were correct, only the final row number was wrong: 64 + 5×8 + 3 = 107.
+
+Full feedback log: `_in/tasks/feedback-2026-02-28.md`
+
+### Translation Memory tool + Russian edition
+
+Built `translations/tm.py` -- a paragraph-level Translation Memory system that aligns v0.6 EN with existing translations, diffs current EN at block level, and exports only the delta for LLM translation. The tool found that **87% of blocks were unchanged** since v0.6, so only 13% needed retranslation (~89% cost savings).
+
+**How it worked:**
+1. `tm.py build` segmented all 28 items at git tag v0.6, aligned EN blocks with RU/ES/UK translations positionally, stored in `tm.json` (3,976 segments)
+2. `tm.py diff ru` classified each block as EQUAL (87%), MODIFIED (4%), or NEW (9%)
+3. `tm.py export ru <chapter>` generated structured translation jobs containing only delta blocks, with previous RU as reference for MODIFIED blocks
+4. Parallel Claude agents translated all delta blocks (~482 across 26 stale chapters + glossary + appendices)
+5. `tm.py apply ru <chapter> <file>` reassembled complete RU chapters from TM (unchanged blocks) + agent output (new/modified blocks)
+6. 6 new appendices (D-J) translated from scratch in parallel
+
+**Result:** All 28 existing RU items updated from v0.6 to v20. 6 new appendices added. 34/34 OK, 0 stale, 0 missing.
+
+**New files:**
+- `translations/tm.py` -- Translation Memory tool (build/diff/export/apply/stats)
+- `translations/tm.json` -- TM database (~3.5 MB, 3,976 segments)
+- `translations/README-tm.md` -- TM tool documentation
+
 ## v19 (2026-02-28)
 
 **z80-optimizer coverage + mermaid rendering fix.**

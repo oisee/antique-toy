@@ -401,7 +401,7 @@ ax_bot.text(
 )
 ax_bot.text(
     0.5, ex_y + 2.25,
-    "  Address: $4BAA \u2192 pixel row 109 (third 1, row 5, line 3), column 10",
+    "  Address: $4BAA \u2192 pixel row 107 (third 1, row 5, line 3), column 10",
     ha="left", va="top",
     fontsize=7.5, fontfamily=MONO_FONT, color="#555555",
 )
