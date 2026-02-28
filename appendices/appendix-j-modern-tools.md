@@ -414,6 +414,16 @@ Binary-only distribution; no source available. Mentioned here because Logicoma's
 
 **Source:** `github.com/laurentlb/shader-minifier`
 
+### z80-optimizer
+
+**z80-optimizer** (by oisee, 2025) is a brute-force Z80 superoptimiser written in Go. It enumerates every pair of Z80 instructions (406 × 406 opcodes), tests each pair against all possible register and flag states, and reports when a shorter or faster replacement produces identical output. No heuristics, no machine learning — pure exhaustive search with full state equivalence verification.
+
+A single run on an Apple M2 (3h 16m, 34.7 billion comparisons) produces **602,008 provably correct optimisation rules** across **83 unique transformation patterns**. Examples: `SLA A : RR A` → `OR A` (saves 3 bytes, 12T); `LD A, 0 : NEG` → `SUB A` (saves 2 bytes); `SCF : RR A` → `SCF : RRA` (saves 1 byte, 4T). Crucially, it correctly *rejects* `LD A, 0` → `XOR A` because the flag behaviour differs — the kind of subtle distinction that hand-maintained peephole tables sometimes get wrong.
+
+Useful as a post-processing pass for compiler-generated Z80 code, or as a reference for hand-optimisation. The output is a machine-readable rule database that can be integrated into assembler toolchains. See Chapter 23 for discussion of brute-force vs neural-network approaches to Z80 optimisation.
+
+**Source:** `github.com/oisee/z80-optimizer` (MIT license, v0.1.0)
+
 ### The Common Philosophy
 
 All these tools share a principle that translates directly to Z80 work: **procedural generation beats stored data.** On the PC, this means generating textures from noise functions instead of storing bitmaps. On the Spectrum, it means computing a sine table from a parabolic approximation instead of storing 256 bytes of precomputed values. The hardware differs by a factor of a million; the approach is the same.
@@ -761,5 +771,6 @@ open('sprites_delta.bin', 'wb').write(bytes([data[0]]) + deltas)
 - **Crinkler:** `github.com/runestubbe/Crinkler` --- compressing linker (zlib)
 - **Bonzomatic:** `github.com/Gargaj/Bonzomatic` --- live shader coding
 - **Shader Minifier:** `github.com/laurentlb/shader-minifier` --- GLSL/HLSL optimizer
+- **z80-optimizer:** `github.com/oisee/z80-optimizer` --- brute-force Z80 superoptimiser (MIT)
 - **Motion Canvas:** `motioncanvas.io` --- parametric animation (MIT)
 - **Blender:** `blender.org` --- 3D, VSE, Graph Editor, Geometry Nodes, Grease Pencil (GPL)

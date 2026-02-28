@@ -1,5 +1,20 @@
 # What's New
 
+## v19 (2026-02-28)
+
+**z80-optimizer coverage + mermaid rendering fix.**
+
+**Chapter 23 (AI-Assisted): Superoptimiser sidebar** — new section 23.5b covering z80-optimizer (oisee, 2025):
+- Brute-force Z80 superoptimisation: 602,008 provably correct rules from exhaustive length-2 enumeration
+- Explains methodology (full state equivalence, 406 opcodes × 406 opcodes, 34.7B comparisons)
+- Bridges peephole optimisation (MinZ, 23.5) with the "Z80 they still don't know" discussion (23.6)
+- Positions exhaustive search as "the other AI" alongside neural-network-based code generation
+
+**Appendix J (Modern Tools): z80-optimizer entry** in J.5 (PC Demoscene Toolchain):
+- Tool listing with usage context, example rules, and cross-reference to Ch.23
+
+**Build fix:** Mermaid fenced code blocks now render correctly in PDF/EPUB. `build_book.py` converts `` ```mermaid id:xxx `` to `` ```{.mermaid} `` for pandoc compatibility.
+
 ## v18 (2026-02-27)
 
 **Ped7g feedback patches + scene identity fixes.**

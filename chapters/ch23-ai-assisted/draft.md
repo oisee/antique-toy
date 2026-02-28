@@ -322,6 +322,35 @@ This maps precisely to the HiSoft C pattern. The tool accelerates the routine wo
 
 ---
 
+## 23.5b Sidebar: The Other AI — Brute-Force Superoptimisation
+
+MinZ's peephole optimiser knows 35+ patterns like "replace `LD A,0` with `XOR A`." But how do you *find* such patterns? And how do you know which ones are actually safe?
+
+Consider `LD A, 0` → `XOR A`. Both set A to zero. Both take fewer bytes in the XOR form (1 byte vs 2). But `XOR A` clears the carry flag and sets the zero flag; `LD A, 0` preserves all flags. If the code after this instruction tests carry, the "optimisation" is a bug. A human expert knows this. A neural-network-based AI *usually* knows this but sometimes forgets. A brute-force superoptimiser *proves* it by testing every possible input state.
+
+**z80-optimizer** (by oisee, 2025) takes the brute-force approach to its logical conclusion. It enumerates every pair of Z80 instructions — all 406 opcodes × 406 opcodes = 164,836 pairs — and for each pair, tests whether a shorter replacement produces identical output across all possible register and flag states. No heuristics. No training data. No neural networks. Just exhaustive enumeration with full state equivalence verification.
+
+The results: **602,008 provably correct optimisation rules** from a single run on an Apple M2 (34.7 billion comparisons in 3 hours 16 minutes). Some highlights:
+
+| Original sequence | Replacement | Savings |
+|---|---|---|
+| `SLA A : RR A` | `OR A` | 3 bytes, 12T |
+| `LD A, 0 : NEG` | `SUB A` | 2 bytes |
+| `LD A, B : ADD A, 0` | `LD A, B : OR A` | 0 bytes, 4T |
+| `SCF : RR A` | `SCF : RRA` | 1 byte, 4T |
+
+The rules cluster into **83 unique transformation patterns** — families of replacements that share the same structural logic. For instance, the "load-then-test" family: `LD A, r : ADD A, 0` → `LD A, r : OR A` applies to all register sources because the optimisation exploits flag behaviour, not register identity.
+
+What makes z80-optimizer interesting for this chapter is not the specific rules — any experienced Z80 coder knows most of the common ones. It is the *methodology*. This is AI in the original sense: a machine that finds knowledge through search, not through learned patterns. The 602,008 rules include thousands that no human has catalogued, because they involve obscure opcode pairs that nobody writes deliberately but that compilers and code generators *do* produce.
+
+The obvious next step — length-3 sequences — requires GPU brute force (406³ = 67 million triples × all input states). Beyond that, stochastic search (STOKE-style) can explore the space of longer replacements without exhaustive enumeration.
+
+For practical Z80 development, z80-optimizer complements the AI feedback loop from this chapter: Claude Code generates correct-but-unoptimised code, then z80-optimizer can mechanically verify whether any instruction pairs have shorter equivalents. One AI writes the code; the other AI proves how to shrink it.
+
+**Source:** `github.com/oisee/z80-optimizer` (MIT license)
+
+---
+
 ## 23.6 Honest Take: "Z80 They Still Don't Know"
 
 Introspec's scepticism about AI's Z80 capabilities is not generic technophobia. It comes from decades of experience pushing the Z80 to its absolute limits. When he says "Z80 they still don't know," he means something specific.
@@ -478,4 +507,4 @@ AI assistance does not change the abstraction level of the output -- the Z80 sti
 
 *This is the final technical chapter. What follows are the appendices -- reference tables, setup guides, and the instruction reference you will reach for every time you write Z80 assembly.*
 
-> **Sources:** HiSoft C review (Spectrum Expert #02, 1998); Introspec "Technical Analysis of Illusion" (Hype, 2017); Introspec "DOWN_HL" (Hype, 2020); Introspec "GO WEST Parts 1-2" (Hype, 2015)
+> **Sources:** HiSoft C review (Spectrum Expert #02, 1998); Introspec "Technical Analysis of Illusion" (Hype, 2017); Introspec "DOWN_HL" (Hype, 2020); Introspec "GO WEST Parts 1-2" (Hype, 2015); z80-optimizer (oisee, 2025, `github.com/oisee/z80-optimizer`)
