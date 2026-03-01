@@ -236,6 +236,45 @@ The rotation matrices in Chapter 5 call `mul_signed` six times per vertex for Z-
 
 > **Credit:** The signed arithmetic gap was identified by Ped7g (Peter Helcmanovsky) during his review of the book.
 
+### Going Further: The Fix-Unsigned Technique
+
+The 2×abs approach above is clear and correct, but there is a more elegant method. The key mathematical identity: for an N-bit two's complement number, `a_signed = a_unsigned − 2^N × sign_bit`. So for 8×8 multiply:
+
+```
+a_s × b_s = a_u × b_u − 256 × sign(a) × b_u − 256 × sign(b) × a_u
+```
+
+(The `+65536 × sign(a) × sign(b)` term overflows the 16-bit result and vanishes.)
+
+In practice: **do the unsigned multiply, then fix the high byte.** If A was negative, subtract B from the high byte. If B was negative, subtract A from the high byte. No absolute values, no conditional negate of the result.
+
+On pure Z80, the savings over 2×abs are modest --- the shift-and-add loop dominates the cost either way. But on Z80N, where `MUL DE` does an 8×8 unsigned multiply in a single instruction, the fix-unsigned approach shrinks signed multiply to ~70 T-states and 16 bytes:
+
+```z80
+; Z80N signed 16x8 multiply (Ped7g)
+; Input:  DE = x (16-bit signed), L = y (8-bit signed)
+; Output: AL = signed 16-bit result
+; Cost:   ~70T, 16 bytes. Requires Z80N MUL instruction.
+
+    xor  a
+    bit  7, l           ; is y negative?
+    jr   z, .y_pos
+    sub  e              ; compensate: high byte −= low(x)
+.y_pos:
+    ld   h, d           ; H = x_high, L = y
+    ld   d, l           ; D = y,      E = x_low
+    mul  de             ; DE = x_low * y (unsigned)
+    add  a, d           ; accumulate high byte
+    ex   de, hl         ; L = low result
+    mul  de             ; DE = x_high * y (unsigned)
+    add  a, e           ; final high byte → A:L
+    ret
+```
+
+The same principle works for pure Z80 --- save the original operands before the shift-and-add loop, then apply the two conditional subtracts to the high byte. The code is slightly shorter than 2×abs+neg, and avoids PUSH/POP for the sign flag.
+
+> **Credit:** Fix-unsigned technique and Z80N implementation by Ped7g. Pure Z80 variants by base and busy (SinDiKat).
+
 ---
 
 ## Division on Z80

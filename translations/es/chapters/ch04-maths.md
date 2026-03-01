@@ -236,6 +236,45 @@ Las matrices de rotación del Capítulo 5 llaman a `mul_signed` seis veces por v
 
 > **Crédito:** El vacío de aritmética con signo fue identificado por Ped7g (Peter Helcmanovsky) durante su revisión del libro.
 
+### Para profundizar: la técnica de corrección de resultado sin signo
+
+El enfoque de 2×abs anterior es claro y correcto, pero existe un método más elegante. La identidad matemática clave: para un número en complemento a dos de N bits, `a_con_signo = a_sin_signo − 2^N × bit_de_signo`. Así, para multiplicación 8×8:
+
+```
+a_s × b_s = a_u × b_u − 256 × signo(a) × b_u − 256 × signo(b) × a_u
+```
+
+(El término `+65536 × signo(a) × signo(b)` desborda el resultado de 16 bits y desaparece.)
+
+En la práctica: **haz la multiplicación sin signo, luego corrige el byte alto.** Si A era negativo, resta B del byte alto. Si B era negativo, resta A del byte alto. Sin valores absolutos, sin negación condicional del resultado.
+
+En Z80 puro, el ahorro respecto a 2×abs es modesto --- el bucle de desplazamiento y suma domina el costo de cualquier forma. Pero en Z80N, donde `MUL DE` hace una multiplicación sin signo de 8×8 en una sola instrucción, el enfoque de corrección reduce la multiplicación con signo a ~70 T-states y 16 bytes:
+
+```z80
+; Multiplicación con signo 16x8 en Z80N (Ped7g)
+; Entrada: DE = x (16 bits con signo), L = y (8 bits con signo)
+; Salida:  AL = resultado con signo de 16 bits
+; Costo:   ~70T, 16 bytes. Requiere instrucción MUL del Z80N.
+
+    xor  a
+    bit  7, l           ; ¿es y negativo?
+    jr   z, .y_pos
+    sub  e              ; compensar: byte alto −= low(x)
+.y_pos:
+    ld   h, d           ; H = x_alto, L = y
+    ld   d, l           ; D = y,      E = x_bajo
+    mul  de             ; DE = x_bajo * y (sin signo)
+    add  a, d           ; acumular byte alto
+    ex   de, hl         ; L = byte bajo del resultado
+    mul  de             ; DE = x_alto * y (sin signo)
+    add  a, e           ; byte alto final → A:L
+    ret
+```
+
+El mismo principio funciona para Z80 puro --- guarda los operandos originales antes del bucle de desplazamiento y suma, luego aplica las dos restas condicionales al byte alto. El código es ligeramente más corto que 2×abs+neg, y evita PUSH/POP para la bandera de signo.
+
+> **Crédito:** Técnica de corrección e implementación Z80N por Ped7g. Variantes para Z80 puro por base y busy (SinDiKat).
+
 ---
 
 ## División en Z80
