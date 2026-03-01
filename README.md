@@ -194,6 +194,15 @@ The `tools/` directory contains Python utilities developed alongside the book:
 | v0.8 | 2026-02-24 | 9 appendices, AY-Beat engine, ~180K words |
 | v0.6 | 2026-02-23 | First translations (ES/RU/UK) |
 
+## Acknowledgements
+
+**Technical reviewers and contributors:**
+- **Ped7g** (Peter Helcmanovsky) -- sjasmplus maintainer. Signed multiply gap (Ch.4), self-modifying RLE depacker (Ch.14), Z80N T-state audit, shadow register warnings, extensive code review.
+- **Introspec** -- Illusion reverse-engineering (Hype, 2017), compression articles, Eager source discussion. Core narrative source.
+- **Rombor** -- pixel row bug in Ch.2 screen layout illustration (first external bug report).
+- **Aki** -- relayed SinDiKat Slack feedback: AY chip history corrections (Investronica/8912), PSG terminology.
+- **mborik** -- AY playback frequency clarification, constant-T VGM player concept.
+
 ## License
 
 [CC BY-NC 4.0](LICENSE.md) -- free for non-commercial use, attribution required.
