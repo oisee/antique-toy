@@ -7,53 +7,47 @@
 
 Este apéndice cubre la generación de sonido basada en fórmulas en el ZX Spectrum -- desde el concepto original de bytebeat PCM hasta la técnica adaptada al AY que produce música estructurada y evolutiva a partir de un puñado de instrucciones Z80. El Capítulo 13 presenta AY-beat como herramienta de sizecoding. Este apéndice es la referencia completa: la teoría, las fórmulas, los mapeos de registros y un motor funcional completo que puedes integrar en una intro de 256 bytes.
 
-Requisito previo: familiaridad con la arquitectura del AY-3-8910 (Capítulo 11) y las restricciones de sizecoding (Capítulo 13). El Apéndice G es la referencia de registros del AY.
+Necesitarás tener abierta la referencia de registros del AY del Apéndice G junto a este apéndice. Cada número de registro mencionado aquí (R0, R7, R8, R11, R13, etc.) está documentado allí con los diseños completos de bits y direcciones de puerto.
 
 ---
 
-## 1. Bytebeat: Los orígenes
+## 1. Bytebeat clásico: La tradición PCM
 
-Bytebeat fue descubierto (o inventado, dependiendo de tu filosofía) por Viznut (Ville-Matias Heikkila) en 2011. La idea: una sola expresión C que, evaluada para valores incrementales de `t`, produce una forma de onda audible cuando se envía directamente a una salida PCM de 8 bits.
+En 2011, Ville-Matias Heikkila (Viznut) publicó un descubrimiento que había circulado en círculos de programación underground: una sola expresión en C, evaluada una vez por muestra con un contador incremental `t`, puede producir música rítmica compleja cuando la salida se interpreta como PCM de 8 bits sin signo a 8 kHz.
 
-La fórmula canónica:
+La idea central:
 
 ```c
 for (t = 0; ; t++)
     putchar( f(t) );    // pipe to /dev/dsp at 8000 Hz
 ```
 
-Esto genera un patrón audible -- no ruido aleatorio, sino una estructura repetitiva emergente de las relaciones bit a bit entre operaciones enteras. El resultado suena a algo entre música chiptune y interferencia de radio. Es completamente determinista: la misma fórmula siempre produce el mismo sonido.
+La función `f(t)` es típicamente una expresión de una línea construida con operaciones a nivel de bits, multiplicaciones y desplazamientos. Sin osciladores, sin envolventes, sin tablas de notas -- solo aritmética de enteros sobre un contador.
 
-### Famous Formulas
+### Fórmulas famosas
 
-El desplazamiento de bits crea relaciones de frecuencia. `t>>8` cambia 256 veces más lento que `t`, creando un tono 256 veces más bajo. `t>>11` cambia 2048 veces más lento. La operación OR combina estas sub-frecuencias en una forma de onda compuesta. La multiplicación por `t` crea un pitch sweep ascendente. El truncamiento a 8 bits (conversión implícita en C `char`) crea el patrón de envolvente en diente de sierra que da carácter al sonido.
+**`t*((t>>12|t>>8)&63&t>>4)`** -- La original de Viznut. Tonos rítmicos en cascada que recorren relaciones de altura tonal, produciendo un efecto entre una caja de música y un teléfono roto. `t>>12` y `t>>8` crean dos versiones del contador divididas en frecuencia; `&63` limita el rango; `&t>>4` controla la salida rítmicamente. La multiplicación por `t` crea el barrido fundamental de tono.
 
-**`t*(t>>5|t>>8)>>(t>>16)`** -- Evolving rhythmic patterns. The right-shift by `t>>16` means the entire character of the sound changes every ~8 seconds (65536 samples at 8 kHz). Each 8-second section has a different dynamic range and feel.
+**`t*(t>>5|t>>8)>>(t>>16)`** -- Patrones rítmicos evolutivos. El desplazamiento a la derecha por `t>>16` significa que el carácter completo del sonido cambia cada ~8 segundos (65536 muestras a 8 kHz). Cada sección de 8 segundos tiene un rango dinámico y una sensación diferentes.
 
-Bytebeat fue diseñado para hardware de PC con salida de sonido de 8 bits a 8 kHz. El ZX Spectrum no tiene DAC. Su chip de sonido -- el AY-3-8910 -- es un generador de tono/ruido/envolvente, no un dispositivo PCM. Puedes aproximar un DAC a través del puerto del altavoz del beeper ($FE), pero esto consume ~100% de la CPU, sin dejar nada para efectos visuales. En un contexto de sizecoding (256 bytes), eso no es viable.
+**`(t*5&t>>7)|(t*3&t>>10)`** -- Dos líneas melódicas entrelazadas. `t*5` y `t*3` crean dos flujos de tono a diferentes intervalos; el AND con contadores desplazados los filtra independientemente; el OR los fusiona. El resultado suena como dos melodías interconectadas sonando simultáneamente.
 
-AY-beat es la solución: adaptar la filosofía del bytebeat -- sonido generado por fórmulas a partir de un contador de tiempo incrementado -- a los registros del AY.
+### Por qué funciona
 
-Bitwise operations on an incrementing counter create periodic structures at multiple time scales simultaneously. Consider the bit pattern of `t` as it counts:
+Las operaciones a nivel de bits sobre un contador incremental crean estructuras periódicas a múltiples escalas temporales simultáneamente. Considera el patrón de bits de `t` mientras cuenta:
 
-## 2. AY-Beat: La adaptación
+- El bit 0 cambia cada muestra (4000 Hz -- inaudible como tono, pero da forma a la onda)
+- El bit 7 cambia cada 128 muestras (~62.5 Hz -- territorio de graves)
+- El bit 12 cambia cada 4096 muestras (~1.95 Hz -- pulso rítmico)
+- El bit 15 cambia cada 32768 muestras (~0.24 Hz -- cambio estructural)
 
-En lugar de generar muestras PCM, AY-beat genera **valores de registros del AY** a partir de fórmulas. Cada fotograma (a 50 Hz), el contador `t` se incrementa y las fórmulas derivan los periodos de tono, niveles de volumen y parámetros de envolvente que se escriben en los registros del AY-3-8910.
+Un desplazamiento a la derecha `t>>n` selecciona qué escala temporal domina. Las operaciones AND crean patrones de coincidencia -- momentos en que dos escalas temporales se alinean. Las operaciones OR fusionan patrones independientes. La multiplicación por constantes pequeñas crea relaciones armónicas (proporciones de frecuencia). La truncación a 8 bits de la salida actúa como un conformador natural de forma de onda, plegando los valores de vuelta al rango y creando armónicos adicionales.
 
-El concepto clave: **los registros del AY son los parámetros de sonido, no la forma de onda.** En bytebeat, la fórmula produce la forma de onda directamente. En AY-beat, la fórmula produce valores de control que le dicen al AY qué tono generar. El AY hace la síntesis real.
+El resultado es autosimilar: el sonido tiene estructura rítmica a todas las escalas, desde ciclos de oscilación individuales hasta estructuras de fraseo de varios segundos. Esta autosimilaridad es lo que hace que el bytebeat suene como música en lugar de ruido -- aunque ningún conocimiento musical fue empleado en la fórmula.
 
-### On the Spectrum: The Beeper Dead End
+### En el Spectrum: El callejón sin salida del beeper
 
-| Registro AY | Qué controla | Rango | Efecto de la fórmula |
-|-------------|-------------|-------|---------------------|
-| R0-R1 (Tono A) | Periodo del canal A | 0-4095 (12 bits) | Pitch sweep, melodía |
-| R2-R3 (Tono B) | Periodo del canal B | 0-4095 | Segunda voz, armonía |
-| R4-R5 (Tono C) | Periodo del canal C | 0-4095 | Tercera voz, bajo |
-| R6 (Ruido) | Periodo del ruido | 0-31 (5 bits) | Textura de percusión |
-| R7 (Mezclador) | Habilitación de tono/ruido | Mapa de bits | Selección de canal |
-| R8-R10 (Volumen) | Volumen por canal | 0-15 (4 bits) | Dinámicas, fade |
-| R11-R12 (Env periodo) | Periodo de envolvente | 0-65535 (16 bits) | Drone, efecto de bajo |
-| R13 (Env forma) | Forma de envolvente | 0-15 | Tipo de decay/sustain |
+La salida de beeper del ZX Spectrum es un altavoz de 1 bit controlado por el bit 4 del puerto $FE. En principio, puedes ejecutar una fórmula bytebeat y emitir el resultado:
 
 ```z80
 ; Beeper bytebeat -- uses all CPU, no visuals possible
@@ -71,23 +65,23 @@ El concepto clave: **los registros del AY son los parámetros de sonido, no la f
                        ; --- 44T per sample = ~79.5 kHz
 ```
 
-El motor AY-beat más simple: incrementar `t`, calcular el periodo de tono a partir de `t`, escribir en el AY.
+Esto funciona y produce sonido. Pero consume el 100% de la CPU -- el Z80 no hace más que calcular muestras y activar el altavoz. Sin actualizaciones de pantalla, sin efectos visuales, sin manejo de entrada. La tasa de muestreo también es incorrecta (demasiado rápida), y controlarla con precisión requiere un conteo cuidadoso de ciclos con NOP de relleno.
 
-For a demo, this is a dead end. The beeper is a 1-bit output that demands constant CPU attention. The real adaptation of bytebeat to the Spectrum requires a different approach entirely.
+Para una demo, esto es un callejón sin salida. El beeper es una salida de 1 bit que exige atención constante de la CPU. La verdadera adaptación del bytebeat al Spectrum requiere un enfoque completamente diferente.
 
 ---
 
-## 2. AY-Beat: Bytebeat Reimagined for a Tone Generator
+## 2. AY-Beat: Bytebeat reimaginado para un generador de tonos
 
-## 3. El período de envolvente como drone
+El AY-3-8910 no es un DAC. No acepta muestras de amplitud. Es un generador de tonos programable: le das una frecuencia (como valor de período), un volumen (0-15) y parámetros opcionales de ruido y envolvente, y sus osciladores internos producen el sonido de forma autónoma. La CPU queda libre para hacer otro trabajo.
 
-La característica más potente del AY para AY-beat es el generador de envolvente. Cuando el modo de volumen de un canal se establece a `$10` (bit 4 activado), el AY ignora el volumen manual y lo sustituye por la envolvente hardware -- un patrón de volumen que se repite continuamente, controlado por los registros R11-R13.
+La idea clave del AY-beat: **reemplazar el contador de muestras por un contador de fotogramas, y reemplazar la salida PCM por valores de registros del AY.**
 
-Classic bytebeat computes one amplitude sample at ~8000 Hz. AY-beat computes tone periods, volumes, and noise parameters at 50 Hz -- once per video frame, triggered by the HALT instruction. The AY's oscillators handle the actual sound generation between frames.
+El bytebeat clásico calcula una muestra de amplitud a ~8000 Hz. AY-beat calcula períodos de tono, volúmenes y parámetros de ruido a 50 Hz -- una vez por fotograma de vídeo, disparado por la instrucción HALT. Los osciladores del AY manejan la generación real de sonido entre fotogramas.
 
-Establece un canal en modo envolvente (`ld d, $10 : ld a, 10 : call ay_write_d`). Ahora el AY modula el volumen de este canal automáticamente con el periodo de envolvente. Si el periodo de envolvente está cerca del periodo de tono, la interacción produce una forma de onda compleja -- como modulación de frecuencia en un sintetizador FM.
+El contador de fotogramas `t` reemplaza al contador de muestras. Las fórmulas operan sobre `t` pero producen valores de registros, no muestras de forma de onda. Donde el bytebeat PCM tiene un grado de libertad (amplitud), AY-beat tiene muchos: tres períodos de tono independientes (12 bits cada uno), tres volúmenes (4 bits cada uno), un período de ruido (5 bits) y un período de envolvente de 16 bits con selección de forma.
 
-Esto es **buzz-bass** (Capítulo 11). El "drone" del AY-beat: establece un canal en modo E+T y deja que el periodo de envolvente haga un sweep controlado por tu fórmula. El canal produce un tono en constante evolución sin coste adicional de CPU más allá de actualizar R11/R12 cada fotograma.
+### Arquitectura básica de AY-Beat
 
 ```z80
 ; AY-beat frame update -- called once per HALT
@@ -128,36 +122,36 @@ ay_beat_update:
     ret
 ```
 
-Esto produce un drone que evoluciona -- el periodo de envolvente realiza un sweep a través de rangos, creando batidos de interferencia con el periodo de tono fijo. El tono parece "respirar" a medida que la envolvente acelera y desacelera.
+Este es el AY-beat más simple posible: un canal, una fórmula de tono, una fórmula de volumen, ~30 bytes. Produce un barrido cíclico que sube en tono y se desvanece entrando y saliendo -- no es música, pero es un sonido reconociblemente estructurado.
 
-### What Changes from PCM Bytebeat
+### Qué cambia respecto al bytebeat PCM
 
-El registro R13 controla el patrón de la envolvente:
+| Aspecto | Clásico (PCM) | AY-Beat |
+|---------|---------------|---------|
+| Tasa de actualización | ~8000 Hz | 50 Hz (tasa de fotogramas) |
+| Salida | Amplitud de 8 bits | Período de tono (12 bits), volumen (4 bits), ruido (5 bits) |
+| Canales | 1 (altavoz mono) | 3 tonos + 1 ruido + envolvente |
+| Coste de CPU | 100% (todos los ciclos) | ~200-500 T por fotograma (~0.3%) |
+| Escalado de fórmulas | Granularidad fina, evolución rápida | Granularidad gruesa, se necesitan desplazamientos de bits más amplios |
+| Generación de sonido | La CPU calcula cada muestra | Los osciladores del AY funcionan autónomamente |
 
-| Forma | Valor | Patrón | Mejor uso |
-|-------|-------|--------|-----------|
-| Decay simple | `$00` | `\___` | Hit de un disparo, percusión |
-| Ataque simple | `$04` | `/___` | Swell, fade in |
-| Diente de sierra descendente | `$08` | `\\\\\` | Bass pulsante (repetido) |
-| Diente de sierra ascendente | `$0C` | `/////` | Pitch ascendente (repetido) |
-| Triángulo | `$0E` | `/\/\/` | Vibrato suave, drone (repetido) |
-| Triángulo invertido | `$0A` | `\/\/\` | Vibrato suave, fase invertida |
+La tasa de fotogramas de 50 Hz significa que las fórmulas evolucionan 160 veces más lento que a 8 kHz. Para obtener una densidad rítmica equivalente, usa multiplicadores más grandes y menos desplazamientos a la derecha. Una fórmula que produce un ritmo agradable a 8 kHz con `t>>12` (período ~0.5 seg a 8 kHz) necesita aproximadamente `t>>4` a 50 Hz para una temporización similar (~0.3 seg entre repeticiones). La regla general: divide las cantidades de desplazamiento del bytebeat de PC por ~7 (log2 del ratio 160x) y ajusta de oído.
 
 ---
 
-## 3. Drone: Envelope + Tone (E+T Mode)
+## 3. Drone: Envolvente + Tono (Modo E+T)
 
-La envolvente del AY se reinicia cada vez que escribes en R13. Para un drone continuo, escribe R13 una vez (en el fotograma 0) y nunca lo toques de nuevo. La envolvente se repite indefinidamente con la forma elegida. Luego actualiza solo R11/R12 (periodo de envolvente) cada fotograma para controlar el tono del drone.
+Aquí es donde AY-beat se vuelve genuinamente interesante. El generador de envolvente del AY cicla automáticamente el volumen de un canal sin ninguna intervención de la CPU. Configura el registro de volumen de un canal en modo envolvente (bit 4 = 1, es decir, escribe $10 en R8/R9/R10) y el hardware maneja la modulación de volumen a la frecuencia de envolvente definida por R11-R12.
 
-The result is a drone: a continuously evolving timbre produced by the interaction of the tone oscillator and the envelope oscillator. The CPU cost for maintaining this drone is almost zero -- you only need to update the tone period and envelope period once per frame, and the hardware does the rest.
+El resultado es un drone: un timbre continuamente evolutivo producido por la interacción del oscilador de tono y el oscilador de envolvente. El coste de CPU para mantener este drone es casi cero -- solo necesitas actualizar el período de tono y el período de envolvente una vez por fotograma, y el hardware hace el resto.
 
-Esto ahorra bytes: no necesitas escribir R13 en tu bucle por fotograma.
+### La receta del drone
 
-1. Set a tone period from a formula -- this defines the base pitch.
-2. Set an envelope period from a different formula -- this defines the modulation rate.
-3. Set the envelope shape to a repeating waveform (shapes $08, $0A, $0C, or $0E).
-4. Set the channel volume to envelope mode ($10).
-5. The hardware produces a continuously evolving drone with zero per-sample CPU cost.
+1. Configura un período de tono desde una fórmula -- esto define el tono base.
+2. Configura un período de envolvente desde una fórmula diferente -- esto define la tasa de modulación.
+3. Configura la forma de envolvente a una onda repetitiva (formas $08, $0A, $0C o $0E).
+4. Configura el volumen del canal a modo envolvente ($10).
+5. El hardware produce un drone continuamente evolutivo con coste de CPU por muestra de cero.
 
 ```z80
 ; Drone setup -- E+T mode
@@ -207,27 +201,21 @@ drone_update:
     ret
 ```
 
-El generador de ruido del AY (R6) produce ruido blanco a un periodo controlable. Combinado con un decay rápido de volumen, esto crea sonidos de percusión. El truco de AY-beat: activar el ruido solo en ciertos fotogramas derivados de `t`.
+La belleza del modo E+T es la interferencia entre las dos frecuencias. Cuando el período de envolvente está cerca del período de tono, obtienes efectos de modulación de amplitud -- el volumen pulsa a la frecuencia de diferencia, produciendo un timbre ondulante, similar a un órgano. Cuando la frecuencia de envolvente es mucho menor que la frecuencia de tono, actúa como un tremolo lento. Cuando es mucho mayor, entras en territorio del buzz-bass (ver Apéndice G y Capítulo 11).
 
-Sweeping the envelope period while the tone period also moves produces continuously evolving textures. The two formulas create a two-dimensional parameter space that the sound explores over time. With the right formula pair, the drone never quite repeats -- it wanders through timbral variations, creating an ambient soundscape from fewer than 30 bytes of code.
+Barrer el período de envolvente mientras el período de tono también se mueve produce texturas continuamente evolutivas. Las dos fórmulas crean un espacio de parámetros bidimensional que el sonido explora a lo largo del tiempo. Con el par de fórmulas adecuado, el drone nunca se repite del todo -- deambula por variaciones tímbricas, creando un paisaje sonoro ambiental con menos de 30 bytes de código.
 
-### Byte Cost
+### Coste en bytes
 
-El `and $07` crea una máscara periódica: el hit ocurre cada 8 fotogramas (8 fotogramas / 50 fps = 160 ms entre hits, ~375 BPM). El hit de ruido se desvanece durante 3 fotogramas a través de la secuencia de volumen 15→10→5→0.
+Configurar el modo E+T con una fórmula requiere aproximadamente 15-25 bytes. Para una intro de 256 bytes, esto te da un sonido drone rico y evolutivo esencialmente gratis -- sin necesidad de cálculo de volumen por fotograma, sin datos de patrón, solo dos valores de registro derivados de fórmulas simples. El hardware del AY hace todo el trabajo de oscilación.
 
 ---
 
-Diferentes máscaras crean diferentes ritmos:
+## 4. Percusión con ruido
 
-| Máscara | Periodo | BPM (aprox.) | Sensación |
-|---------|---------|--------------|-----------|
-| `and $03` | Cada 4 fotogramas | 750 | Frenético |
-| `and $07` | Cada 8 fotogramas | 375 | Rápido |
-| `and $0F` | Cada 16 fotogramas | 187 | Medio |
-| `and $1F` | Cada 32 fotogramas | 94 | Lento |
-| `and $3F` | Cada 64 fotogramas | 47 | Ambiental |
+El generador de ruido del AY (R6) produce ruido pseudoaleatorio a una frecuencia programable (0-31). El registro del mezclador (R7) controla qué canales reciben ruido. Activar y desactivar el ruido rítmicamente, controlado por el contador de fotogramas, crea patrones de percusión.
 
-Combina dos máscaras para patrones más complejos:
+### Patrón básico de bombo
 
 ```z80
 ; Noise percussion on channel C
@@ -266,26 +254,31 @@ Combina dos máscaras para patrones más complejos:
 .done:
 ```
 
-Esto produce un patrón combinado donde hay un acento cada 16 fotogramas y un hit débil cada 8.
+### Carácter de percusión según el período de ruido
 
-| R6 Value | Character | Use |
-|----------|-----------|-----|
-| 0-3 | Harsh click, punchy | Kick drum, rimshot |
-| 4-8 | Crisp hiss | Snare body |
-| 10-15 | Broad noise | Open hi-hat |
-| 20-31 | Low rumble | Distant thunder, ambient |
+| Valor de R6 | Carácter | Uso |
+|-------------|----------|-----|
+| 0-3 | Clic duro, contundente | Bombo, rimshot |
+| 4-8 | Siseo nítido | Cuerpo de caja |
+| 10-15 | Ruido amplio | Hi-hat abierto |
+| 20-31 | Retumbo grave | Trueno lejano, ambiente |
 
-En lugar de un decay manual de volumen (que cuesta bytes para la secuencia de decremento), usa el generador de envolvente del AY:
+### Variedad rítmica con máscaras de bits
 
-Different AND masks on the frame counter produce different rhythmic densities:
+Diferentes máscaras AND sobre el contador de fotogramas producen diferentes densidades rítmicas:
 
-Las fórmulas en esta tabla muestran las implementaciones Z80 -- no necesitas almacenar tablas, solo operar sobre el contenido del registro.
+| Máscara | Período | Frecuencia | Carácter |
+|---------|---------|------------|----------|
+| `AND $03` | Cada 4 fotogramas | 12.5 Hz | Fuego rápido, hi-hat |
+| `AND $07` | Cada 8 fotogramas | 6.25 Hz | Bombo estándar |
+| `AND $0F` | Cada 16 fotogramas | 3.125 Hz | Medio tiempo, espaciado |
+| `AND $1F` | Cada 32 fotogramas | 1.5625 Hz | Pulso lento, intro |
 
-Combine two masks for polyrhythm: test `t AND $07` for the kick, `t AND $03` for the hi-hat. This costs about 10 extra bytes but adds significant rhythmic complexity.
+Combina dos máscaras para polirritmia: prueba `t AND $07` para el bombo, `t AND $03` para el hi-hat. Esto cuesta unos 10 bytes extra pero añade complejidad rítmica significativa.
 
-En lugar de gestionar el decay del volumen manualmente, re-activa la envolvente en el hit:
+### Uso de la envolvente para la caída del tambor
 
-Instead of manually decaying the volume each frame, use the AY envelope generator in single-shot mode. Set R13 to shape $00 (decay to zero, hold), and the hardware handles the volume fade automatically:
+En lugar de decaer manualmente el volumen en cada fotograma, usa el generador de envolvente del AY en modo disparo único. Configura R13 a la forma $00 (decaimiento a cero, mantener), y el hardware maneja el desvanecimiento de volumen automáticamente:
 
 ```z80
 ; Envelope-based drum hit -- zero CPU cost for decay
@@ -310,7 +303,7 @@ Instead of manually decaying the volume each frame, use the AY envelope generato
 .no_hit:
 ```
 
-Esto ahorra varios bytes al eliminar el código de decay manual. La contrapartida: el generador de envolvente se comparte entre todos los canales en modo envolvente. Si el canal A está usando drone E+T, el canal C no puede usar independientemente la envolvente para el decay de percusión. Planifica tu asignación de canales en consecuencia.
+Esto ahorra varios bytes al eliminar el código de decaimiento manual. La contrapartida: el generador de envolvente es compartido entre todos los canales en modo envolvente. Si el canal A usa drone E+T, el canal C no puede usar independientemente la envolvente para el decaimiento del tambor. Planifica la asignación de canales acorde.
 
 ---
 
@@ -318,7 +311,7 @@ Esto ahorra varios bytes al eliminar el código de decay manual. La contrapartid
 
 El AY tiene tres canales de tono independientes. AY-beat puede derivar los tres de una sola fórmula usando rotación de bits, creando la impresión de contrapunto con casi nada de código.
 
-### Three Voices from One Formula
+### Tres voces de una fórmula
 
 ```z80
 ; Three related voices from one frame counter
@@ -352,18 +345,18 @@ El AY tiene tres canales de tono independientes. AY-beat puede derivar los tres 
     call ay_write_d
 ```
 
-Las rotaciones de bits crean versiones con desplazamiento de fase del mismo patrón. Los canales reproducen melodías relacionadas pero desplazadas -- siguen el mismo contorno pero llegan a cada tono en momentos diferentes. Esto crea una impresión de contrapunto: múltiples voces independientes que comparten una lógica subyacente.
+Las rotaciones de bits crean versiones desfasadas del mismo patrón. Los canales tocan melodías relacionadas pero desplazadas -- siguen el mismo contorno pero llegan a cada tono en momentos diferentes. Esto crea una impresión de contrapunto: múltiples voces independientes que comparten una lógica subyacente.
 
-### Why Rotation Creates Harmony
+### Por qué la rotación crea armonía
 
-RRCA es una *rotación*, no un desplazamiento -- los bits que caen por abajo vuelven por arriba. Esto significa que los tres canales recorren el mismo conjunto de valores de periodo en el mismo orden, pero desplazados en el tiempo. El desplazamiento depende de la cantidad de rotación:
+RRCA es una *rotación*, no un desplazamiento -- los bits que salen por abajo vuelven por arriba. Esto significa que los tres canales recorren el mismo conjunto de valores de período en el mismo orden, pero desplazados en el tiempo. El desplazamiento depende de la cantidad de rotación:
 
-- **RRCA x 2:** El canal va "adelantado" aproximadamente un cuarto del ciclo del patrón. Esto a menudo crea intervalos que suenan como cuartas o quintas -- no afinados con precisión, pero lo suficientemente relacionados armónicamente como para ser agradables.
-- **RRCA x 4:** Medio byte de desplazamiento. Esto tiende a producir relaciones tipo octava, ya que rotar el bit 4 al bit 0 efectivamente reduce el periodo a la mitad en ciertas alineaciones de fase.
+- **RRCA x 2:** El canal está "adelantado" por aproximadamente un cuarto del ciclo del patrón. Esto suele crear intervalos que suenan como cuartas o quintas -- no afinados con precisión, pero armónicamente relacionados lo suficiente como para ser agradables.
+- **RRCA x 4:** Medio byte de desplazamiento. Esto tiende a producir relaciones tipo octava, ya que el bit 4 rotado a la posición del bit 0 efectivamente reduce a la mitad el período en ciertas alineaciones de fase.
 
-Estos no son intervalos musicales reales. Son relaciones pseudo-armónicas creadas por la estructura de los números binarios. Pero el oído es indulgente -- si dos tonos comparten la mayor parte de su patrón de bits, suenan "relacionados", y eso es suficiente para una intro de 256 bytes.
+Estos no son intervalos musicales reales. Son relaciones pseudo-armónicas creadas por la estructura de los números binarios. Pero el oído es tolerante -- si dos tonos comparten la mayor parte de su patrón de bits, suenan "relacionados", y eso es suficiente para una intro de 256 bytes.
 
-### Volume Formulas for Multi-Channel
+### Fórmulas de volumen para multicanal
 
 Dale a cada canal una fórmula de volumen diferente para evitar que las tres voces estén al mismo nivel simultáneamente:
 
@@ -397,51 +390,51 @@ Dale a cada canal una fórmula de volumen diferente para evitar que las tres voc
     call ay_write_d
 ```
 
-El volumen invertido en el canal C crea una dinámica de llamada y respuesta: mientras una voz sube, otra baja. Esto cuesta 2 bytes extra (el `XOR $0F`) pero mejora significativamente la textura musical.
+El volumen invertido en el canal C crea una dinámica de llamada y respuesta: mientras una voz se desvanece entrando, otra se desvanece saliendo. Esto cuesta 2 bytes extra (el `XOR $0F`) pero mejora significativamente la textura musical.
 
 ---
 
 ## 6. Recetario de fórmulas
 
-Las siguientes fórmulas han sido probadas en el AY a una tasa de 50 Hz. "Bytes" se refiere al coste de implementación Z80 para calcular la fórmula a partir de un valor ya en el registro A (el contador de fotogramas). La máscara de periodo determina el rango de tono.
+Las siguientes fórmulas han sido probadas en el AY a 50 Hz de tasa de fotogramas. "Bytes" se refiere al coste de implementación Z80 para calcular la fórmula a partir de un valor ya en el registro A (el contador de fotogramas). La máscara de período determina el rango de tono.
 
-### Tone Period Formulas
+### Fórmulas de período de tono
 
-| # | Fórmula | Implementación Z80 | Bytes | Sonido | Mejor para |
+| # | Fórmula | Implementación Z80 | Bytes | Sonido | Ideal para |
 |---|---------|---------------------|-------|--------|------------|
-| 1 | `t AND $3F` | `and $3F` | 2 | Diente de sierra ascendente, ciclo de 1,28 seg | Sweep simple |
-| 2 | `t*3 AND $3F` | `ld e,a : add a,a : add a,e : and $3F` | 5 | Sweep más rápido, intervalos más amplios | Bajo enérgico |
+| 1 | `t AND $3F` | `and $3F` | 2 | Diente de sierra ascendente, ciclo de 1.28 seg | Barrido simple |
+| 2 | `t*3 AND $3F` | `ld e,a : add a,a : add a,e : and $3F` | 5 | Barrido más rápido, intervalos más amplios | Bajo energético |
 | 3 | `t XOR (t>>3)` | `ld e,a : rrca : rrca : rrca : xor e` | 5 | Caótico con estructura periódica | Textura de ruido |
-| 4 | `(t AND $0F) XOR $0F` | `and $0F : xor $0F` | 4 | Onda triangular, sweep ping-pong | Lead melódico |
-| 5 | `t*5 AND t>>2` | `ld e,a : add a,a : add a,a : add a,e : ld d,a : ld a,e : rrca : rrca : and d` | 10 | Gate rítmico | Tipo percusión |
-| 6 | `(t+t>>4) AND $1F` | `ld e,a : rrca : rrca : rrca : rrca : add a,e : and $1F` | 6 | Sweep lentamente modulado | Drone evolutivo |
-| 7 | `t AND (t>>3) AND $1F` | `ld e,a : rrca : rrca : rrca : and e : and $1F` | 6 | Auto-similar, ritmo fractal | Patrones complejos |
+| 4 | `(t AND $0F) XOR $0F` | `and $0F : xor $0F` | 4 | Onda triangular, barrido ping-pong | Melodía principal |
+| 5 | `t*5 AND t>>2` | `ld e,a : add a,a : add a,a : add a,e : ld d,a : ld a,e : rrca : rrca : and d` | 10 | Filtrado rítmico | Tipo percusión |
+| 6 | `(t+t>>4) AND $1F` | `ld e,a : rrca : rrca : rrca : rrca : add a,e : and $1F` | 6 | Barrido modulado lentamente | Drone evolutivo |
+| 7 | `t AND (t>>3) AND $1F` | `ld e,a : rrca : rrca : rrca : and e : and $1F` | 6 | Autosimilar, ritmo fractal | Patrones complejos |
 | 8 | `(t>>1) XOR (t>>3)` | `ld e,a : rrca : ld d,a : rrca : rrca : xor d` | 6 | Interferencia de doble velocidad | Textura metálica |
-| 9 | `t*7 AND $7F` | `ld e,a : add a,a : add a,a : add a,a : sub e : and $7F` | 6 | Sweep amplio, velocidad 7x | Sensación de arpegio rápido |
+| 9 | `t*7 AND $7F` | `ld e,a : add a,a : add a,a : add a,a : sub e : and $7F` | 6 | Barrido amplio, velocidad 7x | Sensación de arpegio rápido |
 | 10 | `(t XOR t>>1) AND $3F` | `ld e,a : rrca : xor e : and $3F` | 5 | Secuencia de código Gray | Melodía en escalera |
-| 11 | `t AND $07 OR t>>4` | `ld e,a : and $07 : ld d,a : ld a,e : rrca : rrca : rrca : rrca : or d` | 8 | Bucles anidados, dos capas rítmicas | Ritmo en capas |
-| 12 | `(t+t+t>>2) AND $3F` | `ld e,a : add a,a : ld d,a : ld a,e : rrca : rrca : add a,d : and $3F` | 8 | Sweep acelerado con sub-patrón | Lead con textura |
+| 11 | `t AND $07 OR t>>4` | `ld e,a : and $07 : ld d,a : ld a,e : rrca : rrca : rrca : rrca : or d` | 8 | Bucles anidados, dos capas rítmicas | Ritmo por capas |
+| 12 | `(t+t+t>>2) AND $3F` | `ld e,a : add a,a : ld d,a : ld a,e : rrca : rrca : add a,d : and $3F` | 8 | Barrido acelerado con sub-patrón | Melodía con textura |
 
-### Volume Formulas
+### Fórmulas de volumen
 
 | # | Fórmula | Z80 | Bytes | Efecto |
 |---|---------|-----|-------|--------|
-| V1 | `t>>3 AND $0F` | `rrca : rrca : rrca : and $0F` | 5 | Ciclo de fade lento, 5,12 seg |
+| V1 | `t>>3 AND $0F` | `rrca : rrca : rrca : and $0F` | 5 | Ciclo de desvanecimiento lento, 5.12 seg |
 | V2 | `(t AND $0F) XOR $0F` | `and $0F : xor $0F` | 4 | Volumen triangular, ping-pong |
-| V3 | `t*3>>4 AND $0F` | `ld e,a : add a,a : add a,e : rrca : rrca : rrca : rrca : and $0F` | 8 | Patrón de fade irregular |
+| V3 | `t*3>>4 AND $0F` | `ld e,a : add a,a : add a,e : rrca : rrca : rrca : rrca : and $0F` | 8 | Patrón de desvanecimiento irregular |
 | V4 | `$0F` (constante) | `ld d,$0F` | 2 | Volumen máximo, usar con modo envolvente |
 
-### How to Read the Table
+### Cómo leer la tabla
 
-Elige una fórmula de tono y una fórmula de volumen. Combínalas. El coste total en bytes es la suma de ambas implementaciones más la sobrecarga de escritura de registros AY (~8 bytes por canal para dos llamadas a ay_write: selección de registro + datos para tono bajo y volumen). Un solo canal con la fórmula #1 y volumen V1 cuesta aproximadamente 2 + 5 + 16 = 23 bytes incluyendo escrituras de registros.
+Elige una fórmula de tono y una fórmula de volumen. Combínalas. El coste total en bytes es la suma de ambas implementaciones más la sobrecarga de escritura de registros del AY (~8 bytes por canal para dos llamadas a ay_write: selección de registro + datos para tono bajo y volumen). Un solo canal con la fórmula #1 y el volumen V1 cuesta aproximadamente 2 + 5 + 16 = 23 bytes incluyendo las escrituras de registros.
 
-La fórmula #10 (código Gray) merece mención especial. La secuencia de código Gray solo cambia un bit por paso, así que el periodo de tono cambia exactamente una unidad por fotograma -- una melodía suave, tipo escalera. Combinada con la máscara AND, recorre un rango de tono limitado con regularidad agradable. Esta es una de las fórmulas individuales con sonido más musical.
+La fórmula #10 (código Gray) merece mención especial. La secuencia de código Gray solo cambia un bit por paso, así que el período de tono cambia exactamente en una unidad por fotograma -- una melodía suave, tipo escalera. Combinada con la máscara AND, recorre un rango de tono limitado con agradable regularidad. Esta es una de las fórmulas individuales que mejor suenan musicalmente.
 
 ---
 
-## 7. Ensamblándolo todo: Un motor AY-Beat completo
+## 7. Juntando todo: Un motor AY-Beat completo
 
-Aquí hay un motor AY-beat completo y mínimo que produce sonido generativo de 3 canales con drone de envolvente. Este es el motor que integras en una intro de 256 bytes junto a tu efecto visual.
+Aquí tienes un motor AY-beat completo y mínimo que produce sonido generativo de 3 canales con drone de envolvente. Este es el motor que integras en una intro de 256 bytes junto a tu efecto visual.
 
 ```z80
 ; ============================================================
@@ -540,20 +533,20 @@ ay_beat:
 ; ============================================================
 ```
 
-### What This Produces
+### Qué produce esto
 
-- **Canal A:** Un sweep ascendente simple, recorriendo periodos 0-63 cada 64 fotogramas (1,28 segundos). El patrón fundamental.
-- **Canal B:** El mismo sweep a velocidad 3x, creando intervalos más rápidos. Cuando se alinea con el canal A, escuchas consonancia; cuando diverge, escuchas disonancia. La alternancia crea interés rítmico.
-- **Canal C:** Un sweep de código Gray en modo envolvente. La envolvente triangular crea modulación de volumen automática, produciendo un drone que se desfasa contra el periodo de tono. Esta es la cama armónica bajo las otras dos voces.
-- **En conjunto:** Una textura evolutiva y auto-similar que recorre relaciones tonales. Suena alienígena y mecánico -- exactamente lo correcto para una intro de 256 bytes.
+- **Canal A:** Un barrido ascendente simple, recorriendo períodos 0-63 cada 64 fotogramas (1.28 segundos). El patrón fundamental.
+- **Canal B:** El mismo barrido a velocidad 3x, creando intervalos de movimiento más rápido. Cuando se alinea con el canal A, escuchas consonancia; cuando diverge, escuchas disonancia. La alternancia crea interés rítmico.
+- **Canal C:** Un barrido de código Gray en modo envolvente. La envolvente triangular crea modulación automática de volumen, produciendo un drone que se desfasa contra el período de tono. Esta es la base armónica subyacente a las otras dos voces.
+- **En conjunto:** Una textura evolutiva y autosimilar que recorre relaciones tonales. Suena alienígena y mecánico -- exactamente lo correcto para una intro de 256 bytes.
 
-### Customisation Points
+### Puntos de personalización
 
 **Cambia las fórmulas de tono.** Intercambia cualquiera de las secuencias AND/RRCA por una fórmula diferente del recetario (sección 6). Cada sustitución cambia el carácter por completo.
 
 **Añade percusión de ruido.** Inserta un bloque `ld a,e : and $07 : jr nz,.no_hit` (sección 4) para añadir golpes rítmicos. Coste: ~12 bytes. Roba un canal (típicamente B) o superpón ruido en el canal C.
 
-**Usa enmascaramiento pentatónico.** En lugar de `AND $3F` como máscara final, indexa en una tabla de consulta pentatónica de 5 bytes. Esto restringe los periodos de tono a valores armónicamente relacionados, haciendo que la salida suene más deliberadamente musical. Coste: ~8 bytes (5 para la tabla, 3 para la consulta). El Capítulo 13 discute esta técnica.
+**Usa enmascaramiento pentatónico.** En lugar de `AND $3F` como máscara final, indexa en una tabla de consulta pentatónica de 5 bytes. Esto restringe los períodos de tono a valores armónicamente relacionados, haciendo que la salida suene más deliberadamente musical. Coste: ~8 bytes (5 para la tabla, 3 para la consulta). El Capítulo 13 discute esta técnica.
 
 **Varía los volúmenes fijos.** Reemplaza las escrituras de volumen constante con fórmulas de volumen de la sección 6. Incluso `ld a,e : rrca : rrca : rrca : and $0F` (5 bytes por canal) añade un interés dinámico significativo.
 
@@ -561,9 +554,9 @@ ay_beat:
 
 ## 8. Avanzado: Combinando técnicas
 
-Las secciones anteriores cubren bloques de construcción individuales. Un motor AY-beat bien elaborado combina varios:
+Las secciones anteriores cubren bloques individuales. Un motor AY-beat bien elaborado combina varios:
 
-### Architecture for a 256-Byte Intro
+### Arquitectura para una intro de 256 bytes
 
 ```
 Frame 0:   Set mixer, envelope shape (one-time setup)
@@ -575,9 +568,9 @@ Frame N:   Update tone A (melody formula)
            Every 8th frame: noise hit on C (toggle mixer)
 ```
 
-El coste total de CPU por fotograma es aproximadamente 300-500 T-states -- muy por debajo del 1% de los ~70.000 T-states disponibles por fotograma. El 99% restante queda disponible para tu efecto visual.
+El coste total de CPU por fotograma es aproximadamente 300-500 T-states -- muy por debajo del 1% de los ~70,000 T-states disponibles por fotograma. El 99% restante está disponible para tu efecto visual.
 
-### Register Budget
+### Presupuesto de registros
 
 El AY tiene 14 registros escribibles. En un motor AY-beat mínimo, típicamente escribes 8-10 por fotograma:
 
@@ -586,25 +579,25 @@ El AY tiene 14 registros escribibles. En un motor AY-beat mínimo, típicamente 
 | R0 (Tono A bajo) | Cada fotograma | Fórmula |
 | R2 (Tono B bajo) | Cada fotograma | Fórmula |
 | R4 (Tono C bajo) | Cada fotograma o una vez | Fórmula o fijo |
-| R1, R3, R5 (Tono alto) | Una vez (puesto a 0) | Constante |
+| R1, R3, R5 (Tono alto) | Una vez (establecido a 0) | Constante |
 | R7 (Mezclador) | Cada fotograma o una vez | Constante o conmutado para ruido |
 | R8, R9 (Volumen A, B) | Cada fotograma | Fórmula o constante |
 | R10 (Volumen C) | Una vez | $10 (modo envolvente) |
 | R11 (Envolvente bajo) | Cada fotograma | Fórmula |
-| R13 (Forma envolvente) | Una vez (fotograma 0) | Constante |
+| R13 (Forma de envolvente) | Una vez (fotograma 0) | Constante |
 
-Registros que puedes omitir por completo: R6 (periodo de ruido -- solo necesario si usas ruido), R12 (envolvente alto -- puesto una vez a 0 para periodos cortos), R14-R15 (puertos de E/S -- irrelevantes para sonido).
+Registros que puedes omitir completamente: R6 (período de ruido -- solo necesario si usas ruido), R12 (envolvente alto -- configurado una vez a 0 para períodos cortos), R14-R15 (puertos de E/S -- irrelevantes para sonido).
 
-### Size Breakdown
+### Desglose de tamaño
 
 Para una intro de 256 bytes, cada byte importa. Así es como se ve un presupuesto típico de AY-beat:
 
 | Componente | Bytes |
 |------------|-------|
-| Rutina de escritura AY | 9 |
+| Rutina de escritura al AY | 9 |
 | Gestión del contador de fotogramas | 5 |
 | 3 fórmulas de tono (simples) | 12-18 |
-| 3 ajustes de volumen | 6-15 |
+| 3 configuraciones de volumen | 6-15 |
 | Configuración del mezclador | 5 |
 | Configuración de envolvente | 8-12 |
 | Total | **45-64** |
@@ -615,9 +608,9 @@ Esto deja 192-211 bytes para el efecto visual, el bucle principal y cualquier ot
 
 ## 9. AY como DAC: Bytebeat clásico a través del registro de volumen
 
-Hay un camino intermedio entre el callejón sin salida del beeper y la reinterpretación del AY-beat. Los registros de volumen del AY-3-8910 (registros 8, 9, 10) aceptan valores de 4 bits (0-15). Si actualizas un registro de volumen a una tasa alta -- digamos, durante un bucle ajustado -- la salida del AY se convierte en un DAC de 4 bits. Así es como funcionan la voz digitalizada y la reproducción de muestras en demos del Spectrum.
+Existe un camino intermedio entre el callejón sin salida del beeper y la reimaginación de AY-beat. Los registros de volumen del AY-3-8910 (registros 8, 9, 10) aceptan valores de 4 bits (0-15). Si actualizas un registro de volumen a alta tasa -- digamos, durante un bucle cerrado -- la salida del AY se convierte en un DAC de 4 bits. Así es como funcionan el habla digitalizada y la reproducción de muestras en las demos del Spectrum.
 
-Aplicado a bytebeat: calcula `f(t)`, desplaza a 4 bits, escribe en el registro de volumen:
+Aplicado al bytebeat: calcula `f(t)`, desplaza a la derecha hasta 4 bits, escribe en el registro de volumen:
 
 ```z80
 ; AY-as-DAC bytebeat -- 4-bit PCM through volume register
@@ -660,17 +653,17 @@ Aplicado a bytebeat: calcula `f(t)`, desplaza a 4 bits, escribe en el registro d
 
 Esto produce bytebeat reconocible -- las fórmulas de forma de onda reales de la sección 1, audibles a través del AY. La calidad de sonido es mejor que la del beeper (resolución de 4 bits vs 1 bit), y la etapa de salida del AY proporciona niveles de audio adecuados.
 
-El coste sigue siendo brutal: ~80% de CPU. Te queda una franja mínima de tiempo para visuales -- suficiente para un efecto de atributos de actualización lenta, no suficiente para nada ambicioso. Esta técnica es útil cuando quieres el *sonido específico* de fórmulas bytebeat clásicas y estás dispuesto a pagar el precio de CPU.
+El coste sigue siendo brutal: ~80% de CPU. Obtienes una franja delgada de tiempo para visuales -- suficiente para un efecto de atributos que se actualice lentamente, no lo suficiente para nada ambicioso. Esta técnica es útil cuando quieres el *sonido específico* de las fórmulas de bytebeat clásico y estás dispuesto a pagar el precio de CPU.
 
-### Three Output Paths Compared
+### Tres rutas de salida comparadas
 
-| Ruta | Resolución | Coste CPU | Carácter del sonido | ¿Práctico para demos? |
-|------|-----------|----------|---------------------|----------------------|
+| Ruta | Resolución | Coste de CPU | Carácter sonoro | ¿Práctico para demos? |
+|------|-----------|-------------|-----------------|----------------------|
 | Beeper (puerto $FE) | 1 bit | ~100% | Áspero, zumbante | No |
 | AY volumen DAC | 4 bits | ~80% | Bytebeat clásico | Apenas (solo efectos de atributos) |
-| AY-beat (registros) | Tono/ruido | ~0,5% | Chip music, generativo | Sí -- la opción correcta |
+| AY-beat (registros) | Tono/ruido | ~0.5% | Música chip, generativa | Sí -- la elección correcta |
 
-Para intros y demos con restricción de tamaño, AY-beat es casi siempre la opción correcta. Reserva AY-como-DAC para proyectos artísticos donde la estética sonora específica del bytebeat es el objetivo.
+Para intros de sizecoding y demos, AY-beat es casi siempre la elección correcta. Reserva AY como DAC para proyectos artísticos donde la estética sonora específica del bytebeat es el objetivo.
 
 ---
 
@@ -678,19 +671,19 @@ Para intros y demos con restricción de tamaño, AY-beat es casi siempre la opci
 
 Las fórmulas de AY-beat que ignoran la teoría musical producen ruido interesante. Las fórmulas que *codifican* teoría musical producen música real. Las siguientes técnicas añaden musicalidad con un mínimo de bytes.
 
-### Scale Tables: Constraining Output to Pleasant Notes
+### Tablas de escala: Restringiendo la salida a notas agradables
 
-Una fórmula cruda como `tone = t AND $3F` produce los 64 valores de periodo posibles -- la mayoría de los cuales no son musicalmente útiles. Una **tabla de escala** mapea la salida de la fórmula a periodos de notas reales, asegurando que cada valor suene bien.
+Una fórmula cruda como `tone = t AND $3F` produce los 64 valores de período posibles -- la mayoría de los cuales no son musicalmente útiles. Una **tabla de escala** mapea la salida de la fórmula a períodos de notas reales, asegurando que cada valor suene bien.
 
-| Escala | Notas | Tamaño tabla | Carácter |
-|--------|-------|-------------|----------|
-| Pentatónica | 5 (C D E G A) | 10 bytes (5 periodos de 2 bytes) | Siempre consonante, sensación folk/world |
+| Escala | Notas | Tamaño de tabla | Carácter |
+|--------|-------|-----------------|----------|
+| Pentatónica | 5 (C D E G A) | 10 bytes (5 x períodos de 2 bytes) | Siempre consonante, sensación folk/world |
 | Diatónica mayor | 7 (C D E F G A B) | 14 bytes | Brillante, occidental, familiar |
 | Diatónica menor | 7 (C D Eb F G Ab Bb) | 14 bytes | Oscura, melancólica |
-| Blues | 6 (C Eb F F# G Bb) | 12 bytes | Áspera, expresiva |
+| Blues | 6 (C Eb F F# G Bb) | 12 bytes | Cruda, expresiva |
 | Cromática | 12 | 24 bytes | Atonal, disonante -- generalmente incorrecta para sizecoding |
 
-La escala pentatónica es la mejor amiga del sizecoder: 5 notas, 10 bytes, y *cualquier* combinación de notas suena aceptable. No puedes tocar una nota equivocada en una escala pentatónica. Por eso tantas intros de 256 bytes suenan vagamente "asiáticas" o "folk" -- la restricción pentatónica hace que las secuencias aleatorias sean musicales.
+La escala pentatónica es la mejor amiga del size-coder: 5 notas, 10 bytes, y *cualquier* combinación de notas suena aceptable. No puedes tocar una nota incorrecta en una escala pentatónica. Por eso tantas intros de 256 bytes suenan vagamente "asiáticas" o "folk" -- la restricción pentatónica hace musicales las secuencias aleatorias.
 
 ```z80
 ; Scale-constrained note lookup
@@ -711,14 +704,14 @@ La escala pentatónica es la mejor amiga del sizecoder: 5 notas, 10 bytes, y *cu
     ld   d, (hl)           ; DE = tone period
 ```
 
-### Octave Derivation: Free Pitch Range
+### Derivación de octavas: Rango de tono gratis
 
-Almacena una octava de periodos. Deriva todas las demás por desplazamiento de bits:
+Almacena una octava de períodos. Deriva todas las demás mediante desplazamiento de bits:
 
-- `SRL D : RR E` = una octava arriba (periodo a la mitad, tono al doble)
-- `SLA E : RL D` = una octava abajo (periodo al doble, tono a la mitad)
+- `SRL D : RR E` = una octava arriba (período a la mitad, tono al doble)
+- `SLA E : RL D` = una octava abajo (período al doble, tono a la mitad)
 
-Cinco notas pentatónicas x una octava almacenada x desplazamiento de bits = 5 notas x 5+ octavas = 25+ tonos distintos de 10 bytes de datos. La fórmula selecciona la nota, una máscara de bits separada selecciona la octava:
+Cinco notas pentatónicas x una octava almacenada x desplazamiento de bits = 5 notas x 5+ octavas = 25+ tonos distintos con 10 bytes de datos. La fórmula selecciona la nota, una máscara de bits separada selecciona la octava:
 
 ```z80
     ; note_index = formula AND $0F
@@ -727,18 +720,18 @@ Cinco notas pentatónicas x una octava almacenada x desplazamiento de bits = 5 n
     ; Look up base period, then SRL 'octave' times
 ```
 
-### Arpeggio: Chord Tones in Sequence
+### Arpegio: Tonos de acorde en secuencia
 
-Un arpegio recorre los tonos de un acorde. En términos de grados de escala:
+Un arpegio recorre los tonos de un acorde. En términos de grados de la escala:
 
-| Acorde | Offsets de escala | Sonido |
-|--------|------------------|--------|
+| Acorde | Desplazamientos de escala | Sonido |
+|--------|--------------------------|--------|
 | Tríada mayor | 0, 2, 4 (fundamental, tercera, quinta) | Brillante, resuelto |
 | Tríada menor | 0, 2, 3 (fundamental, tercera menor, quinta) | Oscuro, tenso |
-| Power chord | 0, 4 (fundamental, quinta) | Abierto, fuerte |
+| Acorde de potencia | 0, 4 (fundamental, quinta) | Abierto, fuerte |
 | Suspendido | 0, 3, 4 (fundamental, cuarta, quinta) | Ambiguo, flotante |
 
-Implementación: `arp_step = (t / velocidad) % tamaño_acorde`, luego sumar el offset a la nota raíz actual:
+Implementación: `arp_step = (t / speed) % chord_size`, luego suma el desplazamiento a la nota raíz actual:
 
 ```z80
 ; Arpeggio: cycle through major triad
@@ -764,16 +757,16 @@ arp_minor:  DB  0, 2, 3    ; root, min.third, fifth (3 bytes)
 
 Tres bytes por forma de acorde. La velocidad del arpegio se deriva del contador de fotogramas -- no se necesita un temporizador separado.
 
-### Step Ornaments: Trills, Mordents, and Slides
+### Ornamentos de paso: Trinos, mordentes y deslizamientos
 
-Un ornamento es un pequeño patrón cíclico de offsets relativos de tono aplicado a una nota. En música tracker, los ornamentos dan vida a los tonos planos:
+Un ornamento es un pequeño patrón cíclico de desplazamientos relativos de tono aplicado a una nota. En la música de tracker, los ornamentos dan vida a los tonos planos:
 
 | Ornamento | Patrón | Efecto | Bytes |
 |-----------|--------|--------|-------|
-| Trino | 0, +1, 0, -1 | Alternancia rápida con vecina | 4 |
-| Mordente | 0, +1, 0, 0 | Breve vecina superior, luego asentarse | 4 |
-| Deslizamiento arriba | 0, 0, +1, +1 | Subida gradual | 4 |
-| Vibrato | 0, +1, +1, 0, -1, -1 | Ondulación suave | 6 |
+| Trino | 0, +1, 0, -1 | Alternancia rápida con el vecino | 4 |
+| Mordente | 0, +1, 0, 0 | Breve vecino superior, luego se estabiliza | 4 |
+| Deslizamiento ascendente | 0, 0, +1, +1 | Subida gradual | 4 |
+| Vibrato | 0, +1, +1, 0, -1, -1 | Oscilación suave | 6 |
 
 Se aplica sumando el valor del ornamento al índice de nota antes de la consulta en la tabla de escala:
 
@@ -794,9 +787,9 @@ mordent:  DB  0, 1, 0, 0    ; 4 bytes
 
 Cuatro bytes transforman un tono estático en una voz viva. Apila múltiples ornamentos en diferentes canales para una textura rica.
 
-### Chord Progressions: Harmonic Movement
+### Progresiones de acordes: Movimiento armónico
 
-La raíz del acorde puede cambiar con el tiempo, siguiendo una progresión. Armonía clásica en 4 bytes:
+La nota raíz del acorde puede cambiar a lo largo del tiempo, siguiendo una progresión. Armonía clásica en 4 bytes:
 
 ```z80
 ; I - IV - V - I progression (the backbone of Western music)
@@ -817,16 +810,16 @@ progression:  DB  0, 3, 4, 0     ; scale degrees
     ld   a, (hl)           ; A = chord root (scale degree)
 ```
 
-Cuatro bytes de datos de progresión, recorridos por el contador de fotogramas, dan a tu pieza de AY-beat movimiento armónico -- la sensación de que "va a algún lugar" en vez de repetir sobre un acorde. Otras progresiones:
+Cuatro bytes de datos de progresión, ciclados por el contador de fotogramas, dan a tu pieza AY-beat movimiento armónico -- la sensación de que "va hacia algún lugar" en lugar de repetirse sobre un solo acorde. Otras progresiones:
 
 | Progresión | Grados | Bytes | Sensación |
 |------------|--------|-------|-----------|
 | I-IV-V-I | 0, 3, 4, 0 | 4 | Resolución clásica |
 | I-V-vi-IV | 0, 4, 5, 3 | 4 | Estándar pop/rock |
 | i-VI-III-VII | 0, 5, 2, 6 | 4 | Menor épico |
-| I-I-I-I | 0, 0, 0, 0 | 1 (o saltarlo) | Drone/meditativo |
+| I-I-I-I | 0, 0, 0, 0 | 1 (o se omite) | Drone/meditativo |
 
-### Total Data Budget for Rich Music
+### Presupuesto total de datos para música rica
 
 Combinando todas las técnicas:
 
@@ -838,17 +831,17 @@ Combinando todas las técnicas:
 | Progresión (4 acordes) | 4 |
 | **Total** | **21** |
 
-21 bytes de datos musicales -- más ~45 bytes de código de motor -- produce música de tres canales con melodía, armonía, cambios de acorde y ornamentación. El ejemplo `aybeat.a80` en el código complementario de este libro demuestra este enfoque en 320 bytes, con espacio de sobra para visuales.
+21 bytes de datos musicales -- más ~45 bytes de código del motor -- producen música de tres canales con melodía, armonía, cambios de acorde y ornamentación. El ejemplo `aybeat.a80` en el código complementario de este libro demuestra este enfoque en 320 bytes, con espacio de sobra para visuales.
 
 ---
 
-## 11. Gramáticas L-System: Melodías fractales
+## 11. Gramáticas de sistemas-L: Melodías fractales
 
-Los sistemas de Lindenmayer (L-systems) son gramáticas de reescritura inventadas originalmente para modelar el crecimiento de plantas. Aplicados a la música, generan secuencias auto-similares con estructura de largo alcance a partir de conjuntos de reglas minúsculos.
+Los sistemas de Lindenmayer (sistemas-L) son gramáticas de reescritura inventadas originalmente para modelar el crecimiento de plantas. Aplicados a la música, generan secuencias autosimilares con estructura a gran escala a partir de conjuntos de reglas diminutos.
 
-### The Concept
+### El concepto
 
-Un L-system tiene un **axioma** (cadena inicial) y **reglas de producción** (reglas de expansión). Cada iteración reemplaza cada símbolo según su regla:
+Un sistema-L tiene un **axioma** (cadena inicial) y **reglas de producción** (reglas de expansión). Cada iteración reemplaza cada símbolo según su regla:
 
 ```
 Axiom: A
@@ -863,35 +856,35 @@ Step 3: A B A A B
 Step 4: A B A A B A B A
 ```
 
-Este es el **L-system de Fibonacci**. La secuencia crece según la proporción de Fibonacci (~1,618x por paso). Mapea los símbolos a eventos musicales:
+Este es el **sistema-L de Fibonacci**. La secuencia crece según la proporción de Fibonacci (~1.618x por paso). Mapea los símbolos a eventos musicales:
 
 | Símbolo | Significado musical |
 |---------|---------------------|
-| A | Tocar nota raíz (grado 0 de la escala) |
-| B | Tocar quinta (grado 4 de la escala) |
+| A | Tocar nota fundamental (grado de escala 0) |
+| B | Tocar quinta (grado de escala 4) |
 
-La melodía resultante: raíz, quinta, raíz, raíz, quinta, raíz, quinta, raíz... -- una secuencia que no es periódica ni aleatoria, sino *cuasi-periódica*. Tiene estructura a cada escala, como un fractal. Suena intencional sin ser repetitiva.
+La melodía resultante: fundamental, quinta, fundamental, fundamental, quinta, fundamental, quinta, fundamental... -- una secuencia que no es periódica ni aleatoria, sino *cuasi-periódica*. Tiene estructura a todas las escalas, como un fractal. Suena intencional sin ser repetitiva.
 
-### Why L-Systems Work for Music
+### Por qué los sistemas-L funcionan para la música
 
-1. **Auto-similitud.** La melodía a grandes escalas hace eco de la melodía a pequeñas escalas. Esto es lo que hace que la música compuesta se sienta coherente -- los temas recurren a diferentes niveles.
-2. **No repetición.** A diferencia de un patrón en bucle, una secuencia de L-system nunca se repite exactamente (para ratios de crecimiento irracionales). Se mantiene interesante.
+1. **Autosimilaridad.** La melodía a grandes escalas refleja la melodía a pequeñas escalas. Esto es lo que hace que la música compuesta se sienta coherente -- los temas reaparecen a diferentes niveles.
+2. **No repetición.** A diferencia de un patrón en bucle, una secuencia de sistema-L nunca se repite exactamente (para proporciones de crecimiento irracionales). Se mantiene interesante.
 3. **Codificación mínima.** Las reglas son unos pocos bytes. La secuencia que generan es arbitrariamente larga.
 
-### Useful L-System Rules
+### Reglas útiles de sistemas-L
 
 | Nombre | Axioma | Reglas | Crecimiento | Carácter |
 |--------|--------|--------|-------------|----------|
-| Fibonacci | A | A->AB, B->A | ~1,618x | Cuasi-periódico, orgánico |
-| Thue-Morse | A | A->AB, B->BA | 2x | Equilibrado, justo -- sin secuencias largas |
-| Duplicación de periodo | A | A->AB, B->AA | 2x | Cada vez más sincopado |
-| Cantor | A | A->ABA, B->BBB | 3x | Disperso, con silencios (B=silencio) |
+| Fibonacci | A | A→AB, B→A | ~1.618x | Cuasi-periódico, orgánico |
+| Thue-Morse | A | A→AB, B→BA | 2x | Equilibrado, justo -- sin rachas largas |
+| Duplicación de período | A | A→AB, B→AA | 2x | Cada vez más sincopado |
+| Cantor | A | A→ABA, B→BBB | 3x | Disperso, con silencios (B=silencio) |
 
-### Z80 Implementation
+### Implementación en Z80
 
-El truco para Z80 es **no expandir la cadena en memoria** (eso requeriría espacio de búfer ilimitado). En su lugar, calcula el símbolo en la posición `n` recursivamente: rastrea hacia atrás a través de las aplicaciones de reglas para determinar de qué símbolo original proviene la posición `n`.
+El truco para Z80 es **no expandir la cadena en memoria** (eso requeriría un búfer de tamaño ilimitado). En su lugar, calcula el símbolo en la posición `n` recursivamente: retrocede a través de las aplicaciones de reglas para determinar de qué símbolo original provino la posición `n`.
 
-Para el L-system de Fibonacci, hay un atajo elegante. El símbolo en la posición `n` depende de la representación de Zeckendorf (codificación Fibonacci) de `n`. Pero para sizecoding práctico, un enfoque más simple funciona:
+Para el sistema-L de Fibonacci, hay un atajo elegante. El símbolo en la posición `n` depende de la representación de Zeckendorf (codificación de Fibonacci) de `n`. Pero para sizecoding práctico, un enfoque más simple funciona:
 
 ```z80
 ; L-system melody generator (Fibonacci: A→AB, B→A)
@@ -948,7 +941,7 @@ lsys_state:
     DB   0                 ; position
 ```
 
-Un enfoque más práctico para sizecoding: precalcular varias iteraciones del L-system en un búfer corto en tiempo de inicialización (una iteración de Fibonacci desde un axioma de 5 símbolos produce 8 símbolos, dos iteraciones producen 13, tres producen 21 -- todas cabiendo en un búfer pequeño), y luego recorrer el búfer como secuencia melódica:
+Un enfoque más práctico para sizecoding: precalcular varias iteraciones del sistema-L en un búfer corto en tiempo de inicialización (una iteración de Fibonacci desde un axioma de 5 símbolos produce 8 símbolos, dos iteraciones producen 13, tres producen 21 -- todos caben en un búfer pequeño), luego recorrer el búfer como secuencia melódica:
 
 ```z80
 ; Precompute L-system into buffer (Fibonacci, 3 iterations)
@@ -981,9 +974,9 @@ lsys_axiom:
 ; look up in scale table → AY period
 ```
 
-### Melody as Motion, Not Absolute Notes
+### Melodía como movimiento, no como notas absolutas
 
-El uso más musical de los L-systems no es mapear símbolos a notas fijas, sino mapearlos a **direcciones de paso en la escala**. Una melodía es fundamentalmente sobre *movimiento* -- arriba, abajo, repetir, saltar -- en una escala. La nota inicial es arbitraria; el contorno es lo que importa.
+El uso más musical de los sistemas-L no es mapear símbolos a notas fijas, sino mapearlos a **direcciones de paso en la escala**. Una melodía es fundamentalmente sobre *movimiento* -- arriba, abajo, repetir, saltar -- en una escala. La nota inicial es arbitraria; el contorno es lo que importa.
 
 Define los símbolos como movimientos:
 
@@ -994,7 +987,7 @@ Define los símbolos como movimientos:
 | R | Repetir | 0 |
 | S | Salto arriba (salto) | +2 |
 
-Ahora un L-system genera *contorno* melódico, no secuencias de tono fijas:
+Ahora un sistema-L genera *contorno* melódico, no secuencias de tono fijas:
 
 ```
 Axiom: U
@@ -1008,7 +1001,7 @@ Step 2: U R D  U D  U              (+1, 0, -1, +1, -1, +1)
 Step 3: U R D  U D  U  U R D  U  U R D  U D   ...
 ```
 
-La melodía camina arriba y abajo en la escala actual, manteniéndose siempre dentro de la tabla de escala. Naturalmente tiende hacia el tono inicial (los retornos equilibran las partidas), creando el arco de tensión-y-resolución que hace que la música se sienta intencional.
+La melodía camina arriba y abajo por la escala actual, manteniéndose siempre dentro de la tabla de escala. Naturalmente tiende hacia el tono de inicio (los retornos equilibran las salidas), creando el arco de tensión y resolución que hace que la música se sienta intencional.
 
 ```z80
 ; Motion-based L-system playback
@@ -1025,15 +1018,15 @@ La melodía camina arriba y abajo en la escala actual, manteniéndose siempre de
     ; look up in pentatonic table → AY period
 ```
 
-Esto es más musical que mapear A=raíz, B=quinta. Las mismas reglas de L-system producen diferentes melodías dependiendo de la nota inicial y la escala subyacente -- cambia la escala de pentatónica a blues y el mismo contorno produce un humor completamente diferente.
+Esto es más musical que mapear A=fundamental, B=quinta. Las mismas reglas del sistema-L producen melodías diferentes dependiendo de la nota inicial y la escala subyacente -- cambia la escala de pentatónica a blues y el mismo contorno produce un estado de ánimo completamente diferente.
 
-### Tribonacci: Three Symbols for Richer Patterns
+### Tribonacci: Tres símbolos para patrones más ricos
 
-El L-system de Fibonacci usa dos símbolos. **Tribonacci** usa tres: A->ABC, B->A, C->B. La proporción de crecimiento es ~1,839x (la constante tribonacci). Tres símbolos significan más variedad en el contenido melódico:
+El sistema-L de Fibonacci usa dos símbolos. **Tribonacci** usa tres: A→ABC, B→A, C→B. La proporción de crecimiento es ~1.839x (la constante tribonacci). Tres símbolos significan contenido melódico más variado:
 
 | Símbolo | Como movimiento | Como nota |
-|---------|----------------|-----------|
-| A | Paso arriba (+1) | Raíz |
+|---------|-----------------|-----------|
+| A | Paso arriba (+1) | Fundamental |
 | B | Repetir (0) | Tercera |
 | C | Paso abajo (-1) | Quinta |
 
@@ -1044,13 +1037,13 @@ Step 2: A B C  A  B
 Step 3: A B C  A  B  A B C  A B C
 ```
 
-La secuencia tribonacci tiene secuencias no repetitivas más largas que Fibonacci y una estructura interna más compleja. Musicalmente, el vocabulario de tres símbolos da a las melodías más variedad -- no solo oscilan entre dos estados.
+La secuencia tribonacci tiene rachas no repetitivas más largas que Fibonacci y una estructura interna más compleja. Musicalmente, el vocabulario de tres símbolos da a las melodías más variedad -- no solo van y vienen entre dos estados.
 
-### PRNG Melodies with Curated Seeds
+### Melodías PRNG con semillas curadas
 
-Un registro de desplazamiento con retroalimentación lineal (LFSR) o PRNG similar genera una secuencia pseudo-aleatoria determinista a partir de un valor semilla. La secuencia *suena* aleatoria pero se repite exactamente si reincias la semilla. Esto te da fragmentos melódicos reproducibles.
+Un registro de desplazamiento con retroalimentación lineal (LFSR) u otro PRNG similar genera una secuencia pseudoaleatoria determinista a partir de un valor semilla. La secuencia *suena* aleatoria pero se repite exactamente si restableces la semilla. Esto te da fragmentos melódicos reproducibles.
 
-La técnica: **pre-probar muchas semillas, quedarse con las que suenen bien.** Almacena 2-4 valores de semilla (2 bytes cada uno) para diferentes secciones de tu pieza. En tiempo de ejecución, carga la semilla y deja que el PRNG genere la melodía. El PRNG en sí son ~6-8 bytes; cada semilla son 2 bytes.
+La técnica: **pre-prueba muchas semillas, conserva las que suenan bien.** Almacena 2-4 valores de semilla (2 bytes cada uno) para diferentes secciones de tu pieza. En tiempo de ejecución, carga la semilla y deja que el PRNG genere la melodía. El PRNG en sí ocupa ~6-8 bytes; cada semilla son 2 bytes.
 
 ```z80
 ; LFSR-based melody generator
@@ -1074,40 +1067,40 @@ seed_chorus:  DW  $1F4D    ; tested: produces energetic pattern
 seed_bridge:  DW  $8E21    ; tested: produces descending, calm
 ```
 
-El flujo de trabajo: escribe un arnés de prueba que reproduzca la melodía PRNG para cada valor de semilla 0-65535, escucha (o analiza), marca las buenas. En la práctica, unas pocas horas de prueba producen docenas de semillas utilizables. Almacena 3-4 de ellas y cambia entre secciones de tu pieza.
+El flujo de trabajo: escribe un arnés de prueba que reproduzca la melodía del PRNG para cada valor de semilla 0-65535, escucha (o analiza), marca las buenas. En la práctica, unas pocas horas de prueba producen docenas de semillas utilizables. Almacena 3-4 de ellas y alterna entre secciones de tu pieza.
 
-**Combinando con tablas de escala:** la salida del PRNG pasa por la tabla pentatónica, así que incluso las semillas "malas" producen notas consonantes. Estás seleccionando por *contorno melódico*, no evitando notas equivocadas -- la tabla de escala ya se encarga de eso.
+**Combinación con tablas de escala:** la salida del PRNG pasa por la tabla pentatónica, así que incluso las semillas "malas" producen notas consonantes. Estás curando por *contorno melódico*, no evitando notas incorrectas -- la tabla de escala ya se encarga de eso.
 
-**Combinando con L-systems:** usa el PRNG para *seleccionar qué regla de L-system aplicar* en cada paso, creando L-systems estocásticos. La semilla controla la "personalidad" de la pieza; las reglas gramaticales controlan la estructura. Este híbrido produce la salida más rica con la menor cantidad de bytes.
+**Combinación con sistemas-L:** usa el PRNG para *seleccionar qué regla del sistema-L aplicar* en cada paso, creando sistemas-L estocásticos. La semilla controla la "personalidad" de la pieza; las reglas gramaticales controlan la estructura. Este híbrido produce la salida más rica con la menor cantidad de bytes.
 
-### Combining L-Systems with Other Techniques
+### Combinando sistemas-L con otras técnicas
 
-Los L-systems generan *secuencias* de notas. Combínalos con las otras técnicas de este apéndice:
+Los sistemas-L generan *secuencias* de notas. Combina con las otras técnicas de este apéndice:
 
-- **Tabla de escala** mapea los símbolos del L-system a periodos reales del AY
+- **Tabla de escala** mapea los símbolos del sistema-L a períodos del AY reales
 - **Ornamentos** añaden expresión a cada nota
-- **Arpegio** convierte cada nota del L-system en un acorde
-- **Drone de envolvente** proporciona una cama armónica sostenida bajo la melodía fractal
-- **Progresión de acordes** cambia la raíz -- la melodía del L-system se transpone a cada acorde
+- **Arpegio** convierte cada nota del sistema-L en un acorde
+- **Drone de envolvente** proporciona una base armónica sostenida bajo la melodía fractal
+- **Progresión de acordes** cambia la fundamental -- la melodía del sistema-L se transpone a cada acorde
 
-El resultado: un programa diminuto (~60-80 bytes de código musical + 20 bytes de datos) generando minutos de música estructuralmente coherente, no repetitiva y armónicamente fundamentada. Esto es composición algorítmica, no ruido aleatorio -- y cabe en una intro de tamaño restringido.
+El resultado: un programa diminuto (~60-80 bytes de código musical + 20 bytes de datos) que genera minutos de música armónicamente fundamentada, estructuralmente coherente y no repetitiva. Esto es composición algorítmica, no ruido aleatorio -- y cabe en una intro de sizecoding.
 
-### Other Grammars for Music
+### Otras gramáticas para música
 
-Más allá de los L-systems, otras gramáticas formales producen secuencias musicales interesantes:
+Más allá de los sistemas-L, otras gramáticas formales producen secuencias musicales interesantes:
 
-**Autómatas celulares.** La Regla 30 o la Regla 110, aplicadas a una fila de bits, producen patrones complejos. Mapea las posiciones de bits a eventos de nota on/off. Coste: ~15 bytes para la regla del AC, ~20 bytes para el motor.
+**Autómatas celulares.** La Regla 30 o la Regla 110, aplicadas a una fila de bits, producen patrones complejos. Mapea las posiciones de bits a eventos de nota activada/desactivada. Coste: ~15 bytes para la regla del AC, ~20 bytes para el avance.
 
-**Ritmos euclidianos.** Distribuye `k` golpes uniformemente a lo largo de `n` pasos. Este algoritmo (relacionado con el MCD euclidiano) genera patrones rítmicos encontrados en música de todo el mundo: 3 en 8 es tresillo, 5 en 8 es cinquillo, 7 en 12 es un patrón de campana común del África Occidental. La implementación son ~20 bytes y produce fundamentos rítmicos perfectos para cualquier motor AY-beat.
+**Ritmos euclidianos.** Distribuye `k` golpes uniformemente en `n` pasos. Este algoritmo (relacionado con el MCD euclidiano) genera patrones rítmicos presentes en la música de todo el mundo: 3 en 8 es tresillo, 5 en 8 es cinquillo, 7 en 12 es un patrón común de campana de África Occidental. La implementación ocupa ~20 bytes y produce bases rítmicas perfectas para cualquier motor AY-beat.
 
 ---
 
 ## Ver también
 
-- **Capítulo 11** -- Arquitectura del AY-3-8910, teoría de tono/ruido/envolvente, técnica buzz-bass
-- **Capítulo 12** -- Integración del motor musical, sincronización con efectos, percusión digital híbrida
+- **Capítulo 11** -- Arquitectura del AY-3-8910, teoría de tono/ruido/envolvente, técnica de buzz-bass
+- **Capítulo 12** -- Integración del motor de música, sincronización con efectos, tambores digitales híbridos
 - **Capítulo 13** -- Técnicas de sizecoding, dónde encaja AY-beat en los niveles de tamaño 256b/512b/1K/4K
-- **Apéndice G** -- Referencia completa de registros AY con disposiciones de bits, direcciones de puertos y tablas de notas
+- **Apéndice G** -- Referencia completa de registros del AY con diseños de bits, direcciones de puerto y tablas de notas
 
 ---
 

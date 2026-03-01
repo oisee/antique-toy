@@ -4,9 +4,9 @@
 
 ---
 
-Todo efecto de demo que hemos construido hasta ahora se ejecuta en un bucle cerrado: calcular, renderizar, repetir. El espectador observa. Al código no le importa si hay alguien en la habitación. Un juego rompe este contrato. Un juego *responde*. El jugador presiona una tecla y algo debe cambiar -- inmediatamente, de forma fiable, dentro del mismo presupuesto de fotograma que hemos estado contando desde el Capítulo 1.
+Cada efecto de demo que hemos construido hasta ahora se ejecuta en un bucle cerrado: calcular, renderizar, repetir. El espectador observa. Al código no le importa si hay alguien en la habitación. Un juego rompe este contrato. Un juego *responde*. El jugador pulsa una tecla y algo debe cambiar -- inmediatamente, de forma fiable, dentro del mismo presupuesto de fotograma que llevamos contando desde el Capítulo 1.
 
-Este capítulo trata sobre construir la arquitectura que hace posible un juego en el ZX Spectrum y el Agon Light 2. No el renderizado (el Capítulo 16 cubrió sprites, el Capítulo 17 cubrió el desplazamiento) y no la física (el Capítulo 19 manejará colisiones e IA). Este capítulo es el esqueleto: el bucle principal que impulsa todo, la máquina de estados que organiza el flujo desde la pantalla de título hasta el juego y el fin de partida, el sistema de entrada que lee las intenciones del jugador, y el sistema de entidades que gestiona cada objeto en el mundo del juego.
+Este capítulo trata sobre construir la arquitectura que hace posible un juego en el ZX Spectrum y el Agon Light 2. No el renderizado (el Capítulo 16 cubrió los sprites, el Capítulo 17 cubrió el desplazamiento) ni la física (el Capítulo 19 cubrirá las colisiones y la IA). Este capítulo es el esqueleto: el bucle principal que impulsa todo, la máquina de estados que organiza el flujo desde la pantalla de título hasta el juego y la pantalla de fin de partida, el sistema de entrada que lee las intenciones del jugador, y el sistema de entidades que gestiona cada objeto en el mundo del juego.
 
 Al final, tendrás un esqueleto de juego funcional con 16 entidades activas -- un jugador, ocho enemigos y siete balas -- ejecutándose dentro del presupuesto de fotograma en ambas plataformas.
 
@@ -14,7 +14,7 @@ Al final, tendrás un esqueleto de juego funcional con 16 entidades activas -- u
 
 ## 18.1 El Bucle Principal
 
-Todo juego en el ZX Spectrum sigue el mismo ritmo fundamental:
+Cada juego en el ZX Spectrum sigue el mismo ritmo fundamental:
 
 ```text
 1. HALT          -- wait for the frame interrupt
@@ -24,7 +24,7 @@ Todo juego en el ZX Spectrum sigue el mismo ritmo fundamental:
 5. Go to 1
 ```
 
-Este es el bucle de juego. No es complicado. Su poder viene del hecho de que se ejecuta cincuenta veces por segundo, cada segundo, y todo lo que el jugador experimenta emerge de este ciclo.
+Este es el bucle de juego. No es complicado. Su poder proviene del hecho de que se ejecuta cincuenta veces por segundo, cada segundo, y todo lo que el jugador experimenta emerge de este ciclo.
 
 Aquí está la implementación mínima:
 
@@ -45,50 +45,50 @@ main_loop:
     jr   main_loop          ; 12T -- loop forever
 ```
 
-La instrucción `HALT` es el latido del corazón. Cuando la CPU ejecuta `HALT`, se detiene y espera la siguiente interrupción enmascarable. En el Spectrum, la ULA dispara esta interrupción al inicio de cada fotograma -- una vez cada 1/50 de segundo. La CPU despierta, el manejador IM1 en la dirección $0038 se ejecuta (en una ROM estándar esto simplemente incrementa el contador de fotogramas), y luego la ejecución se reanuda en la instrucción después de `HALT`. Tu código del bucle principal se ejecuta, hace su trabajo, y llega a `HALT` otra vez para esperar el siguiente fotograma.
+La instrucción `HALT` es el latido. Cuando la CPU ejecuta `HALT`, se detiene y espera la próxima interrupción enmascarable. En el Spectrum, la ULA dispara esta interrupción al inicio de cada fotograma -- una vez cada 1/50 de segundo. La CPU despierta, el manejador de IM1 en la dirección $0038 se ejecuta (en una ROM estándar esto simplemente incrementa el contador de fotogramas), y luego la ejecución se reanuda en la instrucción después de `HALT`. Tu código del bucle principal se ejecuta, hace su trabajo, y llega a `HALT` de nuevo para esperar el siguiente fotograma.
 
-Esto te da exactamente el valor de T-states de un fotograma para hacer todo. Si tu trabajo termina antes, la CPU permanece inactiva dentro de `HALT` hasta la siguiente interrupción -- sin energía desperdiciada, sin desviación, sincronización perfecta. Si tu trabajo tarda demasiado y la interrupción se dispara antes de que llegues a `HALT`, pierdes un fotograma. El bucle sigue funcionando (el siguiente `HALT` capturará la interrupción siguiente), pero el juego baja a 25 fps para ese fotograma. Si lo pierdes consistentemente estás a 25 fps permanentemente. Si lo pierdes gravemente estás a 16.7 fps (cada tercer fotograma). El jugador lo nota.
+Esto te da exactamente los T-states de un fotograma para hacer todo. Si tu trabajo termina antes, la CPU permanece inactiva dentro de `HALT` hasta la siguiente interrupción -- sin energía desperdiciada, sin desviaciones, sincronización perfecta. Si tu trabajo tarda demasiado y la interrupción se dispara antes de que llegues a `HALT`, pierdes un fotograma. El bucle sigue funcionando (el siguiente `HALT` capturará la siguiente interrupción), pero el juego baja a 25 fps durante ese fotograma. Si pierdes consistentemente, estás a 25 fps permanentemente. Si pierdes mucho, estás a 16,7 fps (cada tercer fotograma). El jugador lo nota.
 
-### El Presupuesto de Fotograma, Revisitado
+### El Presupuesto de Fotograma, Revisado
 
 Establecimos los números en el Capítulo 1, pero vale la pena repetirlos en el contexto de un juego:
 
 | Máquina | T-states por fotograma | Presupuesto práctico |
 |---------|-------------------|------------------|
-| ZX Spectrum 48K | 69,888 | ~62,000 (tras overhead de interrupción) |
-| ZX Spectrum 128K | 70,908 | ~63,000 |
-| Pentagon 128 | 71,680 | ~64,000 |
-| Agon Light 2 | ~368,640 | ~360,000 |
+| ZX Spectrum 48K | 69.888 | ~62.000 (tras la sobrecarga de interrupción) |
+| ZX Spectrum 128K | 70.908 | ~63.000 |
+| Pentagon 128 | 71.680 | ~64.000 |
+| Agon Light 2 | ~368.640 | ~360.000 |
 
-El "presupuesto práctico" contempla el manejador de interrupciones, la propia instrucción `HALT`, y el overhead de temporización del borde. En el Spectrum, tienes aproximadamente 64,000 T-states de tiempo utilizable por fotograma. En el Agon, tienes más de cinco veces eso.
+El "presupuesto práctico" tiene en cuenta el manejador de interrupciones, la propia instrucción `HALT`, y la sobrecarga del temporizado del borde. En el Spectrum, tienes aproximadamente 64.000 T-states de tiempo útil por fotograma. En el Agon, tienes más de cinco veces eso.
 
-¿Cómo gasta un juego típico esos 64,000 T-states? Aquí hay un desglose realista para un plataformas de Spectrum:
+¿Cómo gasta un juego típico esos 64.000 T-states? Aquí hay un desglose realista para un plataformas de Spectrum:
 
 | Subsistema | T-states | % del presupuesto |
 |-----------|----------|-------------|
-| Lectura de entrada | ~500 | 0.8% |
-| Actualización de entidades (16 entidades) | ~8,000 | 12.5% |
-| Detección de colisiones | ~4,000 | 6.3% |
-| Reproductor de música (PT3) | ~5,000 | 7.8% |
-| Renderizado de sprites (8 visibles) | ~24,000 | 37.5% |
-| Actualización de fondo/desplazamiento | ~12,000 | 18.8% |
-| Misceláneo (HUD, estado) | ~3,000 | 4.7% |
-| **Margen restante** | **~7,500** | **11.7%** |
+| Lectura de entrada | ~500 | 0,8% |
+| Actualización de entidades (16 entidades) | ~8.000 | 12,5% |
+| Detección de colisiones | ~4.000 | 6,3% |
+| Reproductor de música (PT3) | ~5.000 | 7,8% |
+| Renderizado de sprites (8 visibles) | ~24.000 | 37,5% |
+| Actualización de fondo/desplazamiento | ~12.000 | 18,8% |
+| Varios (HUD, estado) | ~3.000 | 4,7% |
+| **Margen restante** | **~7.500** | **11,7%** |
 
-Ese 11.7% de margen es tu margen de seguridad. Si lo consumes, empiezas a perder fotogramas en escenas complejas. La técnica de perfilado con color de borde del Capítulo 1 -- rojo para sprites, azul para música, verde para lógica -- es cómo monitorizas este presupuesto durante el desarrollo. Úsala constantemente.
+Ese margen del 11,7% es tu reserva de seguridad. Si la consumes, empezarás a perder fotogramas en escenas complejas. La técnica de perfilado con el color del borde del Capítulo 1 -- rojo para sprites, azul para música, verde para lógica -- es cómo monitorizas este presupuesto durante el desarrollo. Úsala constantemente.
 
-En el Agon, la misma lógica de juego se ejecuta en una fracción del presupuesto. La actualización de entidades, la detección de colisiones y la lectura de entrada podrían consumir 15,000 T-states en total -- aproximadamente el 4% del fotograma del Agon. El VDP maneja el renderizado de sprites en el coprocesador ESP32, así que el coste de sprites del lado de la CPU se reduce al overhead de comandos VDU. Tienes un enorme margen para IA más compleja, más entidades, o simplemente menos estrés.
+En el Agon, la misma lógica del juego se ejecuta en una fracción del presupuesto. La actualización de entidades, la detección de colisiones y la lectura de entrada pueden consumir 15.000 T-states en total -- aproximadamente el 4% del fotograma del Agon. El VDP maneja el renderizado de sprites en el coprocesador ESP32, así que el coste de sprites del lado de la CPU se reduce a la sobrecarga de comandos VDU. Tienes un enorme margen para IA más compleja, más entidades, o simplemente menos estrés.
 
 <!-- figure: ch18_game_loop -->
-![Game loop architecture](illustrations/output/ch18_game_loop.png)
+![Arquitectura del bucle de juego](illustrations/output/ch18_game_loop.png)
 
 ---
 
 ## 18.2 La Máquina de Estados del Juego
 
-Un juego no es un solo bucle -- son varios. La pantalla de título tiene su propio bucle (animar logo, esperar pulsación de tecla). El menú tiene su propio bucle (resaltar opciones, leer entrada). El bucle de juego es lo que describimos arriba. La pantalla de pausa congela el bucle de juego y ejecuta uno más simple. La pantalla de fin de partida tiene otro más.
+Un juego no es un solo bucle -- son varios. La pantalla de título tiene su propio bucle (animar logo, esperar pulsación). El menú tiene su propio bucle (resaltar opciones, leer entrada). El bucle del juego es lo que describimos arriba. La pantalla de pausa congela el bucle del juego y ejecuta uno más simple. La pantalla de fin de partida tiene otro más.
 
-La forma más limpia de organizar estos es una **máquina de estados**: una variable que rastrea en qué estado está el juego, y una tabla de direcciones de manejadores -- una por estado.
+La forma más limpia de organizar esto es una **máquina de estados**: una variable que rastrea en qué estado se encuentra el juego, y una tabla de direcciones de manejadores -- uno por estado.
 
 ### Definiciones de Estado
 
@@ -138,7 +138,7 @@ main_loop:
                             ; --- 73T total dispatch overhead
 ```
 
-La instrucción `JP (HL)` es la clave. No salta a la dirección almacenada *en* HL -- salta a la dirección *dentro de* HL. Este es el salto indirecto del Z80, y cuesta solo 4 T-states. Todo el despacho -- cargar la variable de estado, calcular el desplazamiento de tabla, leer la dirección del manejador, y saltar -- toma 73 T-states. Eso es despreciable: aproximadamente el 0.1% del presupuesto de fotograma.
+La instrucción `JP (HL)` es la clave. No salta a la dirección almacenada *en* HL -- salta a la dirección *de* HL. Este es el salto indirecto del Z80, y cuesta solo 4 T-states. Todo el despacho -- cargar la variable de estado, calcular el desplazamiento en la tabla, leer la dirección del manejador, y saltar -- toma 73 T-states. Eso es despreciable: aproximadamente el 0,1% del presupuesto de fotograma.
 
 Cada manejador ejecuta su propia lógica y luego salta de vuelta a `main_loop`:
 
@@ -201,7 +201,7 @@ state_gameover:
 
 ### ¿Por Qué No una Cadena de Comparaciones?
 
-Podrías estar tentado a escribir el despachador como:
+Podrías sentirte tentado a escribir el despachador como:
 
 ```z80 id:ch18_why_not_a_chain_of
     ld   a, (game_state)
@@ -214,9 +214,9 @@ Podrías estar tentado a escribir el despachador como:
     ; ...
 ```
 
-Esto funciona, pero tiene dos problemas. Primero, el coste crece linealmente: cada estado adicional añade un `CP` (7T) y un `JP Z` (10T), así que el peor caso es 17T por estado. Con 5 estados, el estado de juego (el caso más común) podría tardar 51T en alcanzarse si es la tercera comparación. La tabla de saltos toma 73T independientemente de qué estado esté activo -- es O(1), no O(n).
+Esto funciona, pero tiene dos problemas. Primero, el coste crece linealmente: cada estado adicional añade un `CP` (7T) y un `JP Z` (10T), así que el peor caso es 17T por estado. Con 5 estados, el estado del juego (el caso más común) podría tardar 51T en alcanzarse si es la tercera comparación. La tabla de saltos toma 73T independientemente de qué estado esté activo -- es O(1), no O(n).
 
-Segundo, y más importante, la tabla de saltos escala limpiamente. Añadir un sexto estado (digamos, STATE_SHOP) significa añadir una entrada `DW` a la tabla y una definición de constante. El código del despachador no cambia en absoluto. Con cadenas de comparación, añades más instrucciones al propio despachador, y el orden empieza a importar para el rendimiento. El enfoque de tabla es tanto más rápido en el caso común como más limpio de mantener.
+Segundo, y más importante, la tabla de saltos escala limpiamente. Añadir un sexto estado (digamos, STATE_SHOP) significa añadir una entrada `DW` a la tabla y una definición de constante. El código del despachador no cambia en absoluto. Con cadenas de comparación, añades más instrucciones al propio despachador, y el orden empieza a importar para el rendimiento. El enfoque de tabla es a la vez más rápido en el caso común y más limpio de mantener.
 
 ### Transiciones de Estado
 
@@ -231,7 +231,7 @@ game_over_transition:
     ret
 ```
 
-Mantén las transiciones explícitas y centralizadas. Un error común en juegos Z80 es una transición de estado que olvida inicializar los datos del nuevo estado -- la pantalla de fin de partida muestra basura porque nadie limpió la pantalla ni reinició el contador de animación. Cada estado debería tener una rutina `init_` que la transición invoca.
+Mantén las transiciones explícitas y centralizadas. Un error común en juegos de Z80 es una transición de estado que olvida inicializar los datos del nuevo estado -- la pantalla de fin de partida muestra basura porque nadie limpió la pantalla ni reinició el contador de animación. Cada estado debería tener una rutina `init_` que la transición llame.
 
 ---
 
@@ -239,9 +239,9 @@ Mantén las transiciones explícitas y centralizadas. Un error común en juegos 
 
 ### Teclado del ZX Spectrum
 
-El teclado del Spectrum se lee a través del puerto `$FE`. El teclado está cableado como una matriz de 8 semi-filas, cada una seleccionada poniendo un bit bajo en el byte alto de la dirección del puerto. Leer el puerto `$FE` con un byte alto específico devuelve el estado de esa semi-fila: 5 bits, uno por tecla, donde 0 significa presionada y 1 significa no presionada.
+El teclado del Spectrum se lee a través del puerto `$FE`. El teclado está conectado como una matriz de 8 semifillas, cada una seleccionada poniendo un bit bajo en el byte alto de la dirección del puerto. Leer el puerto `$FE` con un byte alto específico devuelve el estado de esa semifila: 5 bits, uno por tecla, donde 0 significa pulsada y 1 significa no pulsada.
 
-El mapa de semi-filas:
+El mapa de semifillas:
 
 | Byte alto | Teclas (bit 0 a bit 4) |
 |-----------|----------------------|
@@ -254,7 +254,7 @@ El mapa de semi-filas:
 | $BF (bit 6 bajo) | ENTER, L, K, J, H |
 | $7F (bit 7 bajo) | SPACE, SYMSHIFT, M, N, B |
 
-Los controles estándar de juego -- Q/A/O/P para arriba/abajo/izquierda/derecha y SPACE para disparar -- abarcan tres semi-filas. Aquí hay una rutina que los lee y empaqueta el resultado en un solo byte:
+Los controles estándar del juego -- Q/A/O/P para arriba/abajo/izquierda/derecha y SPACE para disparar -- abarcan tres semifillas. Aquí hay una rutina que los lee y empaqueta el resultado en un solo byte:
 
 ```z80 id:ch18_zx_spectrum_keyboard
 ; Input flag bits
@@ -316,7 +316,7 @@ Con aproximadamente 220 T-states en el peor caso, la lectura de entrada es trivi
 
 ### Joystick Kempston
 
-La interfaz Kempston es aún más simple. Una lectura de puerto devuelve las cinco direcciones más disparo:
+La interfaz Kempston es aún más simple. Una sola lectura de puerto devuelve las cinco direcciones más disparo:
 
 ```z80 id:ch18_kempston_joystick
 ; Kempston joystick port
@@ -333,7 +333,7 @@ read_kempston:
     ; Total: 41T
 ```
 
-Observa algo conveniente: la disposición de bits Kempston coincide exactamente con nuestras definiciones de banderas `INPUT_*`. Esto no es coincidencia -- la interfaz Kempston fue diseñada con este estándar en mente, y la mayoría de los juegos de Spectrum adoptan el mismo orden de bits. Si soportas tanto teclado como joystick, puedes combinar los resultados con OR:
+Observa algo conveniente: la disposición de bits de Kempston coincide exactamente con nuestras definiciones de banderas `INPUT_*`. Esto no es una coincidencia -- la interfaz Kempston fue diseñada con este estándar en mente, y la mayoría de juegos de Spectrum adoptan el mismo orden de bits. Si soportas tanto teclado como joystick, puedes hacer OR de los resultados:
 
 ```z80 id:ch18_kempston_joystick_2
 read_input:
@@ -346,13 +346,13 @@ read_input:
     ret
 ```
 
-Ahora el resto de tu código solo verifica `input_flags` y no le importa si la entrada vino del teclado o de un joystick.
+Ahora el resto de tu código solo comprueba `input_flags` y no le importa si la entrada vino del teclado o de un joystick.
 
-### Detección de Flancos: Pulsación vs Mantenimiento
+### Detección de Flancos: Pulsación vs Mantener
 
-Para algunas acciones -- disparar una bala, abrir un menú -- quieres responder al evento de *pulsación*, no al estado mantenido. Si verificas `bit INPUT_FIRE, a` cada fotograma, el jugador dispara una bala cada 1/50 de segundo mientras mantiene el botón. Eso podría ser intencional para disparo rápido, pero para un arma de disparo único o una selección de menú, necesitas detección de flancos.
+Para algunas acciones -- disparar una bala, abrir un menú -- quieres responder al evento de *pulsación*, no al estado mantenido. Si compruebas `bit INPUT_FIRE, a` cada fotograma, el jugador dispara una bala cada 1/50 de segundo mientras mantiene el botón. Eso podría ser intencional para disparo rápido, pero para un arma de disparo único o una selección de menú, necesitas detección de flancos.
 
-La técnica: almacenar la entrada del fotograma anterior junto con la del fotograma actual, y hacer XOR entre ellas para encontrar los bits que cambiaron:
+La técnica: almacena la entrada del fotograma anterior junto con la del fotograma actual, y haz XOR para encontrar los bits que cambiaron:
 
 ```z80 id:ch18_edge_detection_press_vs_hold
 input_flags:      DB  0    ; current frame
@@ -377,13 +377,13 @@ read_input_with_edges:
     ret
 ```
 
-Ahora `input_pressed` tiene un bit 1 solo para botones que *no* estaban presionados el fotograma anterior pero *sí* están presionados este fotograma. Usa `input_flags` para acciones continuas (movimiento) e `input_pressed` para acciones de un solo disparo (disparar, saltar, seleccionar en menú).
+Ahora `input_pressed` tiene un bit 1 solo para los botones que *no* estaban pulsados el fotograma anterior pero *sí* están pulsados este fotograma. Usa `input_flags` para acciones continuas (movimiento) e `input_pressed` para acciones de un solo uso (disparar, saltar, seleccionar en menú).
 
-### Agon Light 2: Teclado PS/2 via MOS
+### Agon Light 2: Teclado PS/2 vía MOS
 
-El Agon lee su teclado PS/2 a través de la API MOS (Machine Operating System). El eZ80 no escanea directamente una matriz de teclado -- en su lugar, el coprocesador VDP ESP32 maneja el hardware del teclado y pasa eventos de pulsación al eZ80 a través de un búfer compartido.
+El Agon lee su teclado PS/2 a través de la API MOS (Machine Operating System). El eZ80 no escanea directamente una matriz de teclado -- en su lugar, el coprocesador ESP32 VDP maneja el hardware del teclado y pasa eventos de pulsación al eZ80 a través de un búfer compartido.
 
-La variable de sistema MOS `sysvar_keyascii` (en la dirección $0800 + desplazamiento) contiene el código ASCII de la tecla más recientemente presionada, o 0 si ninguna tecla está pulsada. Para controles de juego, típicamente consultas esta variable o usas las llamadas de API MOS `waitvblank` / teclado:
+La variable de sistema MOS `sysvar_keyascii` (en la dirección $0800 + desplazamiento) contiene el código ASCII de la tecla más recientemente pulsada, o 0 si no hay ninguna tecla presionada. Para controles de juego, típicamente sondeas esta variable o usas las llamadas MOS `waitvblank` / API de teclado:
 
 ```z80 id:ch18_agon_light_2_ps_2_keyboard
 ; Agon: Read keyboard via MOS sysvar
@@ -405,7 +405,7 @@ read_input_agon:
     ret
 ```
 
-El Agon también soporta la lectura de estados individuales de tecla via comandos VDU (VDU 23,0,$01,keycode), que devuelven si una tecla específica está actualmente mantenida. Esto es más cercano al enfoque de semi-filas del Spectrum y mejor adaptado para juegos que necesitan detección simultánea de teclas. La API MOS maneja el protocolo PS/2, la traducción de códigos de escaneo y la auto-repetición -- nada de lo cual necesitas preocuparte.
+El Agon también soporta la lectura de estados individuales de teclas mediante comandos VDU (VDU 23,0,$01,keycode), que devuelven si una tecla específica está siendo mantenida. Esto es más cercano al enfoque de semifillas del Spectrum y más adecuado para juegos que necesitan detección simultánea de teclas. La API MOS maneja el protocolo PS/2, la traducción de códigos de escaneo y la autorepetición -- nada de lo cual necesitas preocuparte.
 
 ---
 
@@ -447,7 +447,7 @@ Bit 6-7: reserved
 
 ### ¿Por Qué 10 Bytes?
 
-Diez bytes es una elección deliberada. Es lo suficientemente pequeño para que 16 entidades ocupen solo 160 bytes -- trivial en términos de memoria. Más importante aún, multiplicar un índice de entidad por 10 para encontrar su desplazamiento es sencillo en el Z80:
+Diez bytes es una elección deliberada. Es lo suficientemente pequeño para que 16 entidades ocupen solo 160 bytes -- trivial en términos de memoria. Más importante, multiplicar un índice de entidad por 10 para encontrar su desplazamiento es sencillo en el Z80:
 
 ```z80 id:ch18_why_10_bytes
 ; Calculate entity address from index in A
@@ -469,19 +469,19 @@ get_entity_addr:
     ; Total: 94T
 ```
 
-La multiplicación por 10 usa la descomposición estándar: 10 = 8 + 2. Calculamos índice * 2, lo guardamos, calculamos índice * 8, y los sumamos. No se necesita instrucción de multiplicación real -- solo desplazamientos (ADD HL,HL) y una suma.
+La multiplicación por 10 usa la descomposición estándar: 10 = 8 + 2. Calculamos índice * 2, lo guardamos, calculamos índice * 8, y los sumamos. No se necesita ninguna instrucción de multiplicación real -- solo desplazamientos (ADD HL,HL) y una suma.
 
-Si eligieras un tamaño potencia de dos como 8 o 16 bytes por entidad, el cálculo de índice sería aún más simple (tres desplazamientos para 8, cuatro para 16). Pero 8 bytes es demasiado estrecho -- perderías velocidad o salud, y ambas importan. Y 16 bytes desperdicia 6 bytes por entidad en relleno, que se acumula: 16 entidades x 6 bytes desperdiciados = 96 bytes de espacio muerto. En el Spectrum, cada byte importa. Diez bytes es el ajuste correcto para los datos que realmente necesitamos.
+Si eligieras un tamaño potencia de dos como 8 o 16 bytes por entidad, el cálculo del índice sería aún más simple (tres desplazamientos para 8, cuatro para 16). Pero 8 bytes es demasiado apretado -- perderías velocidad o salud, y ambos importan. Y 16 bytes desperdicia 6 bytes por entidad en relleno, lo cual se acumula: 16 entidades x 6 bytes desperdiciados = 96 bytes de espacio muerto. En el Spectrum, cada byte cuenta. Diez bytes es el ajuste correcto para los datos que realmente necesitamos.
 
 ### ¿Por Qué X de 16 Bits pero Y de 8 Bits?
 
-La posición X es punto fijo de 16 bits (formato 8.8): el byte alto es la columna de píxeles (0-255) y el byte bajo es una fracción sub-píxel para movimiento suave. Esto es esencial para juegos con desplazamiento horizontal donde el jugador se mueve a velocidades fraccionarias de píxel. Un personaje moviéndose a 1.5 píxeles por fotograma con solo coordenadas enteras alternaría entre pasos de 1 píxel y 2 píxeles, produciendo un temblor visible. Con punto fijo 8.8, el movimiento es suave: añade 0x0180 a X cada fotograma y la posición en píxeles avanza 1, 2, 1, 2, 1, 2... en un patrón que el ojo percibe como un constante 1.5 píxeles por fotograma.
+La posición X es de punto fijo de 16 bits (formato 8.8): el byte alto es la columna de píxeles (0-255) y el byte bajo es una fracción sub-píxel para movimiento suave. Esto es esencial para juegos con desplazamiento horizontal donde el jugador se mueve a velocidades de fracciones de píxel. Un personaje moviéndose a 1,5 píxeles por fotograma solo con coordenadas enteras alternaría entre pasos de 1 y 2 píxeles, produciendo temblores visibles. Con punto fijo 8.8, el movimiento es suave: suma 0x0180 a X cada fotograma y la posición del píxel avanza 1, 2, 1, 2, 1, 2... en un patrón que el ojo percibe como un constante 1,5 píxeles por fotograma.
 
-La posición Y es solo de 8 bits porque la pantalla del Spectrum tiene 192 píxeles de alto -- un solo byte cubre el rango completo. Para un juego con desplazamiento vertical, promoverías Y a punto fijo de 16 bits también, al coste de un byte extra por entidad.
+La posición Y es solo de 8 bits porque la pantalla del Spectrum tiene 192 píxeles de alto -- un solo byte cubre todo el rango. Para un juego con desplazamiento vertical, promoverías Y a punto fijo de 16 bits también, al coste de un byte extra por entidad.
 
 ### El Sistema de Punto Fijo 8.8
 
-La aritmética de punto fijo se introdujo en el Capítulo 4. Aquí hay un repaso rápido de cómo se aplica al movimiento de entidades:
+La aritmética de punto fijo se introdujo en el Capítulo 4. Aquí hay un breve repaso de cómo se aplica al movimiento de entidades:
 
 ```z80 id:ch18_the_8_8_fixed_point_system
 ; Move entity right at velocity dx
@@ -511,13 +511,13 @@ move_entity_x:
     ret
 ```
 
-La belleza del punto fijo: la suma y la resta son simplemente operaciones regulares `ADD HL,DE` de 16 bits. Sin manejo especial, sin tablas de consulta, sin multiplicación. La precisión fraccional ocurre automáticamente porque llevamos los bits sub-píxel consigo.
+La belleza del punto fijo: la suma y la resta son simplemente operaciones `ADD HL,DE` regulares de 16 bits. Sin manejo especial, sin tablas de consulta, sin multiplicación. La precisión fraccional ocurre automáticamente porque arrastramos los bits sub-píxel.
 
 ---
 
 ## 18.5 El Array de Entidades
 
-Las entidades viven en un array asignado estáticamente. Sin asignación dinámica de memoria, sin listas enlazadas, sin heap. Los arrays estáticos son el enfoque estándar en el Z80 por una buena razón: son rápidos, predecibles, y no pueden fragmentarse.
+Las entidades viven en un array estáticamente asignado. Sin asignación dinámica de memoria, sin listas enlazadas, sin montículo. Los arrays estáticos son el enfoque estándar en el Z80 por buena razón: son rápidos, predecibles, y no pueden fragmentarse.
 
 ```z80 id:ch18_the_entity_array
 ; Entity array: 16 entities, 10 bytes each = 160 bytes
@@ -530,7 +530,7 @@ entity_array:
 
 ### Asignación de Ranuras de Entidad
 
-La ranura 0 es siempre el jugador. Las ranuras 1-8 son enemigos. Las ranuras 9-15 son proyectiles y efectos (balas, explosiones, popups de puntuación). Esta partición fija simplifica el código: cuando necesitas iterar sobre enemigos para la IA, iteras las ranuras 1-8. Cuando una bala necesita generarse, buscas en las ranuras 9-15. El jugador está siempre en una dirección conocida.
+La ranura 0 siempre es el jugador. Las ranuras 1-8 son enemigos. Las ranuras 9-15 son proyectiles y efectos (balas, explosiones, puntuaciones emergentes). Esta partición fija simplifica el código: cuando necesitas iterar sobre enemigos para la IA, iteras las ranuras 1-8. Cuando una bala necesita generarse, buscas en las ranuras 9-15. El jugador siempre está en una dirección conocida.
 
 ```z80 id:ch18_entity_slot_allocation
 ; Fixed slot assignments
@@ -543,7 +543,7 @@ SLOT_PROJ_LAST   EQU  15
 
 ### Iterando Entidades
 
-El bucle de actualización central recorre cada ranura de entidad, verifica la bandera ACTIVE, y llama al manejador de actualización apropiado:
+El bucle central de actualización recorre cada ranura de entidad, comprueba la bandera ACTIVE, y llama al manejador de actualización apropiado:
 
 ```z80 id:ch18_iterating_entities
 ; Update all active entities
@@ -571,7 +571,7 @@ update_entities:
     ret
 ```
 
-Esto usa IX como puntero de entidad, lo cual es conveniente porque el direccionamiento indexado por IX te permite acceder a cualquier campo por su desplazamiento: `(IX+0)` es X bajo, `(IX+2)` es Y, `(IX+3)` es tipo, y así sucesivamente. La desventaja de IX es el coste: cada `LD A,(IX+n)` toma 19 T-states versus 7 para `LD A,(HL)`. Para el bucle de actualización de entidades, que se ejecuta 16 veces por fotograma, este overhead es aceptable. Para el bucle interno de renderizado donde tocas datos de entidad miles de veces por fotograma, copiarías primero los campos relevantes a registros.
+Esto usa IX como puntero de entidad, lo cual es conveniente porque el direccionamiento indexado por IX te permite acceder a cualquier campo por su desplazamiento: `(IX+0)` es X bajo, `(IX+2)` es Y, `(IX+3)` es tipo, y así sucesivamente. La desventaja de IX es el coste: cada `LD A,(IX+n)` toma 19 T-states frente a 7 para `LD A,(HL)`. Para el bucle de actualización de entidades, que se ejecuta 16 veces por fotograma, esta sobrecarga es aceptable. Para el bucle interno de renderizado donde tocas datos de entidades miles de veces por fotograma, copiarías los campos relevantes a registros primero.
 
 ### Despacho de Actualización por Tipo
 
@@ -609,7 +609,7 @@ update_by_type:
                             ; --- 64T dispatch overhead
 ```
 
-Cada manejador recibe IX apuntando a la entidad y puede acceder a todos los campos via direccionamiento indexado. Cuando el manejador ejecuta `RET`, retorna al bucle de actualización de entidades, que avanza a la siguiente ranura.
+Cada manejador recibe IX apuntando a la entidad y puede acceder a todos los campos mediante direccionamiento indexado. Cuando el manejador ejecuta `RET`, retorna al bucle de actualización de entidades, que avanza a la siguiente ranura.
 
 ### El Manejador de Actualización del Jugador
 
@@ -654,15 +654,15 @@ update_player:
     ; Total: ~250-350T depending on input
 ```
 
-Esto es deliberadamente simple. El Capítulo 19 añadirá gravedad, saltos y respuesta a colisiones. Por ahora, el punto es la *estructura*: puntero de entidad en IX, campos accedidos por desplazamiento, banderas de entrada impulsando cambios de estado, contador de animación avanzando.
+Esto es deliberadamente simple. El Capítulo 19 añadirá gravedad, saltos y respuesta a colisiones. Por ahora, lo importante es la *estructura*: puntero de entidad en IX, campos accedidos por desplazamiento, banderas de entrada impulsando cambios de estado, contador de animación avanzando.
 
 ---
 
-## 18.6 El Pool de Objetos
+## 18.6 La Piscina de Objetos
 
-Las balas, explosiones y efectos de partículas son transitorios. Una bala existe por una fracción de segundo antes de que golpee algo o salga de la pantalla. Una explosión se anima durante 8-16 fotogramas y desaparece. Podrías generarlos dinámicamente, pero en el Z80, "dinámico" significa buscar memoria libre, gestionar asignación, y arriesgar fragmentación. En su lugar, usamos un **pool de objetos**: un conjunto fijo de ranuras en las que las entidades se activan y desactivan.
+Las balas, explosiones y efectos de partículas son transitorios. Una bala existe durante una fracción de segundo antes de golpear algo o salir de la pantalla. Una explosión se anima durante 8-16 fotogramas y desaparece. Podrías generarlos dinámicamente, pero en el Z80, "dinámico" significa buscar memoria libre, gestionar asignación, y arriesgarse a la fragmentación. En su lugar, usamos una **piscina de objetos**: un conjunto fijo de ranuras en las que las entidades se activan y desactivan.
 
-Ya tenemos el pool -- es el array de entidades. Las ranuras 9-15 son el pool de proyectiles/efectos. Generar una bala significa encontrar una ranura inactiva en ese rango y rellenarla. Destruir una bala significa limpiar su bandera ACTIVE.
+Ya tenemos la piscina -- es el array de entidades. Las ranuras 9-15 son la piscina de proyectiles/efectos. Generar una bala significa encontrar una ranura inactiva en ese rango y rellenarla. Destruir una bala significa limpiar su bandera ACTIVE.
 
 ### Generando una Bala
 
@@ -726,7 +726,7 @@ deactivate_entity:
     ret
 ```
 
-Eso es todo. El siguiente fotograma, el bucle de actualización ve ACTIVE=0 y salta la ranura. La ranura ahora está disponible para la siguiente llamada a `spawn_bullet` para reutilizar.
+Eso es todo. El siguiente fotograma, el bucle de actualización ve ACTIVE=0 y salta la ranura. La ranura está ahora disponible para que la próxima llamada a `spawn_bullet` la reutilice.
 
 ### Manejador de Actualización de Bala
 
@@ -765,19 +765,19 @@ update_bullet:
     ; Total: ~170T active, ~190T when deactivating
 ```
 
-### Dimensionamiento del Pool
+### Dimensionamiento de la Piscina
 
-Siete ranuras de proyectiles (índices 9-15) podrían sonar limitadas. En la práctica, es más que suficiente para la mayoría de juegos de Spectrum. Considera: una bala que cruza el ancho completo de la pantalla (256 píxeles) a 4 píxeles por fotograma tarda 64 fotogramas -- más de un segundo. Si el jugador dispara una vez cada 8 fotogramas (una tasa de fuego rápida), como máximo 8 balas pueden existir simultáneamente. Siete ranuras con fallos de generación ocasionales (la bala simplemente no se dispara ese fotograma) se siente natural, no defectuoso. Es poco probable que el jugador note una bala perdida al límite de su tasa de fuego.
+Siete ranuras de proyectiles (índices 9-15) podría sonar limitado. En la práctica, es más que suficiente para la mayoría de juegos de Spectrum. Considera: una bala que cruza todo el ancho de la pantalla (256 píxeles) a 4 píxeles por fotograma tarda 64 fotogramas -- más de un segundo. Si el jugador dispara una vez cada 8 fotogramas (una cadencia rápida), como máximo 8 balas pueden existir simultáneamente. Siete ranuras con fallos ocasionales de generación (la bala simplemente no se dispara ese fotograma) se siente natural, no como un error. Es poco probable que el jugador note una bala perdida al límite de su cadencia de tiro.
 
-Si necesitas más, expande el array de entidades. Pero sé consciente del coste: cada entidad adicional añade ~160 T-states al bucle de actualización en el peor caso (cuando está activa) y ~50 T-states incluso cuando está inactiva (la verificación de la bandera ACTIVE y el avance de IX aún se ejecutan). Treinta y dos entidades todas activas consumirían aproximadamente 16,000 T-states solo en el bucle de actualización -- un cuarto del presupuesto de fotograma antes de haber renderizado un solo píxel.
+Si necesitas más, amplía el array de entidades. Pero sé consciente del coste: cada entidad adicional añade ~160 T-states al peor caso del bucle de actualización (cuando está activa) y ~50 T-states incluso cuando está inactiva (la comprobación de la bandera ACTIVE y el avance de IX aún se ejecutan). Treinta y dos entidades con todas activas consumirían aproximadamente 16.000 T-states solo en el bucle de actualización -- un cuarto del presupuesto de fotograma antes de haber renderizado un solo píxel.
 
-En el Agon, puedes permitirte pools más grandes. Con 360,000 T-states por fotograma y renderizado de sprites por hardware, 64 o incluso 128 entidades son factibles.
+En el Agon, puedes permitirte piscinas más grandes. Con 360.000 T-states por fotograma y renderizado de sprites por hardware, 64 o incluso 128 entidades son factibles.
 
 ---
 
 ## 18.7 Entidades de Explosión y Efecto
 
-Las explosiones, popups de puntuación y efectos de partículas usan las mismas ranuras de entidad que las balas. La diferencia está en sus manejadores de actualización: animan a través de una secuencia de fotogramas y luego se autodestruyen.
+Las explosiones, puntuaciones emergentes y efectos de partículas usan las mismas ranuras de entidad que las balas. La diferencia está en sus manejadores de actualización: animan a través de una secuencia de fotogramas y luego se autodestruyen.
 
 ```z80 id:ch18_explosion_and_effect_entities
 ; Update an explosion entity
@@ -838,13 +838,13 @@ spawn_explosion_at_entity:
     ret
 ```
 
-El patrón es siempre el mismo: encontrar una ranura libre, rellenar la estructura, establecer las banderas. El manejador de actualización hace trabajo específico del tipo. La desactivación limpia las banderas. La ranura se reutiliza la próxima vez que algo necesite generarse. Este es todo el ciclo de vida de objetos dinámicos en el Z80 -- sin asignador, sin recolector de basura, sin lista libre. Solo un array y una bandera.
+El patrón es siempre el mismo: encontrar una ranura libre, rellenar la estructura, establecer las banderas. El manejador de actualización hace trabajo específico del tipo. La desactivación limpia las banderas. La ranura se reutiliza la próxima vez que algo necesita generarse. Este es todo el ciclo de vida de objetos dinámicos en el Z80 -- sin asignador, sin recolector de basura, sin lista libre. Solo un array y una bandera.
 
 ---
 
-## 18.8 Uniendo Todo: El Esqueleto del Juego
+## 18.8 Juntando Todo: El Esqueleto del Juego
 
-Aquí está el esqueleto de juego completo que une todo. Este es un framework compilable con todas las piezas conectadas: máquina de estados, entrada, sistema de entidades, y el bucle principal.
+Aquí está el esqueleto completo del juego que une todo. Este es un marco compilable con todas las piezas conectadas: máquina de estados, entrada, sistema de entidades y el bucle principal.
 
 ```z80 id:ch18_putting_it_all_together_the
     ORG  $8000
@@ -1392,55 +1392,55 @@ entity_array:
     DS   MAX_ENTITIES * ENTITY_SIZE, 0
 ```
 
-Este esqueleto compila, se ejecuta, y hace algo visible: bloques coloreados se mueven a través de la cuadrícula de atributos. El bloque del jugador responde a los controles QAOP. Presionar SPACE genera balas que vuelan a través de la pantalla. Los enemigos rebotan entre los bordes de la pantalla. Cuando una bala sale de la pantalla, su ranura se libera para el siguiente disparo.
+Este esqueleto compila, se ejecuta, y hace algo visible: bloques coloreados se mueven por la cuadrícula de atributos. El bloque del jugador responde a los controles QAOP. Pulsar SPACE genera balas que vuelan por la pantalla. Los enemigos rebotan entre los bordes de la pantalla. Cuando una bala sale de la pantalla, su ranura se libera para el siguiente disparo.
 
-Es feo -- bloques de atributos en lugar de sprites, sin desplazamiento, sin sonido. Pero la arquitectura está completa. Cada pieza de este capítulo está presente y conectada: el bucle principal impulsado por HALT, el despacho de máquina de estados, el lector de entrada con detección de flancos, el array de entidades con manejadores de actualización por tipo, y el pool de objetos para proyectiles. Los Capítulos 16 y 17 proporcionan el renderizado. El Capítulo 19 proporciona la física y colisiones. El Capítulo 11 proporciona la música. Este esqueleto es donde todos se conectan.
+Es feo -- bloques de atributos en lugar de sprites, sin desplazamiento, sin sonido. Pero la arquitectura está completa. Cada pieza de este capítulo está presente y conectada: el bucle principal conducido por HALT, el despacho de la máquina de estados, el lector de entrada con detección de flancos, el array de entidades con manejadores de actualización por tipo, y la piscina de objetos para proyectiles. Los Capítulos 16 y 17 proporcionan el renderizado. El Capítulo 19 proporciona la física y las colisiones. El Capítulo 11 proporciona la música. Este esqueleto es donde todos se conectan.
 
 ---
 
 ## 18.9 Agon Light 2: La Misma Arquitectura, Más Espacio
 
-El Agon Light 2 usa la misma estructura fundamental de bucle de juego. El eZ80 ejecuta código Z80 nativamente (en modo compatible Z80 o modo ADL), así que el bucle principal basado en HALT, la máquina de estados, el sistema de entidades, y la lógica de entrada se traducen directamente.
+El Agon Light 2 usa la misma estructura fundamental de bucle de juego. El eZ80 ejecuta código Z80 nativamente (en modo compatible Z80 o modo ADL), así que el bucle principal basado en HALT, la máquina de estados, el sistema de entidades y la lógica de entrada se traducen directamente.
 
 Las diferencias clave:
 
 **Sincronización de fotograma.** El Agon usa la llamada `waitvblank` de MOS (RST $08, función $1E) en lugar de `HALT` para la sincronización de fotograma. El VDP genera la señal de blanqueo vertical y la API MOS la expone.
 
-**Entrada.** La lectura de teclado pasa por variables de sistema MOS en lugar de E/S directa de puerto. La matriz de semi-filas no existe -- el teclado PS/2 es manejado por el VDP ESP32. La capa de abstracción de entrada que construimos (todo confluye en `input_flags`) significa que el resto del código del juego no se preocupa por la diferencia.
+**Entrada.** La lectura del teclado pasa por variables de sistema MOS en lugar de E/S directa de puertos. La matriz de semifillas no existe -- el teclado PS/2 es manejado por el ESP32 VDP. La capa de abstracción de entrada que construimos (todo se canaliza a `input_flags`) significa que el resto del código del juego no se preocupa por la diferencia.
 
-**Presupuesto de entidades.** Con ~360,000 T-states por fotograma y renderizado de sprites por hardware, el bucle de actualización de entidades ya no es un cuello de botella. Podrías actualizar 64 entidades con IA compleja y aún usar menos del 10% del presupuesto de fotograma. El factor limitante en el Agon es el conteo de sprites VDP por línea de escaneo (típicamente 16-32 sprites de hardware visibles en la misma línea) en lugar del tiempo de CPU.
+**Presupuesto de entidades.** Con ~360.000 T-states por fotograma y renderizado de sprites por hardware, el bucle de actualización de entidades ya no es un cuello de botella. Podrías actualizar 64 entidades con IA compleja y aún usar menos del 10% del presupuesto de fotograma. El factor limitante en el Agon es el conteo de sprites de VDP por línea de escaneo (típicamente 16-32 sprites de hardware visibles en la misma línea) en lugar del tiempo de CPU.
 
-**Renderizado.** El VDP del Agon maneja el renderizado de sprites. En lugar de transferir píxeles manualmente a la memoria de pantalla (los seis métodos del Capítulo 16), emites comandos VDU para posicionar sprites de hardware. El coste de CPU por sprite baja de ~1,200 T-states (blit OR+AND en Spectrum) a ~50-100 T-states (enviar un comando de posición VDU). Esto libera un enorme tiempo de CPU para lógica de juego.
+**Renderizado.** El VDP del Agon maneja el renderizado de sprites. En lugar de copiar píxeles manualmente a la memoria de pantalla (los seis métodos del Capítulo 16), emites comandos VDU para posicionar sprites de hardware. El coste de CPU por sprite cae de ~1.200 T-states (blit OR+AND en Spectrum) a ~50-100 T-states (enviar un comando de posición VDU). Esto libera una enorme cantidad de tiempo de CPU para lógica del juego.
 
-**Memoria.** El Agon tiene 512KB de memoria plana -- sin bancos, sin regiones contendidas. Tu array de entidades, tablas de consulta, datos de sprites, mapas de nivel, y música pueden coexistir todos sin la gimnasia de conmutación de bancos que el Capítulo 15 describe para el Spectrum 128K.
+**Memoria.** El Agon tiene 512KB de memoria plana -- sin bancos, sin regiones contendidas. Tu array de entidades, tablas de consulta, datos de sprites, mapas de nivel y música pueden coexistir sin las acrobacias de conmutación de bancos que el Capítulo 15 describe para el Spectrum 128K.
 
-La conclusión práctica: en el Agon, la arquitectura de este capítulo escala sin esfuerzo. Más entidades, máquinas de estados más complejas, más lógica de IA -- nada de esto amenaza el presupuesto de fotograma. La disciplina de contar cada T-state sigue importando (es buena ingeniería), pero las restricciones que fuerzan compromisos angustiantes en el Spectrum simplemente no aplican.
+La conclusión práctica: en el Agon, la arquitectura de este capítulo escala sin esfuerzo. Más entidades, máquinas de estados más complejas, más lógica de IA -- nada amenaza el presupuesto de fotograma. La disciplina de contar cada T-state sigue importando (es buena ingeniería), pero las restricciones que fuerzan compensaciones angustiosas en el Spectrum simplemente no aplican.
 
 ---
 
-## 18.10 Decisiones de Diseño y Compromisos
+## 18.10 Decisiones de Diseño y Compensaciones
 
-### Tasa de Fotogramas Fija vs Variable
+### Frecuencia de Fotogramas Fija vs Variable
 
-El bucle principal de este capítulo asume una tasa fija de 50 fps: haz todo en un fotograma, o pierde. La alternativa es un paso de tiempo variable: medir cuánto tardó el fotograma y escalar todo el movimiento por delta-tiempo. Los pasos de tiempo variables son estándar en motores de juegos modernos pero añaden complejidad en el Z80 -- necesitas un temporizador de fotograma, multiplicación por delta en cada cálculo de movimiento, y manejo cuidadoso de la estabilidad de la física a tasas variables.
+El bucle principal de este capítulo asume una frecuencia de fotogramas fija de 50 fps: haz todo en un fotograma, o piérdelo. La alternativa es un paso de tiempo variable: medir cuánto tardó el fotograma y escalar todo el movimiento por delta-time. Los pasos de tiempo variables son estándar en motores de juegos modernos pero añaden complejidad en el Z80 -- necesitas un temporizador de fotograma, multiplicación por delta en cada cálculo de movimiento, y manejo cuidadoso de la estabilidad de la física a tasas variables.
 
-Para juegos de Spectrum, 50 fps fijos es casi universalmente la elección correcta. El hardware es determinístico, el presupuesto de fotograma es predecible, y la simplicidad de la física de paso fijo (todo se mueve cantidades constantes cada fotograma) elimina una categoría completa de errores. Si tu juego cae por debajo de 50 fps, la respuesta es optimizar hasta que no lo haga -- no añadir un paso de tiempo variable.
+Para juegos de Spectrum, 50 fps fijos es casi universalmente la elección correcta. El hardware es determinista, el presupuesto de fotograma es predecible, y la simplicidad de la física de paso fijo (todo se mueve en cantidades constantes cada fotograma) elimina toda una categoría de errores. Si tu juego baja de 50 fps, la respuesta es optimizar hasta que no lo haga -- no añadir un paso de tiempo variable.
 
-En el Agon, con su presupuesto más grande, es aún menos probable que necesites temporización variable. Fija la tasa de fotogramas a 50 o 60 fps y mantén la vida simple.
+En el Agon, con su presupuesto más grande, es aún menos probable que necesites temporización variable. Fija la frecuencia de fotogramas a 50 o 60 fps y mantén la vida simple.
 
 ### Tamaño de Entidad: Ligero vs Generoso
 
-Nuestra estructura de entidad de 10 bytes es ligera. Algunos juegos comerciales de Spectrum usaban 16 o incluso 32 bytes por entidad, almacenando campos adicionales como posición anterior (para borrado de rectángulos sucios), dirección de sprite, dimensiones de caja de colisión, temporizador de IA, y más.
+Nuestra estructura de entidad de 10 bytes es ligera. Algunos juegos comerciales de Spectrum usaban 16 o incluso 32 bytes por entidad, almacenando campos adicionales como posición anterior (para borrado de rectángulos sucios), dirección de sprite, dimensiones de la caja de colisión, temporizador de IA, y más.
 
-El compromiso es velocidad de iteración versus acceso a campos. Nuestro array de 16 entidades toma 160 bytes y el bucle de actualización completo se ejecuta en ~8,000 T-states. Una estructura de 32 bytes con 16 entidades toma 512 bytes (aún pequeño) pero el overhead de iteración crece porque IX avanza 32 cada paso, y los accesos indexados a campos con desplazamientos altos como `(IX+28)` toman los mismos 19 T-states pero son más difíciles de rastrear.
+La compensación es velocidad de iteración versus acceso a campos. Nuestro array de 16 entidades toma 160 bytes y el bucle completo de actualización se ejecuta en ~8.000 T-states. Una estructura de 32 bytes con 16 entidades toma 512 bytes (aún pequeño) pero la sobrecarga de iteración crece porque IX avanza 32 cada paso, y los accesos indexados a campos en desplazamientos altos como `(IX+28)` toman los mismos 19 T-states pero son más difíciles de rastrear.
 
-Si necesitas más datos por entidad, considera dividir la estructura: un array "caliente" compacto (posición, tipo, banderas -- los campos tocados cada fotograma) y un array "frío" paralelo (dirección de sprite, estado de IA, valor de puntuación -- campos accedidos solo cuando se necesitan). Este es el mismo compromiso estructura-de-arrays versus array-de-estructuras que enfrentan los motores de juegos modernos, aplicado a la escala del Z80.
+Si necesitas más datos por entidad, considera dividir la estructura: un array compacto "caliente" (posición, tipo, banderas -- los campos tocados cada fotograma) y un array paralelo "frío" (dirección de sprite, estado de IA, valor de puntuación -- campos accedidos solo cuando se necesitan). Esta es la misma compensación de estructura-de-arrays versus array-de-estructuras que los motores de juegos modernos enfrentan, aplicada a la escala del Z80.
 
 ### Cuándo Usar HL en Lugar de IX
 
-El direccionamiento indexado por IX es conveniente pero costoso: 19 T-states por acceso versus 7 para `(HL)`. En el bucle de actualización (llamado 16 veces por fotograma), el overhead de IX es aceptable -- 16 x 12 T-states extra por acceso = 192 T-states, despreciable.
+El direccionamiento indexado por IX es conveniente pero costoso: 19 T-states por acceso frente a 7 para `(HL)`. En el bucle de actualización (llamado 16 veces por fotograma), la sobrecarga de IX es aceptable -- 16 x 12 T-states extra por acceso = 192 T-states, despreciable.
 
-Pero en el bucle de renderizado, donde podrías tocar 4-6 campos de entidad para cada uno de 8 sprites visibles, el coste se acumula. La técnica: al inicio del pase de renderizado para cada entidad, copia los campos que necesitas a registros:
+Pero en el bucle de renderizado, donde podrías tocar 4-6 campos de entidad para cada uno de 8 sprites visibles, el coste se acumula. La técnica: al inicio del paso de renderizado para cada entidad, copia los campos que necesitas a registros:
 
 ```z80 id:ch18_when_to_use_hl_instead_of_ix
     ; Copy entity fields to registers for fast rendering
@@ -1452,48 +1452,46 @@ Pero en el bucle de renderizado, donde podrías tocar 4-6 campos de entidad para
     ; All subsequent accesses are register-to-register: 4T each
 ```
 
-Cuatro accesos IX a 19T = 76T por adelantado, luego toda la rutina de renderizado usa accesos a registros de 4T en lugar de accesos IX de 19T. Si la rutina de renderizado toca esos campos 10 veces, ahorras (19-4) x 10 - 76 = 74 T-states por entidad. Pequeño, pero sobre 8 entidades por fotograma, son 592 T-states -- suficiente para dibujar otro medio sprite.
+Cuatro accesos IX a 19T = 76T por adelantado, y luego toda la rutina de renderizado usa accesos a registros de 4T en lugar de accesos IX de 19T. Si la rutina de renderizado toca esos campos 10 veces, ahorras (19-4) x 10 - 76 = 74 T-states por entidad. Pequeño, pero sobre 8 entidades por fotograma, son 592 T-states -- suficiente para dibujar medio sprite más.
 
 ---
 
 ## Resumen
 
-- El **bucle de juego** es `HALT -> Entrada -> Actualización -> Renderizado -> repetir`. La instrucción `HALT` se sincroniza con la interrupción de fotograma, dándote exactamente el valor de T-states de un fotograma (aproximadamente 64,000 en un Pentagon, 360,000 en el Agon).
+- El **bucle de juego** es `HALT -> Entrada -> Actualizar -> Renderizar -> repetir`. La instrucción `HALT` sincroniza con la interrupción de fotograma, dándote exactamente los T-states de un fotograma (aproximadamente 64.000 en un Pentagon, 360.000 en el Agon).
 
 - Una **máquina de estados** con una tabla de saltos de punteros a manejadores (`DW state_title`, `DW state_game`, etc.) organiza el flujo desde la pantalla de título a través del juego hasta el fin de partida. El despacho cuesta 73 T-states independientemente del número de estados -- tiempo constante, escalado limpio.
 
-- La **lectura de entrada** en el Spectrum usa `IN A,(C)` para consultar semi-filas de teclado a través del puerto `$FE`. Cinco teclas (QAOP + SPACE) cuestan aproximadamente 220 T-states para leer. El joystick Kempston es una sola lectura de puerto de 11T. La detección de flancos (pulsación vs mantenimiento) usa XOR entre fotogramas actual y anterior.
+- La **lectura de entrada** en el Spectrum usa `IN A,(C)` para sondear las semifillas del teclado a través del puerto `$FE`. Cinco teclas (QAOP + SPACE) cuestan aproximadamente 220 T-states de leer. El joystick Kempston es una sola lectura de puerto de 11T. La detección de flancos (pulsación vs mantener) usa XOR entre los fotogramas actual y anterior.
 
-- La **estructura de entidad** es de 10 bytes: X (punto fijo de 16 bits), Y, tipo, estado, anim_frame, dx, dy, salud, banderas. Dieciséis entidades ocupan 160 bytes. La multiplicación por 10 para conversión de índice a dirección usa la descomposición 10 = 8 + 2.
+- La **estructura de entidad** es de 10 bytes: X (punto fijo de 16 bits), Y, tipo, estado, anim_frame, dx, dy, salud, banderas. Dieciséis entidades ocupan 160 bytes. La multiplicación por 10 para la conversión de índice a dirección usa la descomposición 10 = 8 + 2.
 
-- El **array de entidades** se asigna estáticamente con asignaciones de ranura fijas: ranura 0 para el jugador, ranuras 1-8 para enemigos, ranuras 9-15 para proyectiles y efectos. La iteración verifica la bandera ACTIVE y despacha a manejadores por tipo a través de una segunda tabla de saltos.
+- El **array de entidades** se asigna estáticamente con asignaciones de ranuras fijas: ranura 0 para el jugador, ranuras 1-8 para enemigos, ranuras 9-15 para proyectiles y efectos. La iteración comprueba la bandera ACTIVE y despacha a manejadores por tipo mediante una segunda tabla de saltos.
 
-- El **pool de objetos** es el propio array de entidades. La generación establece campos y la bandera ACTIVE. La desactivación limpia las banderas. La búsqueda de ranura libre es un escaneo lineal del rango de ranuras relevante. Siete ranuras de proyectiles manejan tasas de fuego típicas sin que el jugador note generaciones fallidas.
+- La **piscina de objetos** es el propio array de entidades. La generación establece campos y la bandera ACTIVE. La desactivación limpia las banderas. La búsqueda de ranura libre es un escaneo lineal del rango de ranuras relevante. Siete ranuras de proyectiles manejan cadencias de tiro típicas sin que el jugador note generaciones fallidas.
 
-- El **direccionamiento indexado por IX** es conveniente para acceso a campos de entidad (19T por acceso) pero costoso en bucles internos. Copia campos a registros al inicio del renderizado para acceso de 4T en adelante.
+- El **direccionamiento indexado por IX** es conveniente para el acceso a campos de entidad (19T por acceso) pero costoso en bucles internos. Copia campos a registros al inicio del renderizado para acceso de 4T durante toda la rutina.
 
-- El Agon Light 2 usa la misma arquitectura con más margen. `waitvblank` de MOS reemplaza a `HALT`, el teclado PS/2 reemplaza el escaneo de semi-filas, los sprites de hardware reemplazan el blitting por CPU. El bucle de actualización de entidades ya no es el cuello de botella.
+- El Agon Light 2 usa la misma arquitectura con más margen. MOS `waitvblank` reemplaza a `HALT`, el teclado PS/2 reemplaza el escaneo de semifillas, los sprites de hardware reemplazan la copia de píxeles por CPU. El bucle de actualización de entidades ya no es el cuello de botella.
 
-- El esqueleto práctico en este capítulo ejecuta una máquina de estados, 16 entidades (1 jugador + 8 enemigos + 7 ranuras de bala/efecto), entrada con detección de flancos, manejadores de actualización por tipo, y un renderizador mínimo de bloques de atributos. Es el chasis donde los Capítulos 16 (sprites), 17 (desplazamiento), 19 (colisiones), y 11 (sonido) se conectan.
+- El esqueleto práctico de este capítulo ejecuta una máquina de estados, 16 entidades (1 jugador + 8 enemigos + 7 ranuras de bala/efecto), entrada con detección de flancos, manejadores de actualización por tipo, y un renderizador mínimo de bloques de atributos. Es el chasis donde se conectan los Capítulos 16 (sprites), 17 (desplazamiento), 19 (colisiones) y 11 (sonido).
 
 ---
 
 ## Inténtalo Tú Mismo
 
-1. **Construye el esqueleto.** Compila el esqueleto de juego de la sección 18.8 y ejecútalo en un emulador. Usa QAOP para mover el bloque del jugador y SPACE para disparar. Observa los bloques coloreados moverse. Añade perfilado por color de borde (Capítulo 1) para ver cuánto presupuesto de fotograma se usa.
+1. **Compila el esqueleto.** Compila el esqueleto del juego de la sección 18.8 y ejecútalo en un emulador. Usa QAOP para mover el bloque del jugador y SPACE para disparar. Observa los bloques coloreados moverse. Añade perfilado por color de borde (Capítulo 1) para ver cuánto presupuesto de fotograma se utiliza.
 
-2. **Añade un sexto estado.** Implementa STATE_SHOP entre Menú y Juego. La pantalla de tienda debería mostrar tres objetos y dejar al jugador elegir uno con ARRIBA/ABAJO y FIRE. Esto ejercita la máquina de estados -- añade la constante, la entrada de tabla, el manejador, y la lógica de transición.
+2. **Añade un sexto estado.** Implementa STATE_SHOP entre Menú y Juego. La pantalla de tienda debería mostrar tres objetos y dejar al jugador elegir uno con ARRIBA/ABAJO y DISPARO. Esto ejercita la máquina de estados -- añade la constante, la entrada en la tabla, el manejador, y la lógica de transición.
 
-3. **Expande el conteo de entidades.** Incrementa MAX_ENTITIES a 32, añade 16 enemigos más, y mide el impacto en el presupuesto de fotograma con perfilado de borde. ¿Con cuántas entidades empieza el bucle de actualización a amenazar los 50 fps?
+3. **Amplía el conteo de entidades.** Aumenta MAX_ENTITIES a 32, añade 16 enemigos más, y mide el impacto en el presupuesto de fotograma con perfilado de borde. ¿Con cuántas entidades el bucle de actualización empieza a amenazar los 50 fps?
 
-4. **Implementa soporte Kempston.** Añade el lector de joystick Kempston y combínalo con la entrada de teclado usando OR. Prueba en un emulador que soporte emulación Kempston (Fuse: Options -> Joysticks -> Kempston).
+4. **Implementa soporte Kempston.** Añade el lector de joystick Kempston y combínalo con la entrada del teclado usando OR. Prueba en un emulador que soporte emulación Kempston (Fuse: Options -> Joysticks -> Kempston).
 
-5. **Divide datos calientes y fríos.** Crea un segundo array "frío" con 4 bytes por entidad (dirección de sprite, temporizador de IA, estado de IA, valor de puntuación). Modifica el bucle de actualización para acceder a datos fríos solo cuando el tipo de entidad lo requiera (enemigos para IA, no balas). Mide el ahorro en T-states.
-
----
-
-*Siguiente: Capítulo 19 -- Colisiones, Física e IA Enemiga. Añadiremos detección de colisiones AABB, gravedad, saltos, y cuatro patrones de comportamiento enemigo al esqueleto de este capítulo.*
+5. **Divide datos calientes y fríos.** Crea un segundo array "frío" con 4 bytes por entidad (dirección de sprite, temporizador de IA, estado de IA, valor de puntuación). Modifica el bucle de actualización para acceder a los datos fríos solo cuando el tipo de entidad lo requiere (enemigos para IA, no balas). Mide el ahorro en T-states.
 
 ---
 
-> **Fuentes:** Documentación técnica de Sinclair Research sobre la matriz de teclado y disposición de puertos del ZX Spectrum; especificación de la interfaz de joystick Kempston; técnicas de aritmética de punto fijo del Capítulo 4 (Dark/X-Trade, Spectrum Expert #01, 1997); perfilado por color de borde del Capítulo 1; métodos de renderizado de sprites referenciados del Capítulo 16; integración de música AY referenciada del Capítulo 11; documentación de la API MOS del Agon Light 2 (Bernardo Kastrup, agon-light.com)
+*Siguiente: Capítulo 19 -- Colisiones, Física e IA Enemiga. Añadiremos detección de colisiones AABB, gravedad, saltos y cuatro patrones de comportamiento enemigo al esqueleto de este capítulo.*
+
+---

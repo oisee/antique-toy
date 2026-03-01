@@ -1,23 +1,23 @@
-# Capitulo 4: Las Matematicas Que Realmente Necesitas
+# Capítulo 4: Las matemáticas que realmente necesitas
 
-> *"Lee un libro de texto de matematicas -- derivadas, integrales. Las vas a necesitar."*
+> *"Lee un libro de texto de matemáticas -- derivadas, integrales. Las vas a necesitar."*
 > -- Dark, Spectrum Expert #01 (1997)
 
-En 1997, un adolescente en San Petersburgo se sento a escribir un articulo de revista sobre multiplicacion. No la clase que aprendes en la escuela -- la clase que hace que un cubo de alambre gire en un ZX Spectrum a 50 fotogramas por segundo. Su nombre era Dark, programaba para el grupo X-Trade, y su demo *Illusion* ya habia ganado el primer puesto en ENLiGHT'96. Ahora estaba escribiendo *Spectrum Expert*, una revista electronica distribuida en disquete, y iba a explicar exactamente como funcionaban sus algoritmos.
+En 1997, un adolescente en San Petersburgo se sentó a escribir un artículo de revista sobre multiplicación. No del tipo que aprendes en la escuela -- del tipo que hace girar un cubo de alambre en un ZX Spectrum a 50 fotogramas por segundo. Su nombre era Dark, programaba para el grupo X-Trade, y su demo *Illusion* ya había ganado el primer lugar en ENLiGHT'96. Ahora estaba escribiendo *Spectrum Expert*, una revista electrónica distribuida en disquete, e iba a explicar exactamente cómo funcionaban sus algoritmos.
 
-Lo que sigue esta extraido directamente del articulo "Programming Algorithms" de Dark en Spectrum Expert #01. Estas son las rutinas que alimentaron *Illusion* -- la misma multiplicacion que rotaba vertices, la misma tabla de seno que impulsaba el rotozoomer, el mismo dibujador de lineas que renderizaba estructuras de alambre a tasa de fotogramas completa. Cuando Introspec hizo ingenieria inversa de *Illusion* veinte anos despues en el blog Hype, encontro estos algoritmos exactos funcionando dentro del binario.
+Lo que sigue está extraído directamente del artículo "Programming Algorithms" de Dark en Spectrum Expert #01. Estas son las rutinas que impulsaron *Illusion* -- la misma multiplicación que rotaba vértices, la misma tabla de seno que impulsaba el rotozoomer, el mismo trazador de líneas que renderizaba wireframes a velocidad de fotograma completa. Cuando Introspec hizo ingeniería inversa de *Illusion* veinte años después en el blog Hype, encontró estos mismos algoritmos funcionando dentro del binario.
 
 ---
 
-## Multiplicacion en Z80
+## Multiplicación en Z80
 
-El Z80 no tiene instruccion de multiplicacion. Cada vez que necesitas A por B -- para matrices de rotacion, proyeccion en perspectiva, mapeado de texturas -- debes sintetizarlo a partir de desplazamientos y sumas. Dark presenta dos metodos, y es caracteristicamente honesto sobre el compromiso entre ellos.
+El Z80 no tiene instrucción de multiplicación. Cada vez que necesitas A por B -- para matrices de rotación, proyección en perspectiva, mapeo de texturas -- debes sintetizarlo a partir de desplazamientos y sumas. Dark presenta dos métodos, y es característicamente honesto sobre la compensación entre ellos.
 
-### Metodo 1: Desplazamiento y Suma desde el LSB
+### Método 1: desplazamiento y suma desde LSB
 
-El enfoque clasico. Recorre los bits del multiplicador del LSB al MSB. Por cada bit activo, suma el multiplicando a un acumulador. Despues de cada bit, desplaza el acumulador a la derecha. Despues de ocho iteraciones, el acumulador contiene el producto completo.
+El enfoque clásico. Recorre los bits del multiplicador de LSB a MSB. Para cada bit activo, suma el multiplicando en un acumulador. Después de cada bit, desplaza el acumulador a la derecha. Después de ocho iteraciones, el acumulador contiene el producto completo.
 
-Aqui esta la multiplicacion sin signo 8x8 de Dark. Entrada: B por C. Resultado en A (byte alto) y C (byte bajo):
+Aquí está la multiplicación 8x8 sin signo de Dark. Entrada: B por C. Resultado en A (byte alto) y C (byte bajo):
 
 ```z80 id:ch04_method_1_shift_and_add_from
 ; MULU112 -- 8x8 unsigned multiply
@@ -44,28 +44,28 @@ mulu112:
     ret
 ```
 
-Estudia esto con cuidado. La instruccion `RRA` desplaza A a la derecha, pero tambien empuja el bit mas bajo de A al indicador de acarreo. En la siguiente iteracion, `RR C` rota ese acarreo hacia la parte superior de C. Asi los bits bajos del producto se ensamblan gradualmente en C, mientras los bits altos se acumulan en A. Despues de ocho iteraciones, el resultado completo de 16 bits esta en A:C.
+Estudia esto con cuidado. La instrucción `RRA` desplaza A a la derecha, pero también empuja el bit más bajo de A a la bandera de acarreo. En la siguiente iteración, `RR C` rota ese acarreo hacia la parte superior de C. Así que los bits bajos del producto se ensamblan gradualmente en C, mientras que los bits altos se acumulan en A. Después de ocho iteraciones, el resultado completo de 16 bits está en A:C.
 
-El coste es de 196 a 204 T-states dependiendo de cuantos bits del multiplicador estan activos -- cada bit activo cuesta un `ADD A,B` adicional (4 T-states). El ejemplo en `chapters/ch04-maths/examples/multiply8.a80` muestra una variante que devuelve el resultado en HL.
+El costo es de 196 a 204 T-states dependiendo de cuántos bits del multiplicador estén activos -- cada bit activo cuesta un `ADD A,B` extra (4 T-states). El ejemplo en `chapters/ch04-maths/examples/multiply8.a80` muestra una variante que devuelve el resultado en HL.
 
 <!-- Screenshot removed: result is border colour only, not capturable as static image -->
 
-Para 16x16 produciendo un resultado de 32 bits, el MULU224 de Dark funciona en 730 a 826 T-states. En la practica, los motores 3D de demoscene evitan multiplicaciones completas 16x16 manteniendo las coordenadas en punto fijo 8.8 y usando multiplicaciones 8x8 donde sea posible.
+Para 16x16 produciendo un resultado de 32 bits, el MULU224 de Dark se ejecuta en 730 a 826 T-states. En la práctica, los motores 3D de la demoscene evitan las multiplicaciones completas de 16x16 manteniendo las coordenadas en punto fijo 8.8 y usando multiplicaciones 8x8 donde sea posible.
 
 <!-- figure: ch04_multiply_walkthrough -->
-![Shift-and-add 8x8 multiply walkthrough](illustrations/output/ch04_multiply_walkthrough.png)
+![Recorrido de multiplicación 8x8 por desplazamiento y suma](illustrations/output/ch04_multiply_walkthrough.png)
 
-### Metodo 2: Consulta en Tabla de Cuadrados
+### Método 2: búsqueda en tabla de cuadrados
 
-El segundo metodo de Dark intercambia memoria por velocidad, explotando una identidad algebraica que todo demoscener eventualmente descubre:
+El segundo método de Dark intercambia memoria por velocidad, explotando una identidad algebraica que todo demoscener eventualmente descubre:
 
 ```text
 A * B = ((A+B)^2 - (A-B)^2) / 4
 ```
 
-Pre-computa una tabla de valores n^2/4, y la multiplicacion se convierte en dos consultas y una resta -- aproximadamente 61 T-states, mas de tres veces mas rapido que el desplazamiento y suma.
+Pre-calcula una tabla de valores de n^2/4, y la multiplicación se convierte en dos búsquedas y una resta -- aproximadamente 61 T-states, más de tres veces más rápido que desplazamiento y suma.
 
-Necesitas una tabla de 512 bytes de (n^2/4) para n = 0 a 511, alineada a pagina para indexacion con un solo registro. La tabla debe ser de 512 bytes porque (A+B) puede alcanzar 510.
+Necesitas una tabla de 512 bytes de (n^2/4) para n = 0 a 511, alineada a página para indexación con un solo registro. La tabla debe ser de 512 bytes porque (A+B) puede alcanzar 510.
 
 ```z80 id:ch04_method_2_square_table_lookup_2
 ; MULU_FAST -- Square table multiply
@@ -104,32 +104,32 @@ mulu_fast:
     ret
 ```
 
-El compromiso? Dark es caracteristicamente honesto: **"Elige: velocidad o precision."** La tabla almacena valores enteros de n^2/4, asi que hay un error de redondeo de hasta 0,25 por consulta. Para valores grandes esto es insignificante. Para los pequenos deltas de coordenadas en la rotacion 3D, el error produce un temblor visible en los vertices. Con desplazamiento y suma, la rotacion es perfectamente suave.
+¿La contrapartida? Dark es característicamente honesto: **"Elige: velocidad o precisión."** La tabla almacena valores enteros de n^2/4, así que hay un error de redondeo de hasta 0,25 por búsqueda. Para valores grandes esto es insignificante. Para los pequeños deltas de coordenadas en rotación 3D, el error produce un jitter visible en los vértices. Con desplazamiento y suma, la rotación es perfectamente suave.
 
-Para mapeado de texturas, plasma, scrollers -- usa la multiplicacion rapida. Para 3D de alambre donde el ojo sigue vertices individuales -- quédate con desplazamiento y suma. Dark lo sabia porque habia probado ambos en *Illusion*.
+Para mapeo de texturas, plasma, scrollers -- usa la multiplicación rápida. Para wireframe 3D donde el ojo rastrea vértices individuales -- quédate con desplazamiento y suma. Dark lo sabía porque había probado ambos en *Illusion*.
 
-**Generar la tabla de cuadrados** es un coste de inicio de una sola vez. Dark sugiere usar el metodo de la derivada: como d(x^2)/dx = 2x, puedes construir la tabla incrementalmente sumando un delta linealmente creciente en cada paso. En la practica, la mayoria de los coders calculan la tabla en un cargador BASIC o rutina de inicializacion y siguen adelante.
+**Generar la tabla de cuadrados** es un costo único al inicio. Dark sugiere usar el método de derivadas: dado que d(x^2)/dx = 2x, puedes construir la tabla incrementalmente sumando un delta linealmente creciente en cada paso. En la práctica, la mayoría de los programadores calculan la tabla en un cargador BASIC o rutina de inicialización y siguen adelante.
 
 ---
 
-### `mul_signed_c` --- Envoltorio para eliminación de caras traseras
+## Multiplicación con signo
 
-La eliminación de caras traseras del Capítulo 5 pasa el primer operando en A en lugar de B. Un envoltorio delgado evita reestructurar el llamador:
-
-### Comparación de costes
-
-| Rutina | Entrada | Resultado | T-states | Notas |
-|---------|-------|--------|----------|-------|
-| `mulu112` (sin signo) | B, C | A:C (16-bit) | 196--204 | Desplazamiento y suma del Capítulo 4 |
-| `mulu_fast` (tabla de cuadrados) | B, C | HL (16-bit) | ~61 | Necesita tabla de 512 bytes; error de redondeo |
-| `mul_signed` | B, C (con signo) | HL (16-bit con signo) | ~240--260 | Manejo de signo añade ~40--60T |
-| `mul_signed_c` | A, C (con signo) | HL (16-bit con signo) | ~250--270 | Envoltorio para eliminación de caras traseras |
+Un capítulo que enseña multiplicación sin signo y luego la usa para rotar coordenadas 3D tiene un vacío: las matrices de rotación operan con valores con signo. X puede ser -40 o +40, los valores de seno van de -128 a +127. Cada `call mul_signed` en el Capítulo 5 depende de la rutina que estás a punto de ver. Como dijo Ped7g durante su revisión: "un capítulo que enseña rotación 3D sin mostrar la multiplicación con signo es como un libro de cocina que lista los ingredientes pero se olvida del horno."
 
 ### Complemento a dos en la práctica
 
-### Extensión de signo: el idioma `rla / sbc a,a`
+El Z80 representa los enteros con signo en complemento a dos. Las reglas son simples:
 
-La multiplicación con signo es aproximadamente un 25% más costosa que la sin signo. Para un cubo de alambre con 8 vértices y 6 multiplicaciones por rotación de eje (12 en total por rotación 3D completa), el coste por vértice es ~3.120 T-states --- todavía cómodamente dentro del presupuesto de fotograma.
+- El bit 7 es el bit de signo: 0 = positivo, 1 = negativo
+- Los valores positivos son iguales que sin signo: $00 = 0, $01 = 1, ..., $7F = 127
+- Los valores negativos cuentan hacia abajo desde $FF: $FF = -1, $FE = -2, ..., $80 = -128
+- `NEG` calcula el valor absoluto de un número negativo (niega A: A = 0 - A). Costo: 8T
+
+La idea crítica para la aritmética: **ADD y SUB no se preocupan por el signo.** Sumar $FF (-1) a $03 (+3) da $02 (+2) --- correcto tanto en interpretación con signo como sin signo. La suma del hardware es idéntica. Solo la multiplicación requiere manejo explícito del signo, porque el bucle de desplazamiento y suma trata los bits del multiplicador como valores posicionales sin signo.
+
+### Extensión de signo: la expresión idiomática `rla / sbc a,a`
+
+Cuando multiplicas un valor de 8 bits con signo por otro valor de 8 bits con signo, necesitas conocer los signos. La forma más barata de extraer el bit de signo en el Z80:
 
 ```z80
 ; Sign extension: A → D (0 if positive, $FF if negative)
@@ -138,11 +138,11 @@ La multiplicación con signo es aproximadamente un 25% más costosa que la sin s
     sbc  a, a           ; 4T  A = 0 if carry clear, $FF if set
 ```
 
-Las matrices de rotación del Capítulo 5 llaman a `mul_signed` seis veces por vértice para rotación en Z y perspectiva, y `mul_signed_c` dos veces por cara para eliminación de caras traseras. Ahora sabes exactamente qué hacen esas llamadas.
+Después de `sbc a,a`, A es $00 para entradas positivas o $FF para entradas negativas. Este es el byte estándar de extensión de signo usado en toda la demoscene del Z80.
 
-> **Crédito:** El vacío de aritmética con signo fue identificado por Ped7g (Peter Helcmanovsky) durante su revisión del libro.
+### `mul_signed` --- multiplicación con signo 8x8
 
-### `mul_signed` --- Multiplicación con signo 8×8
+El algoritmo: XOR las dos entradas para determinar el signo del resultado, toma los valores absolutos, multiplica sin signo, niega el resultado si el signo era negativo. Esta es la rutina que el Capítulo 5 llama seis veces por rotación de vértice y dos veces por eliminación de caras traseras.
 
 ```z80 id:ch04_mul_signed
 ; mul_signed — 8x8 signed multiply
@@ -204,9 +204,11 @@ mul_signed:
     ret
 ```
 
-En 2024, Gogin (de la escena ZX rusa) recopiló una colección de rutinas PRNG para Z80 y las compartió para evaluación. Gogin las probó sistemáticamente, llenando bitmaps grandes para revelar patrones estadísticos. Los resultados son instructivos -- no todas las rutinas "aleatorias" son igualmente aleatorias.
+El núcleo es el mismo bucle de desplazamiento y suma de `mulu112`, envuelto con detección de signo y negación condicional. La sobrecarga es de ~40-60 T-states más allá de la multiplicación sin signo, dependiendo de cuántos operandos necesitan negación.
 
-#### Generador CMWC de Patrik Rak (Raxoft) (Mejor Calidad)
+### `mul_signed_c` --- envoltura fina para eliminación de caras traseras
+
+La eliminación de caras traseras del Capítulo 5 pasa el primer operando en A en lugar de B. Una envoltura fina evita reestructurar el llamador:
 
 ```z80 id:ch04_mul_signed_c
 ; mul_signed_c — signed multiply with A,C inputs
@@ -219,21 +221,30 @@ mul_signed_c:
     jr   mul_signed      ; 12T  fall through to mul_signed
 ```
 
-Este es un generador **Multiply-With-Carry Complementario** de Patrik Rak (Raxoft), usando el multiplicador 253 y un búfer circular de 8 bytes. Las matemáticas detrás de CMWC están bien estudiadas: George Marsaglia demostró que ciertas combinaciones de multiplicador/búfer producen secuencias con períodos enormes. Con multiplicador 253 y tamaño de búfer 8, el período teórico es (253^8 - 1) / 254 -- aproximadamente 2^66 valores antes de repetirse.
+### Comparación de costos
 
-El veredicto de Gogin: **mejor calidad** de la colección. Al llenar un bitmap de 256x192, no emergen patrones visibles ni siquiera a escalas grandes.
+| Rutina | Entrada | Resultado | T-states | Notas |
+|---------|-------|--------|----------|-------|
+| `mulu112` (sin signo) | B, C | A:C (16 bits) | 196--204 | Desplazamiento y suma del Capítulo 4 |
+| `mulu_fast` (tabla de cuadrados) | B, C | HL (16 bits) | ~61 | Necesita tabla de 512 bytes; error de redondeo |
+| `mul_signed` | B, C (con signo) | HL (16 bits con signo) | ~240--260 | Manejo de signo añade ~40--60T |
+| `mul_signed_c` | A, C (con signo) | HL (16 bits con signo) | ~250--270 | Envoltura para eliminación de caras traseras |
 
-El veredicto de Gogin: **segundo mejor**. Muy compacto, buena calidad para su tamaño.
+La multiplicación con signo es aproximadamente un 25% más cara que sin signo. Para un cubo de alambre con 8 vértices y 6 multiplicaciones por rotación de eje (12 en total por rotación 3D completa), el costo por vértice es ~3.120 T-states --- aún cómodamente dentro del presupuesto de fotograma.
+
+Las matrices de rotación del Capítulo 5 llaman a `mul_signed` seis veces por vértice para rotación en Z y perspectiva, y `mul_signed_c` dos veces por cara para eliminación de caras traseras. Ahora sabes exactamente qué hacen esas llamadas.
+
+> **Crédito:** El vacío de aritmética con signo fue identificado por Ped7g (Peter Helcmanovsky) durante su revisión del libro.
 
 ---
 
-## Division en Z80
+## División en Z80
 
-La division en el Z80 es aun mas dolorosa que la multiplicacion. Sin instruccion de division, y el algoritmo es inherentemente serial -- cada bit del cociente depende de la resta anterior. Dark nuevamente presenta dos metodos: preciso y rapido.
+La división en el Z80 es aún más dolorosa que la multiplicación. Sin instrucción de división, y el algoritmo es inherentemente serial -- cada bit del cociente depende de la resta anterior. Dark nuevamente presenta dos métodos: preciso y rápido.
 
-### Metodo 1: Desplazamiento y Resta (Division con Restauracion)
+### Método 1: desplazamiento y resta (división con restauración)
 
-Division larga binaria. Comienza con un acumulador en cero. El dividendo se desplaza desde la derecha, un bit por iteracion. Intenta restar el divisor; si tiene exito, establece un bit del cociente. Si falla, restaura el acumulador -- de ahi "division con restauracion".
+División larga binaria. Comienza con un acumulador en cero. El dividendo se desplaza desde la derecha, un bit por iteración. Intenta restar el divisor; si tiene éxito, establece un bit del cociente. Si falla, restaura el acumulador -- de ahí "división con restauración."
 
 ```z80 id:ch04_method_1_shift_and_subtract
 ; DIVU111 -- 8-bit unsigned divide
@@ -261,40 +272,40 @@ divu111:
     ret                  ; B = quotient, A = remainder
 ```
 
-El `INC B` para establecer el bit del cociente es un truco elegante: B acaba de ser desplazado a la izquierda por `SLA B`, asi que el bit 0 esta garantizado en cero. `INC B` lo establece sin afectar otros bits -- mas barato que `OR` o `SET`.
+El `INC B` para establecer el bit del cociente es un truco ingenioso: B acaba de ser desplazado a la izquierda por `SLA B`, así que el bit 0 está garantizado en cero. `INC B` lo establece sin afectar otros bits -- más barato que `OR` o `SET`.
 
-La version de 16 bits (DIVU222) cuesta de 938 a 1.034 T-states. Mil T-states por una sola division. Con un presupuesto de fotograma de ~70.000 T-states, puedes permitirte quizas 70 divisiones por fotograma -- sin hacer nada mas. Por eso los motores 3D de demoscene hacen esfuerzos extremos para evitar la division.
+La versión de 16 bits (DIVU222) cuesta de 938 a 1.034 T-states. Mil T-states para una sola división. Con un presupuesto de fotograma de ~70.000 T-states, puedes permitirte quizás 70 divisiones por fotograma -- sin hacer nada más. Por eso los motores 3D de la demoscene hacen esfuerzos extremos para evitar la división.
 
-### Metodo 2: Division Logaritmica
+### Método 2: división logarítmica
 
-La alternativa mas rapida de Dark usa tablas de logaritmos:
+La alternativa más rápida de Dark usa tablas de logaritmos:
 
 ```text
 Log(A / B) = Log(A) - Log(B)
 A / B = AntiLog(Log(A) - Log(B))
 ```
 
-Con dos tablas de consulta de 256 bytes -- Log y AntiLog -- la division se convierte en dos consultas, una resta y una tercera consulta. El coste baja a aproximadamente 50-70 T-states. Para la division de perspectiva (dividir entre Z para proyectar puntos 3D en pantalla), esto es revolucionario.
+Con dos tablas de consulta de 256 bytes -- Log y AntiLog -- la división se convierte en dos búsquedas, una resta y una tercera búsqueda. El costo baja a aproximadamente 50-70 T-states. Para la división en perspectiva (dividir por Z para proyectar puntos 3D en la pantalla), esto cambia las reglas del juego.
 
-**Generar la tabla de logaritmos** es donde las cosas se ponen interesantes. Dark propone construirla usando derivadas -- la misma tecnica incremental que la tabla de cuadrados. La derivada de log2(x) es 1/(x * ln(2)), asi que acumulas incrementos fraccionarios paso a paso, comenzando desde log2(1) = 0 y avanzando. La constante 1/ln(2) = 1,4427 necesita ser escalada para caber en el rango de 8 bits de la tabla.
+**Generar la tabla de logaritmos** es donde las cosas se ponen interesantes. Dark propone construirla usando derivadas -- la misma técnica incremental que la tabla de cuadrados. La derivada de log2(x) es 1/(x * ln(2)), así que acumulas incrementos fraccionarios paso a paso, comenzando desde log2(1) = 0 y avanzando hacia arriba. La constante 1/ln(2) = 1,4427 necesita escalarse para caber en el rango de 8 bits de la tabla.
 
-Y aqui es donde la honestidad de Dark brilla. Despues de derivar la formula de generacion, intenta calcular un coeficiente de correccion para el escalado de la tabla y llega a 0,4606. Luego escribe -- en un articulo de revista publicado -- *"Algo no esta bien aqui, asi que se recomienda escribir uno similar por tu cuenta."*
+Y aquí es donde brilla la honestidad de Dark. Después de derivar la fórmula de generación, intenta calcular un coeficiente de corrección para el escalado de la tabla y llega a 0,4606. Luego escribe -- en un artículo de revista publicado -- *"Algo no está bien aquí, así que se recomienda escribir uno similar tú mismo."*
 
-Un adolescente de diecisiete anos en 1997, publicando en una revista de disco leida por sus pares en toda la escena Spectrum rusa, diciendo abiertamente: consegui que esto funcionara, pero mi derivacion tiene un hueco, averigua la version limpia por ti mismo. Esa honestidad es rara en la escritura tecnica a cualquier nivel, y es una de las cosas que hacen de Spectrum Expert un documento tan notable.
+Un chico de diecisiete años en 1997, publicando en una revista en disco leída por sus pares a lo largo de la escena rusa del Spectrum, diciendo abiertamente: logré que esto funcionara, pero mi derivación tiene un hueco, descubre la versión limpia tú mismo. Esa honestidad es rara en la escritura técnica a cualquier nivel, y es una de las cosas que hacen de Spectrum Expert un documento tan notable.
 
-En la practica, las tablas de logaritmos funcionan. Los errores de redondeo al comprimir una funcion continua en 256 bytes son aceptables para la proyeccion en perspectiva. El motor 3D de Dark en *Illusion* usa exactamente esta tecnica.
+En la práctica, las tablas de logaritmos funcionan. Los errores de redondeo al comprimir una función continua en 256 bytes son aceptables para la proyección en perspectiva. El motor 3D de Dark en *Illusion* usa exactamente esta técnica.
 
 ---
 
-## Seno y Coseno
+## Seno y coseno
 
-Rotacion, scrolling, plasma -- cada efecto que se curva necesita trigonometria. En el Z80, precalculas una tabla de consulta. El enfoque de Dark es bellamente pragmatico: una parabola es lo suficientemente cercana a una onda sinusoidal para el trabajo de demo.
+Rotación, desplazamiento, plasma -- cada efecto que curva necesita trigonometría. En el Z80, pre-calculas una tabla de consulta. El enfoque de Dark es bellamente pragmático: una parábola es lo suficientemente parecida a una onda sinusoidal para el trabajo de demos.
 
-### La Aproximacion Parabolica
+### La aproximación parabólica
 
-Medio periodo de coseno, de 0 a pi, se curva de +1 a -1. Una parabola y = 1 - 2*(x/pi)^2 sigue casi el mismo camino. El error maximo es de aproximadamente 5,6% -- terrible para ingenieria, invisible en una demo a resolucion de 256x192.
+Medio período de coseno, de 0 a pi, curva de +1 hasta -1. Una parábola y = 1 - 2*(x/pi)^2 sigue casi la misma trayectoria. El error máximo es aproximadamente del 5,6% -- terrible para ingeniería, invisible en una demo a resolución de 256x192.
 
-Dark genera una tabla de coseno de 256 bytes con signo (-128 a +127), indexada por angulo: 0 = 0 grados, 64 = 90 grados, 128 = 180 grados, 256 vuelve a 0. El periodo en potencia de dos significa que el indice de angulo se envuelve naturalmente con el desbordamiento de 8 bits, y el coseno se convierte en seno sumando 64.
+Dark genera una tabla de coseno con signo de 256 bytes (-128 a +127), indexada por ángulo: 0 = 0 grados, 64 = 90 grados, 128 = 180 grados, 256 vuelve a 0. El período de potencia de dos significa que el índice del ángulo se envuelve naturalmente con el desbordamiento de 8 bits, y el coseno se convierte en seno sumando 64.
 
 ```z80 id:ch04_the_parabolic_approximation
 ; Generate 256-byte signed cosine table (-128..+127)
@@ -321,45 +332,45 @@ gen_cos_table:
     ; and produces the table in a few hundred cycles.
 ```
 
-La idea clave: no necesitas calcular x^2 para cada entrada. Como (x+1)^2 - x^2 = 2x + 1, construyes la parabola incrementalmente -- empieza en el pico, resta un delta linealmente creciente. Sin multiplicacion, sin division, sin punto flotante.
+La idea clave: no necesitas calcular x^2 para cada entrada. Dado que (x+1)^2 - x^2 = 2x + 1, construyes la parábola incrementalmente -- comienzas en el pico, restas un delta linealmente creciente. Sin multiplicación, sin división, sin punto flotante.
 
-La tabla resultante es una aproximacion parabolica por tramos. Graficala contra el seno verdadero y te costara ver la diferencia. Para 3D de alambre o un scroller rebotante, es mas que suficiente.
+La tabla resultante es una aproximación parabólica por tramos. Grafícala contra el seno verdadero y te costará ver la diferencia. Para wireframe 3D o un scroller con rebote, es más que suficiente.
 
-> **Sidebar: Los 9 Mandamientos de las Tablas de Seno de Raider**
+> **Recuadro: los 9 mandamientos de Raider para las tablas de seno**
 >
-> En los comentarios de Hype sobre el analisis de *Illusion* de Introspec, el coder veterano Raider dejo una lista de reglas para el diseno de tablas de seno que se conocio informalmente como los "9 mandamientos". Los principios clave:
+> En los comentarios de Hype sobre el análisis de Introspec de *Illusion*, el programador veterano Raider publicó una lista de reglas para el diseño de tablas de seno que se conoció informalmente como los "9 mandamientos." Los principios clave:
 >
-> - Usa un tamano de tabla en potencia de dos (256 entradas es canonico).
-> - Alinea la tabla a un limite de pagina para que `H` contenga la base y `L` sea el angulo directo -- la indexacion es gratuita.
-> - Almacena valores con signo para uso directo en aritmetica de coordenadas.
-> - Deja que el angulo se envuelva naturalmente via desbordamiento de 8 bits -- sin verificacion de limites.
-> - El coseno es simplemente seno desplazado un cuarto de periodo: carga el angulo, suma 64, consulta.
-> - Si necesitas mayor precision, usa una tabla de 16 bits (512 bytes) pero raramente lo necesitas.
+> - Usa un tamaño de tabla potencia de dos (256 entradas es canónico).
+> - Alinea la tabla a un límite de página para que `H` contenga la base y `L` sea el ángulo directo -- la indexación es gratuita.
+> - Almacena valores con signo para uso directo en aritmética de coordenadas.
+> - Deja que el ángulo se envuelva naturalmente vía el desbordamiento de 8 bits -- sin comprobación de límites.
+> - El coseno es simplemente el seno desplazado un cuarto de período: carga el ángulo, suma 64, busca.
+> - Si necesitas mayor precisión, usa una tabla de 16 bits (512 bytes) pero raramente lo necesitas.
 > - Genera la tabla al inicio en lugar de almacenarla en el binario -- ahorra espacio, no cuesta nada.
-> - Para rotacion 3D, pre-multiplica por tu factor de escala y almacena los valores escalados.
-> - Nunca calcules trigonometria en tiempo de ejecucion. Si crees que lo necesitas, estas equivocado.
+> - Para rotación 3D, pre-multiplica por tu factor de escala y almacena los valores escalados.
+> - Nunca computes trigonometría en tiempo de ejecución. Si crees que lo necesitas, estás equivocado.
 >
-> Estos mandamientos reflejan decadas de experiencia colectiva. Siguelos y tus tablas de seno seran rapidas, pequenas y correctas.
+> Estos mandamientos reflejan décadas de experiencia colectiva. Síguelos y tus tablas de seno serán rápidas, pequeñas y correctas.
 
 ---
 
-## Dibujo de Lineas de Bresenham
+## Trazado de líneas de Bresenham
 
-Cada arista de un objeto de alambre es una linea de (x1,y1) a (x2,y2), y necesitas dibujarla rapido. El tratamiento de Dark en Spectrum Expert #01 es la seccion mas larga de su articulo, trabajando a traves de tres enfoques progresivamente mas rapidos.
+Cada arista de un objeto de alambre es una línea de (x1,y1) a (x2,y2), y necesitas trazarla rápido. El tratamiento de Dark en Spectrum Expert #01 es la sección más larga de su artículo, recorriendo tres enfoques progresivamente más rápidos.
 
-### El Algoritmo Clasico y la Modificacion de Xopha
+### El algoritmo clásico y la modificación de Xopha
 
-El algoritmo de Bresenham avanza a lo largo del eje mayor un pixel a la vez, manteniendo un acumulador de error para los pasos del eje menor. En el Spectrum, "establecer un pixel" es costoso -- la memoria de pantalla entrelazada significa que calcular una direccion de byte y posicion de bit cuesta T-states reales. La rutina de la ROM toma mas de 1000 T-states por pixel. Incluso un bucle de Bresenham optimizado a mano cuesta ~80 T-states por pixel.
+El algoritmo de Bresenham avanza a lo largo del eje mayor un píxel a la vez, manteniendo un acumulador de error para los pasos del eje menor. En el Spectrum, "poner un píxel" es caro -- la memoria de pantalla entrelazada significa que calcular una dirección de byte y posición de bit cuesta T-states reales. La rutina de ROM toma más de 1.000 T-states por píxel. Incluso un bucle Bresenham optimizado a mano cuesta ~80 T-states por píxel.
 
-Dark menciona la mejora de Xopha: mantener un puntero de pantalla (HL) y avanzarlo incrementalmente en lugar de recalcular desde cero. Moverse a la derecha significa rotar una mascara de bits; moverse hacia abajo significa el ajuste DOWN_HL de multiples instrucciones. Mejor, pero el problema central permanece.
+Dark menciona la mejora de Xopha: mantener un puntero de pantalla (HL) y avanzarlo incrementalmente en lugar de recalcular desde cero. Moverse a la derecha significa rotar una máscara de bits; moverse hacia abajo significa el ajuste multi-instrucción DOWN_HL. Mejor, pero el problema central permanece.
 
-### El Metodo de Matrices de Dark: Cuadriculas de Pixeles 8x8
+### El método de matriz de Dark: cuadrículas de píxeles 8x8
 
-Entonces Dark hace su observacion clave: **"El 87,5% de las verificaciones se desperdician."**
+Entonces Dark hace su observación clave: **"El 87,5% de las comprobaciones son desperdicio."**
 
-En un bucle de Bresenham, en cada pixel preguntas: debo dar un paso lateral? Para una linea casi horizontal, la respuesta es casi siempre no. En promedio, siete de cada ocho verificaciones no producen paso lateral. Estas quemando T-states en un salto condicional que casi nunca se activa.
+En un bucle Bresenham, en cada píxel preguntas: ¿debería dar un paso lateral? Para una línea casi horizontal, la respuesta es casi siempre no. En promedio, siete de cada ocho comprobaciones no producen ningún paso lateral. Estás quemando T-states en una bifurcación condicional que casi nunca se activa.
 
-La solucion de Dark: pre-computar el patron de pixeles para cada pendiente de linea dentro de una cuadricula de pixeles 8x8, y desenrollar el bucle de dibujo para emitir celdas de cuadricula completas de una vez. Un segmento de linea dentro de un area 8x8 esta completamente determinado por su pendiente. Para cada uno de los ocho octantes, enumera todos los patrones posibles de 8 pixeles como secuencias directas de instrucciones `SET bit,(HL)` con incrementos de direccion entre ellas.
+La solución de Dark: pre-calcula el patrón de píxeles para cada pendiente de línea dentro de una cuadrícula de píxeles de 8x8, y desenrolla el bucle de dibujo para producir celdas de cuadrícula completas a la vez. Un segmento de línea dentro de un área de 8x8 está completamente determinado por su pendiente. Para cada uno de los ocho octantes, enumera todos los patrones posibles de 8 píxeles como secuencias directas de instrucciones `SET bit,(HL)` con incrementos de dirección entre ellas.
 
 ```z80 id:ch04_dark_s_matrix_method_8x8
 ; Example: one unrolled 8-pixel segment of a nearly-horizontal line
@@ -380,27 +391,27 @@ La solucion de Dark: pre-computar el patron de pixeles para cada pendiente de li
     set  0, (hl)        ; pixel 7 (rightmost bit in byte)
 ```
 
-Sin saltos condicionales. Sin acumulador de error. `SET bit,(HL)` toma 15 T-states; ocho de ellas mas un par de operaciones `INC H` dan ~130 T-states por segmento de 8 pixeles, o aproximadamente 16 T-states por pixel. Con la sobrecarga de consulta y avance de celda, Dark logra aproximadamente **48 T-states por pixel** -- casi la mitad del coste clasico de Bresenham.
+Sin bifurcaciones condicionales. Sin acumulador de error. `SET bit,(HL)` cuesta 15 T-states; ocho de ellas más un par de operaciones `INC H` da ~130 T-states por segmento de 8 píxeles, o aproximadamente 16 T-states por píxel. Con la sobrecarga de búsqueda y avance de celda, Dark logra aproximadamente **48 T-states por píxel** -- casi la mitad del costo clásico de Bresenham.
 
-El precio es memoria: una rutina desenrollada separada para cada pendiente por octante, aproximadamente **3KB en total**. En un Spectrum 128K, una inversion modesta para una ganancia de velocidad masiva.
+El precio es memoria: una rutina desenrollada separada para cada pendiente por octante, aproximadamente **3KB en total**. En un Spectrum 128K, una inversión modesta para una ganancia de velocidad masiva.
 
-### Terminacion Basada en Trampa
+### Terminación basada en trampa
 
-En lugar de verificar un contador de bucle en cada pixel, Dark coloca un centinela donde termina la linea. Cuando el codigo de dibujo llega al centinela, sale -- eliminando la sobrecarga de `DEC counter / JR NZ` por completo.
+En lugar de comprobar un contador de bucle en cada píxel, Dark coloca un centinela donde termina la línea. Cuando el código de dibujo alcanza el centinela, sale -- eliminando por completo la sobrecarga de `DEC counter / JR NZ`.
 
-El sistema completo -- seleccion de octante, consulta de segmento, dibujo desenrollado, terminacion por trampa -- es una de las piezas de codigo mas impresionantes de Spectrum Expert #01. Cuando Introspec desensamblo *Illusion* en 2017, encontro este metodo de matrices en funcionamiento, dibujando las estructuras de alambre a tasa de fotogramas completa.
+El sistema completo -- selección de octante, búsqueda de segmento, dibujo desenrollado, terminación por trampa -- es una de las piezas de código más impresionantes en Spectrum Expert #01. Cuando Introspec desensamblaba *Illusion* en 2017, encontró este método de matriz en funcionamiento, dibujando los wireframes a velocidad de fotograma completa.
 
 ---
 
-## Aritmetica de Punto Fijo
+## Aritmética de punto fijo
 
-Cada algoritmo en este capitulo asume algo que aun no hemos hecho explicito: numeros de punto fijo.
+Cada algoritmo en este capítulo asume algo que aún no hemos hecho explícito: los números de punto fijo.
 
-El Z80 no tiene unidad de punto flotante. Cada registro contiene un entero. Pero los efectos de demo necesitan valores fraccionarios -- angulos de rotacion, velocidades sub-pixel, factores de escala. La solucion es el punto fijo: elige una convencion para donde vive el "punto decimal" dentro de un entero, luego haz toda la aritmetica con enteros mientras rastreas el escalado mentalmente.
+El Z80 no tiene unidad de punto flotante. Cada registro contiene un entero. Pero los efectos de demo necesitan valores fraccionarios -- ángulos de rotación, velocidades sub-píxel, factores de escala. La solución es el punto fijo: elige una convención para dónde vive el "punto decimal" dentro de un entero, luego haz toda la aritmética con enteros mientras rastreas la escala mentalmente.
 
 ### Formato 8.8
 
-El formato mas comun en el Z80 es **8.8**: byte alto = parte entera, byte bajo = parte fraccionaria. Un par de registros de 16 bits contiene un numero de punto fijo:
+El formato más común en el Z80 es **8.8**: byte alto = parte entera, byte bajo = parte fraccionaria. Un par de registros de 16 bits contiene un número de punto fijo:
 
 ```text
 H = integer part    (-128..+127 signed, or 0..255 unsigned)
@@ -409,7 +420,7 @@ L = fractional part (0..255, representing 0/256 to 255/256)
 
 `HL = $0180` representa 1,5 (H=1, L=128, y 128/256 = 0,5). `HL = $FF80` con signo es -0,5 (H=$FF = -1 en complemento a dos, L=$80 suma 0,5).
 
-La belleza: **la suma y la resta son gratuitas** -- solo operaciones normales de 16 bits:
+La belleza: **la suma y la resta son gratuitas** -- simplemente operaciones normales de 16 bits:
 
 ```z80 id:ch04_format_8_8_2
 ; Fixed-point 8.8 addition: result = a + b
@@ -421,11 +432,11 @@ La belleza: **la suma y la resta son gratuitas** -- solo operaciones normales de
     sbc  hl, de          ; 15 T-states.
 ```
 
-Al procesador no le importa que estes tratando estos como punto fijo. La suma binaria es la misma ya sea que los bits representen enteros o valores 8.8.
+Al procesador no le importa que estés tratando estos como punto fijo. La suma binaria es la misma ya sea que los bits representen enteros o valores 8.8.
 
-### Multiplicacion en Punto Fijo
+### Multiplicación de punto fijo
 
-Multiplicar dos numeros 8.8 produce un resultado 16.16 -- 32 bits. Quieres 8.8 de vuelta, asi que tomas los bits 8..23 del producto (efectivamente desplazando 8 a la derecha). En la practica, con partes enteras pequenas (coordenadas, factores de rotacion entre -1 y +1), puedes descomponer la multiplicacion en productos parciales:
+Multiplicar dos números 8.8 produce un resultado 16.16 -- 32 bits. Quieres 8.8 de vuelta, así que tomas los bits 8..23 del producto (efectivamente desplazando a la derecha por 8). En la práctica, con partes enteras pequeñas (coordenadas, factores de rotación entre -1 y +1), puedes descomponer la multiplicación en productos parciales:
 
 ```z80 id:ch04_fixed_point_multiplication
 ; Fixed-point 8.8 multiply (simplified)
@@ -467,75 +478,75 @@ fixmul88:
     ret
 ```
 
-Para rotacion impulsada por tabla de seno donde los valores de seno son de 8 bits con signo (-128 a +127, representando -1,0 a +0,996), multiplicar una coordenada de 8 bits por un valor de seno via `mulu112` da un resultado de 16 bits ya en formato 8.8 -- el byte alto es la coordenada entera rotada, el byte bajo es la fraccion.
+Para rotación impulsada por tabla de seno donde los valores de seno son de 8 bits con signo (-128 a +127, representando -1,0 a +0,996), multiplicar una coordenada de 8 bits por un valor de seno vía `mulu112` da un resultado de 16 bits ya en formato 8.8 -- el byte alto es la coordenada entera rotada, el byte bajo es la fracción.
 
-### Por Que Importa el Punto Fijo
+### Por qué importa el punto fijo
 
-El formato 8.8 es el punto ideal para el Z80: cabe en un par de registros, la suma/resta son gratuitas, la multiplicacion cuesta ~200 T-states, y la precision es suficiente para efectos a resolucion de pantalla. Existen otros formatos -- 4.12 para mas precision fraccionaria, 12.4 para mas rango entero -- pero 8.8 cubre la gran mayoria de los casos de uso. Los capitulos de desarrollo de juegos mas adelante en este libro usan 8.8 exclusivamente.
-
----
-
-## Teoria y Practica
-
-Estos algoritmos no son tecnicas aisladas. Forman un sistema. La multiplicacion alimenta la matriz de rotacion. La rotacion genera coordenadas que necesitan division de perspectiva. La division usa tablas de logaritmos. Los vertices proyectados se conectan con lineas dibujadas por el metodo de matrices. Todo funciona con aritmetica de punto fijo, con valores de seno de la tabla parabolica.
-
-Dark los diseno como componentes de un solo motor -- el motor que alimentaba *Illusion*. Un cubo de alambre girando a tasa de fotogramas completa ejercita cada rutina de este capitulo:
-
-1. **Lee el angulo de rotacion** de la tabla de seno (aproximacion parabolica, ~20 T-states por consulta)
-2. **Multiplica** las coordenadas de vertices por factores de rotacion (desplazamiento y suma para precision, o tabla de cuadrados para velocidad -- ~200 o ~60 T-states por multiplicacion, 12 multiplicaciones por vertice)
-3. **Divide** entre Z para proyeccion en perspectiva (tablas de logaritmos, ~60 T-states por division)
-4. **Dibuja lineas** entre vertices proyectados (Bresenham de matrices, ~48 T-states por pixel)
-
-Para un cubo simple (8 vertices, 12 aristas), el coste total por fotograma es aproximadamente:
-
-- Rotacion: 8 vertices x 12 multiplicaciones x 200 T-states = 19.200 T-states
-- Proyeccion: 8 vertices x 1 division x 60 T-states = 480 T-states
-- Dibujo de lineas: 12 aristas x ~40 pixeles x 48 T-states = 23.040 T-states
-- **Total: ~42.720 T-states** -- comodamente dentro del presupuesto de fotograma de ~70.000 T-states
-
-Cambia a la multiplicacion rapida con tabla de cuadrados y la rotacion baja a 5.760 T-states. Los vertices tiemblan ligeramente, pero ahora tienes margen para objetos mas complejos. Velocidad o precision -- en una demo, tomas esa decision para cada efecto, cada fotograma.
+El formato 8.8 es el punto óptimo para el Z80: cabe en un par de registros, suma/resta son gratuitas, la multiplicación cuesta ~200 T-states, y la precisión es suficiente para efectos a resolución de pantalla. Existen otros formatos -- 4.12 para más precisión fraccionaria, 12.4 para más rango entero -- pero 8.8 cubre la gran mayoría de los casos de uso. Los capítulos de desarrollo de juegos más adelante en este libro usan 8.8 exclusivamente.
 
 ---
 
-## Lo Que Dark Hizo Bien
+## Teoría y práctica
 
-Mirando atras al Spectrum Expert #01 desde casi treinta anos de distancia, lo que te impacta no es solo la calidad de los algoritmos sino la calidad del pensamiento. Dark presenta cada uno, explica los compromisos honestamente, admite cuando su derivacion tiene huecos, y confia en que el lector llenara esos huecos.
+Estos algoritmos no son técnicas aisladas. Forman un sistema. La multiplicación alimenta la matriz de rotación. La rotación produce coordenadas que necesitan división en perspectiva. La división usa tablas de logaritmos. Los vértices proyectados se conectan con líneas trazadas por el método de matriz. Todo funciona con aritmética de punto fijo, con valores de seno de la tabla parabólica.
 
-Estaba escribiendo para coders de Spectrum en Rusia a finales de los 90 -- una comunidad que construia algunas de las demos de 8 bits mas impresionantes del mundo, en hardware que el resto del mundo habia abandonado. Estos son los bloques de construccion que usaban. Cuando escribas tu primer motor 3D para el Spectrum, estas rutinas lo haran posible.
+Dark diseñó estos como componentes de un solo motor -- el motor que impulsó *Illusion*. Un cubo de alambre girando a velocidad de fotograma completa ejercita cada rutina de este capítulo:
 
-En el siguiente capitulo, Dark y STS extienden esta base matematica a un sistema 3D completo: el metodo del punto medio para interpolacion de vertices, eliminacion de caras traseras y renderizado de poligonos solidos. Las matematicas de aqui son los cimientos. El Capitulo 5 es la arquitectura construida encima.
+1. **Leer el ángulo de rotación** de la tabla de seno (aproximación parabólica, ~20 T-states por búsqueda)
+2. **Multiplicar** las coordenadas de los vértices por factores de rotación (desplazamiento y suma para precisión, o tabla de cuadrados para velocidad -- ~200 o ~61 T-states por multiplicación, 12 multiplicaciones por vértice)
+3. **Dividir** por Z para proyección en perspectiva (tablas de logaritmos, ~60 T-states por división)
+4. **Trazar líneas** entre vértices proyectados (Bresenham de matriz, ~48 T-states por píxel)
+
+Para un cubo simple (8 vértices, 12 aristas), el costo total por fotograma es aproximadamente:
+
+- Rotación: 8 vértices x 12 multiplicaciones x 200 T-states = 19.200 T-states
+- Proyección: 8 vértices x 1 división x 60 T-states = 480 T-states
+- Trazado de líneas: 12 aristas x ~40 píxeles x 48 T-states = 23.040 T-states
+- **Total: ~42.720 T-states** -- cómodamente dentro del presupuesto de ~70.000 T-states por fotograma
+
+Cambia a la multiplicación rápida de tabla de cuadrados y la rotación baja a 5.760 T-states. Los vértices tiemblan ligeramente, pero ahora tienes margen para objetos más complejos. Velocidad o precisión -- en una demo, tomas esa decisión para cada efecto, cada fotograma.
 
 ---
 
-## Numeros Aleatorios: Cuando las Tablas No Sirven
+## Lo que Dark hizo bien
 
-Todo lo presentado hasta ahora en este capitulo es determinista. Dados los mismos datos de entrada, la misma multiplicacion, la misma consulta de seno, el mismo dibujo de linea -- obtienes la misma salida. Eso es exactamente lo que quieres para un cubo de alambre giratorio o un plasma suave.
+Mirando hacia atrás a Spectrum Expert #01 desde casi treinta años de distancia, lo que te impresiona no es solo la calidad de los algoritmos sino la calidad del pensamiento. Dark presenta cada uno, explica las contrapartidas honestamente, admite cuando su derivación tiene lagunas, y confía en el lector para llenar esas lagunas.
 
-Pero a veces necesitas caos. Estrellas titilando en un campo estelar. Particulas dispersandose de una explosion. Texturas de ruido para generacion de terreno. Un orden aleatorio para pantallas de carga. En competiciones de sizecoding (256 bytes o menos), un buen generador de numeros aleatorios puede producir efectos visuales sorprendentemente complejos con casi nada de codigo.
+Estaba escribiendo para programadores de Spectrum en Rusia a finales de los 1990 -- una comunidad que construía algunas de las demos de 8 bits más impresionantes del mundo, en hardware que el resto del mundo había abandonado. Estos son los bloques de construcción que usaban. Cuando escribas tu primer motor 3D para el Spectrum, estas rutinas lo harán posible.
 
-El Z80 no tiene generador de numeros aleatorios por hardware. Debes sintetizar aleatoriedad a partir de aritmetica, y la calidad de esa aritmetica importa mas de lo que podrias pensar.
+En el siguiente capítulo, Dark y STS extienden esta base matemática hacia un sistema 3D completo: el método del punto medio para interpolación de vértices, eliminación de caras traseras y renderizado de polígonos sólidos. Las matemáticas aquí son la base. El Capítulo 5 es la arquitectura construida encima.
 
-### El Truco del Registro R
+---
 
-El Z80 tiene una fuente incorporada de entropia a la que muchos coders recurren primero: el registro R. Se incrementa automaticamente con cada busqueda de instruccion (cada ciclo M1), ciclando de 0 a 127. Puedes leerlo en 9 T-states:
+## Números aleatorios: cuando las tablas no alcanzan
+
+Todo lo visto hasta ahora en este capítulo es determinista. Dadas las mismas entradas, la misma multiplicación, la misma búsqueda de seno, el mismo trazado de línea -- obtienes la misma salida. Eso es exactamente lo que quieres para un cubo de alambre girando o un plasma suave.
+
+Pero a veces necesitas caos. Estrellas titilando en un campo estelar. Partículas dispersándose de una explosión. Texturas de ruido para generación de terreno. Un orden aleatorio para pantallas de carga. En competiciones de sizecoding (256 bytes o menos), un buen generador de números aleatorios puede producir efectos visuales sorprendentemente complejos desde casi nada de código.
+
+El Z80 no tiene generador de números aleatorios por hardware. Debes sintetizar la aleatoriedad desde aritmética, y la calidad de esa aritmética importa más de lo que podrías pensar.
+
+### El truco del registro R
+
+El Z80 tiene una fuente incorporada de entropía a la que muchos programadores recurren primero: el registro R. Se incrementa automáticamente con cada búsqueda de instrucción (cada ciclo M1), ciclando a través de 0-127. Puedes leerlo en 9 T-states:
 
 ```z80 id:ch04_the_r_register_trick
     ld   a, r              ; 9 T -- read refresh counter
 ```
 
-Esto *no* es un PRNG. El registro R es completamente determinista -- avanza de uno en uno por instruccion, y su valor en cualquier punto depende enteramente del camino de codigo tomado desde el reinicio. En una demo con un bucle principal fijo, R produce la misma secuencia cada vez. Pero es util como fuente de semilla: lee R una vez al inicio (cuando el temporizado depende de cuanto espero el usuario antes de presionar una tecla) y alimenta ese valor impredecible a un PRNG apropiado.
+Esto *no* es un PRNG. El registro R es completamente determinista -- avanza uno por instrucción, y su valor en cualquier punto depende enteramente de la ruta de código tomada desde el reinicio. En una demo con un bucle principal fijo, R produce la misma secuencia cada vez. Pero es útil como fuente de semilla: lee R una vez al inicio (cuando la temporización depende de cuánto esperó el usuario antes de presionar una tecla) y alimenta ese valor impredecible a un PRNG propiamente dicho.
 
-Algunos coders mezclan R en su generador en cada llamada, anadiendo entropia genuina de temporizado de instrucciones. El generador Ion de abajo usa exactamente este truco.
+Algunos programadores mezclan R en su generador en cada llamada, añadiendo entropía genuina de temporización de instrucciones. El generador Ion que veremos abajo usa exactamente este truco.
 
-### Cuatro Generadores de la Comunidad
+### Cuatro generadores de la comunidad
 
-In 2024, Gogin (of the Russian ZX scene) assembled a collection of Z80 PRNG routines and shared them for evaluation. Gogin tested them systematically, filling large bitmaps to reveal statistical patterns. The results are instructive -- not all "random" routines are equally random.
+En 2024, Gogin (de la escena ZX rusa) reunió una colección de rutinas PRNG para Z80 y las compartió para evaluación. Gogin las probó sistemáticamente, llenando grandes bitmaps para revelar patrones estadísticos. Los resultados son instructivos -- no todas las rutinas "aleatorias" son igualmente aleatorias.
 
-Aqui hay cuatro generadores de esa coleccion, ordenados de mejor a peor calidad.
+Aquí hay cuatro generadores de esa colección, ordenados de mejor a peor calidad.
 
-#### Patrik Rak (Raxoft)'s CMWC Generator (Best Quality)
+#### Generador CMWC de Patrik Rak (Raxoft) (mejor calidad)
 
-This is a **Complement Multiply-With-Carry** generator by Patrik Rak (Raxoft), using the multiplier 253 and an 8-byte circular buffer. The mathematics behind CMWC are well-studied: George Marsaglia proved that certain multiplier/buffer combinations produce sequences with enormous periods. With multiplier 253 and buffer size 8, the theoretical period is (253^8 - 1) / 254 -- approximately 2^66 values before repeating.
+Este es un generador de **Complemento Multiplicación-Con-Acarreo** de Patrik Rak (Raxoft), usando el multiplicador 253 y un búfer circular de 8 bytes. Las matemáticas detrás de CMWC están bien estudiadas: George Marsaglia demostró que ciertas combinaciones de multiplicador/búfer producen secuencias con períodos enormes. Con multiplicador 253 y tamaño de búfer 8, el período teórico es (253^8 - 1) / 254 -- aproximadamente 2^66 valores antes de repetirse.
 
 ```z80 id:ch04_four_generators_from_the
 ; Patrik Rak's CMWC PRNG
@@ -574,13 +585,13 @@ patrik_rak_cmwc_rnd:
     DB   82, 97, 120, 111, 102, 116, 20, 12
 ```
 
-El algoritmo multiplica la entrada actual del buffer por 253, suma un valor de acarreo, almacena el nuevo acarreo y complementa el resultado. El buffer circular de 8 bytes significa que el espacio de estados del generador es vasto -- 8 bytes de buffer mas 1 byte de acarreo mas el indice, dando mucho mas estado interno del que cualquier generador de un solo registro puede lograr.
+El algoritmo multiplica la entrada actual del búfer por 253, suma un valor de acarreo, almacena el nuevo acarreo y complementa el resultado. El búfer circular de 8 bytes significa que el espacio de estados del generador es vasto -- 8 bytes de búfer más 1 byte de acarreo más el índice, dando mucho más estado interno del que cualquier generador de un solo registro puede lograr.
 
-Gogin's verdict: **best quality** in the collection. When filling a 256x192 bitmap, no visible patterns emerge even at large scales.
+Veredicto de Gogin: **mejor calidad** de la colección. Al llenar un bitmap de 256x192, no emergen patrones visibles incluso a gran escala.
 
-#### Ion Random (Segundo Mejor)
+#### Ion Random (segundo mejor)
 
-Originalmente de Ion Shell para la calculadora TI-83, adaptado para Z80. Este generador mezcla el registro R con un bucle de retroalimentacion, logrando una aleatoriedad sorprendentemente buena con solo ~15 bytes:
+Originalmente de Ion Shell para la calculadora TI-83, adaptado para Z80. Este generador mezcla el registro R con un bucle de retroalimentación, logrando una aleatoriedad sorprendentemente buena desde solo ~15 bytes:
 
 ```z80 id:ch04_four_generators_from_the_2
 ; Ion Random
@@ -602,13 +613,13 @@ ion_rnd:
     ret                     ; 10 T
 ```
 
-La inyeccion del registro R significa que este generador produce secuencias diferentes dependiendo del contexto de llamada -- cuantas instrucciones se ejecutan entre llamadas afecta a R, que retroalimenta al estado. Para un bucle principal de demo con temporizado fijo, R avanza predeciblemente, pero la mezcla no lineal (ADD + XOR) aun produce buena salida. En un juego donde la entrada del jugador varia el patron de llamada, la contribucion de R anade verdadera impredecibilidad.
+La inyección del registro R significa que este generador produce secuencias diferentes dependiendo del contexto de llamada -- cuántas instrucciones se ejecutan entre llamadas afecta a R, que se retroalimenta al estado. Para un bucle principal de demo con temporización fija, R avanza de forma predecible, pero la mezcla no lineal (ADD + XOR) aún produce buena salida. En un juego donde la entrada del jugador varía el patrón de llamadas, la contribución de R añade imprevisibilidad genuina.
 
-Gogin's verdict: **second best**. Very compact, good quality for its size.
+Veredicto de Gogin: **segundo mejor**. Muy compacto, buena calidad para su tamaño.
 
-#### XORshift de 16 bits (Mediocre)
+#### XORshift 16-bit (mediocre)
 
-Un generador XORshift de 16 bits -- la adaptacion Z80 de la conocida familia de Marsaglia:
+Un generador XORshift de 16 bits -- la adaptación para Z80 de la bien conocida familia de Marsaglia:
 
 ```z80 id:ch04_four_generators_from_the_3
 ; 16-bit XORshift PRNG
@@ -638,21 +649,21 @@ xorshift_rnd:
     ret                     ; 10 T
 ```
 
-Los generadores XORshift son rapidos y simples, pero con solo 16 bits de estado el periodo es como maximo 65.535. Mas problematico, el patron de rotacion de bits crea rayas diagonales visibles cuando la salida se mapea a pixeles. Para un campo de estrellas rapido o efecto de particulas esto puede ser aceptable. Para cualquier cosa que llene areas grandes de pantalla con "ruido", los patrones se vuelven obvios.
+Los generadores XORshift son rápidos y simples, pero con solo 16 bits de estado el período es como máximo 65.535. De forma más problemática, el patrón de rotación de bits crea rayas diagonales visibles cuando la salida se mapea a píxeles. Para un campo estelar rápido o efecto de partículas esto puede ser aceptable. Para cualquier cosa que llene grandes áreas de pantalla con "ruido", los patrones se vuelven obvios.
 
-#### Patrik Rak's CMWC Variant (Mediocre)
+#### Variante CMWC de Patrik Rak (Raxoft) (mediocre)
 
-A second CMWC variant by Patrik Rak (Raxoft), similar in principle to his version above but with a different buffer arrangement. Gogin found it produced **visible patterns at scale** -- likely due to the way the carry propagation interacts with the buffer indexing. We include it in the compilable example (`examples/prng.a80`) for completeness, but for production use, his 8-byte-buffer version above is strictly superior.
+Una segunda variante CMWC de Patrik Rak (Raxoft), similar en principio a su versión anterior pero con un arreglo de búfer diferente. Gogin encontró que producía **patrones visibles a escala** -- probablemente debido a cómo la propagación de acarreo interactúa con la indexación del búfer. La incluimos en el ejemplo compilable (`examples/prng.a80`) por completitud, pero para uso en producción, su versión de búfer de 8 bytes anterior es estrictamente superior.
 
-### El Enfoque Tribonacci de Elite
+### El enfoque Tribonacci de Elite
 
-Vale la pena una breve mencion: el legendario *Elite* (1984) uso una secuencia tipo Tribonacci para su galaxia generada proceduralmente. Tres registros retroalimentan entre si en un ciclo, produciendo secuencias deterministas pero bien distribuidas. La idea clave era la reproducibilidad -- dada la misma semilla, la misma galaxia se genera cada vez, lo que significaba que todo el universo podia "caber" en unos pocos bytes de estado del generador. David Braben e Ian Bell usaron esto para generar 8 galaxias de 256 sistemas estelares cada una a partir de un punado de bytes de semilla. La tecnica esta mas cerca de una funcion hash que de un PRNG, pero el principio -- estado pequeno, complejidad aparente grande -- es el mismo que impulsa el sizecoding de demoscene.
+Vale una breve mención: el legendario *Elite* (1984) usó una secuencia tipo Tribonacci para su galaxia generada proceduralmente. Tres registros se retroalimentan entre sí en un ciclo, produciendo secuencias deterministas pero bien distribuidas. La idea clave era la reproducibilidad -- dada la misma semilla, la misma galaxia se genera cada vez, lo que significaba que el universo entero podía "caber" en unos pocos bytes de estado del generador. David Braben e Ian Bell usaron esto para generar 8 galaxias de 256 sistemas estelares cada una desde un puñado de bytes de semilla. La técnica está más cerca de una función hash que de un PRNG, pero el principio -- estado pequeño, gran complejidad aparente -- es el mismo que impulsa el sizecoding en la demoscene.
 
-### El Generador de Galaxias de Elite: Una Mirada Mas Profunda
+### Generador de galaxias de Elite: una mirada más profunda
 
-The Tribonacci approach deserves more detail because it illustrates a key principle: **a PRNG is not just a random number source -- it is a compression algorithm.**
+El enfoque Tribonacci merece más detalle porque ilustra un principio clave: **un PRNG no es solo una fuente de números aleatorios -- es un algoritmo de compresión.**
 
-David Braben e Ian Bell necesitaban 8 galaxias de 256 sistemas estelares, cada uno con un nombre, posicion, economia, tipo de gobierno y nivel tecnologico. Almacenar todo eso explicitamente consumiria kilobytes. En su lugar, almacenaron solo una semilla de 6 bytes por galaxia y un generador determinista que expandia cada semilla en los datos completos del sistema estelar. El generador era un bucle de retroalimentacion de tres registros -- cada paso rota y aplica XOR a tres valores de 16 bits:
+David Braben e Ian Bell necesitaban 8 galaxias de 256 sistemas estelares, cada uno con un nombre, posición, economía, tipo de gobierno y nivel tecnológico. Almacenar todo eso explícitamente consumiría kilobytes. En su lugar, almacenaron solo una semilla de 6 bytes por galaxia y un generador determinista que expandía cada semilla en los datos completos del sistema estelar. El generador era un bucle de retroalimentación de tres registros -- cada paso rota y hace XOR de tres valores de 16 bits:
 
 ```z80 id:ch04_elite_s_galaxy_generator_a
 ; Elite's galaxy generator (conceptual, 6502 origin):
@@ -661,17 +672,17 @@ David Braben e Ian Bell necesitaban 8 galaxias de 256 sistemas estelares, cada u
 ;   repeat twist for each byte of star system data
 ```
 
-En el Z80, el mismo principio funciona con tres pares de registros. La operacion "twist" produce valores deterministas pero bien distribuidos. La propiedad crucial: dada la misma semilla, la misma galaxia se genera cada vez. La navegacion entre estrellas es simplemente volver a sembrar y regenerar.
+En el Z80, el mismo principio funciona con tres pares de registros. La operación "twist" produce valores deterministas pero bien distribuidos. La propiedad crucial: dada la misma semilla, la misma galaxia se genera cada vez. La navegación entre estrellas es simplemente re-sembrar y re-generar.
 
-Esta idea -- **estado pequeno, complejidad aparente grande** -- tambien impulsa el sizecoding de demoscene. Un intro de 256 bytes que llena la pantalla con patrones intrincados esta haciendo exactamente lo que Elite hizo: expandir una semilla diminuta en una salida grande y compleja a traves de un proceso determinista.
+Esta idea -- **estado pequeño, gran complejidad aparente** -- impulsa el sizecoding de la demoscene también. Una intro de 256 bytes que llena la pantalla con patrones intrincados está haciendo exactamente lo que Elite hizo: expandir una semilla diminuta en una salida grande y compleja a través de un proceso determinista.
 
-### Aleatoriedad Modelada
+### Aleatoriedad moldeada
 
-A veces quieres numeros que sean aleatorios pero sigan una distribucion especifica. Un PRNG plano uniforme da a cada valor la misma probabilidad, pero los fenomenos del mundo real raramente son uniformes: tasas de aparicion de enemigos, velocidades de particulas, alturas de terreno -- todos tienden a agruparse alrededor de valores preferidos.
+A veces quieres números que son aleatorios pero siguen una distribución específica. Un PRNG uniforme plano da a cada valor la misma probabilidad, pero los fenómenos del mundo real raramente son uniformes: tasas de aparición de enemigos, velocidades de partículas, alturas de terreno -- todos tienden a agruparse alrededor de valores preferidos.
 
 Trucos comunes en el Z80:
 
-- **Distribucion triangular** -- suma dos bytes aleatorios uniformes y desplaza a la derecha. La suma se agrupa alrededor del centro (128), produciendo variacion de "aspecto natural". Coste: dos llamadas al PRNG + ADD + SRL = ~20 T-states adicionales.
+- **Distribución triangular** -- suma dos bytes aleatorios uniformes y desplaza a la derecha. La suma se agrupa alrededor del centro (128), produciendo variación de "aspecto natural". Costo: dos llamadas PRNG + ADD + SRL = ~20 T-states extra.
 
 ```z80 id:ch04_shaped_randomness
 ; Triangular random: result clusters around 128
@@ -682,19 +693,19 @@ Trucos comunes en el Z80:
     rra                       ; divide by 2 → triangular distribution
 ```
 
-- **Muestreo por rechazo** -- genera un numero aleatorio, rechaza valores fuera de tu rango deseado. Para rangos en potencia de dos esto es gratuito (solo AND con una mascara). Para rangos arbitrarios, itera hasta que el valor encaje.
+- **Muestreo por rechazo** -- genera un número aleatorio, rechaza valores fuera de tu rango deseado. Para rangos potencia de dos esto es gratuito (simplemente AND con una máscara). Para rangos arbitrarios, repite el bucle hasta que el valor encaje.
 
-- **Tablas ponderadas** -- almacena una tabla de consulta de 256 bytes donde cada valor de salida aparece en proporcion a su probabilidad deseada. Indexa con un byte aleatorio uniforme. La tabla cuesta 256 bytes pero la consulta es instantanea (7 T-states). Perfecto cuando la distribucion es compleja y fija.
+- **Tablas ponderadas** -- almacena una tabla de consulta de 256 bytes donde cada valor de salida aparece en proporción a su probabilidad deseada. Indexa con un byte aleatorio uniforme. La tabla cuesta 256 bytes pero la búsqueda es instantánea (7 T-states). Perfecta cuando la distribución es compleja y fija.
 
-- **PRNG como funcion hash** -- alimenta datos estructurados (coordenadas, numeros de fotograma) a traves del PRNG para obtener ruido determinista. Asi es como funcionan las texturas de plasma y ruido en sizecoding: `random(x XOR y XOR frame)` da un valor de aspecto diferente por pixel por fotograma, pero es enteramente reproducible.
+- **PRNG como función hash** -- alimenta datos estructurados (coordenadas, números de fotograma) a través del PRNG para obtener ruido determinista. Así es como funcionan las texturas de plasma y ruido en sizecoding: `random(x XOR y XOR frame)` da un valor de aspecto diferente por píxel por fotograma, pero es completamente reproducible.
 
-### Semillas y Reproducibilidad
+### Semillas y reproducibilidad
 
-En una demo, la reproducibilidad es usualmente deseable: el efecto deberia verse igual cada vez que se ejecuta, porque el coder coreografio los visuales para coincidir con la musica. Siembra el PRNG una vez con un valor fijo y la secuencia es determinista.
+En una demo, la reproducibilidad es generalmente deseable: el efecto debería verse igual cada vez que se ejecuta, porque el programador coreografió los visuales para coincidir con la música. Siembra el PRNG una vez con un valor fijo y la secuencia es determinista.
 
-En un juego, la impredecibilidad importa. Estrategias comunes de sembramiento:
+En un juego, la imprevisibilidad importa. Estrategias comunes de siembra:
 
-- **FRAMES system variable ($5C78)** -- the Spectrum ROM maintains a 3-byte frame counter at address $5C78 that increments every 1/50th of a second from power-on. Reading it gives a time-dependent seed that varies with how long the machine has been running. Art-top (Artem Topchiy) recommends using it to initialise Patrik Rak's CMWC table:
+- **Variable del sistema FRAMES ($5C78)** -- la ROM del Spectrum mantiene un contador de fotogramas de 3 bytes en la dirección $5C78 que se incrementa cada 1/50 de segundo desde el encendido. Leerlo da una semilla dependiente del tiempo que varía según cuánto tiempo ha estado encendida la máquina. Art-top (Artem Topchiy) recomienda usarlo para inicializar la tabla CMWC de Patrik Rak:
 
 ```z80 id:ch04_seeds_and_reproducibility
 ; Seed Patrik Rak CMWC from FRAMES system variable
@@ -711,30 +722,30 @@ En un juego, la impredecibilidad importa. Estrategias comunes de sembramiento:
     djnz .seed_loop
 ```
 
-- **Lee R en un momento de entrada del usuario** -- el conteo exacto de instrucciones entre el reinicio y cuando el jugador presiona una tecla varia cada ejecucion. `LD A,R` en ese momento captura entropia de temporizado.
-- **Acumulacion de contador de fotogramas** -- aplica XOR del registro R a un acumulador cada fotograma durante la pantalla de titulo; usa el valor acumulado como semilla cuando el juego comienza.
-- **Combinar multiples fuentes** -- aplica XOR al R, al byte bajo de FRAMES, y un byte del bus flotante (en Spectrums 48K, leer ciertos puertos devuelve lo que la ULA esta buscando actualmente de la RAM -- una fuente de entropia posicional).
+- **Leer R en un momento de entrada del usuario** -- el conteo exacto de instrucciones entre el reinicio y que el jugador presione una tecla varía en cada ejecución. `LD A,R` en ese momento captura entropía de temporización.
+- **Acumulación de contador de fotogramas** -- haz XOR del registro R en un acumulador cada fotograma durante la pantalla de título; usa el valor acumulado como semilla cuando comience el juego.
+- **Combinar múltiples fuentes** -- haz XOR de R, el byte bajo de FRAMES, y un byte del bus flotante (en Spectrums 48K, leer ciertos puertos devuelve lo que la ULA está leyendo actualmente de la RAM -- una fuente de entropía posicional).
 
-Para demos, simplemente inicializa el estado del generador a un valor conocido y dejalo. El ejemplo compilable (`examples/prng.a80`) muestra los cuatro generadores con semillas fijas.
+Para demos, simplemente inicializa el estado del generador a un valor conocido y déjalo. El ejemplo compilable (`examples/prng.a80`) muestra los cuatro generadores con semillas fijas.
 
-### Tabla Comparativa
+### Tabla comparativa
 
-| Algorithm | Size (bytes) | Speed (T-states) | Quality | Period | Notes |
+| Algoritmo | Tamaño (bytes) | Velocidad (T-states) | Calidad | Período | Notas |
 |-----------|-------------|-------------------|---------|--------|-------|
-| Patrik Rak CMWC | ~30 + 8 table | ~170 | Excellent | ~2^66 | Best overall; 8-byte buffer |
-| Ion Random | ~15 | ~75 | Good | Depends on R | Compact; mixes R register |
-| XORshift 16 | ~25 | ~90 | Mediocre | 65,535 | Visible diagonal patterns |
-| Patrik Rak CMWC (alt) | ~35 + 10 table | ~180 | Mediocre | ~2^66 | Patterns visible at scale |
-| LD A,R alone | 2 | 9 | Poor | 128 | NOT a PRNG; use as seed only |
+| Patrik Rak CMWC | ~30 + 8 tabla | ~170 | Excelente | ~2^66 | El mejor en general; búfer de 8 bytes |
+| Ion Random | ~15 | ~75 | Buena | Depende de R | Compacto; mezcla registro R |
+| XORshift 16 | ~25 | ~90 | Mediocre | 65.535 | Patrones diagonales visibles |
+| Patrik Rak CMWC (alt) | ~35 + 10 tabla | ~180 | Mediocre | ~2^66 | Patrones visibles a escala |
+| Solo LD A,R | 2 | 9 | Pobre | 128 | NO es un PRNG; usar solo como semilla |
 
-Para la mayoria del trabajo de demoscene, el **CMWC de Patrik Rak** es el claro ganador: excelente calidad, tamano razonable y un periodo tan largo que nunca se repetira durante una demo. Si el tamano del codigo es critico (sizecoding, intros de 256 bytes), **Ion Random** empaqueta una calidad notable en 15 bytes. XORshift es un recurso de emergencia cuando necesitas algo rapido y no te importa la calidad visual.
+Para la mayoría del trabajo de la demoscene, el **CMWC de Patrik Rak** es el claro ganador: calidad excelente, tamaño razonable, y un período tan largo que nunca se repetirá durante una demo. Si el tamaño de código es crítico (sizecoding, intros de 256 bytes), **Ion Random** empaqueta una calidad notable en 15 bytes. XORshift es un respaldo cuando necesitas algo rápido y no te importa la calidad visual.
 
-> **Credits:** PRNG collection, quality assessment, and bitmap testing by **Gogin**. Patrik Rak's CMWC generator is based on George Marsaglia's Complementary Multiply-With-Carry theory. Ion Random originates from **Ion Shell** for the TI-83 calculator.
+> **Créditos:** Colección de PRNGs, evaluación de calidad y pruebas de bitmap por **Gogin**. El generador CMWC de Patrik Rak está basado en la teoría de Complemento Multiplicación-Con-Acarreo de George Marsaglia. Ion Random se origina en **Ion Shell** para la calculadora TI-83.
 
-![PRNG output — random attribute colours fill the screen, revealing the generator's statistical quality](../../build/screenshots/ch04_prng.png)
+![Salida de PRNG --- colores aleatorios de atributos llenan la pantalla, revelando la calidad estadística del generador](../../build/screenshots/ch04_prng.png)
 
 ---
 
-*Todos los conteos de ciclos en este capitulo son para temporizado Pentagon (sin estados de espera). En un Spectrum 48K estandar o Scorpion con memoria contendida, espera conteos mas altos para codigo ejecutandose en los 32K inferiores de RAM. Ver Apendice A para la referencia completa de temporizado.*
+*Todos los conteos de ciclos en este capítulo son para temporización Pentagon (sin estados de espera). En un Spectrum 48K estándar o Scorpion con memoria contendida, espera conteos más altos para código ejecutándose en los 32K inferiores de RAM. Ver Apéndice A para la referencia completa de temporización.*
 
-> **Sources:** Dark / X-Trade, "Programming Algorithms" (Spectrum Expert #01, 1997); Gogin, PRNG collection and quality assessment; Patrik Rak (Raxoft), CMWC generator; Ped7g (Peter Helcmanovsky), signed arithmetic gap identification and review
+> **Fuentes:** Dark / X-Trade, "Programming Algorithms" (Spectrum Expert #01, 1997); Gogin, colección y evaluación de calidad de PRNGs; Patrik Rak (Raxoft), generador CMWC; Ped7g (Peter Helcmanovsky), identificación del vacío de aritmética con signo y revisión
