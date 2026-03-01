@@ -139,6 +139,10 @@ EXAMPLES = [
         "frames": 30, "attrs": True,
         "note": "Decompression demo",
     }),
+    ("chapters/ch14-compression/examples/rle_intro.a80", {
+        "frames": 10, "border": True, "sna": "rle_intro.sna",
+        "note": "Ped7g's 120-byte self-modifying RLE intro (SAVESNA, 48K)",
+    }),
     # Ch15
     ("chapters/ch15-anatomy/examples/bank_inspect.a80", {
         "frames": 30, "model": "128k", "set": "EI", "skip": True,
@@ -251,16 +255,29 @@ def ensure_preloads():
         ISR_STUB.write_bytes(b'\xfb\xed\x4d')
 
 
-def compile_example(src_path):
-    """Compile .a80 to .bin with sjasmplus. Returns bin path or None."""
-    bin_path = BUILD_DIR / (src_path.stem + ".bin")
-    result = subprocess.run(
-        [SJASMPLUS, "--nologo", f"--raw={bin_path}", str(src_path)],
-        capture_output=True, text=True, timeout=10,
-    )
-    if result.returncode != 0:
-        return None, result.stderr.strip()
-    return bin_path, None
+def compile_example(src_path, sna=None):
+    """Compile .a80 to .bin (or .sna) with sjasmplus. Returns output path or None."""
+    if sna:
+        # SNA mode: source uses DEVICE + SAVESNA, compile without --raw
+        sna_path = BUILD_DIR / sna
+        result = subprocess.run(
+            [SJASMPLUS, "--nologo", str(src_path)],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return None, result.stderr.strip()
+        if not sna_path.exists():
+            return None, f"SNA not produced: {sna_path}"
+        return sna_path, None
+    else:
+        bin_path = BUILD_DIR / (src_path.stem + ".bin")
+        result = subprocess.run(
+            [SJASMPLUS, "--nologo", f"--raw={bin_path}", str(src_path)],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return None, result.stderr.strip()
+        return bin_path, None
 
 
 def take_screenshot(bin_path, png_path, opts):
@@ -270,14 +287,16 @@ def take_screenshot(bin_path, png_path, opts):
     attrs = opts.get("attrs", False)
     extra_set = opts.get("set", "")
     border = opts.get("border", False)
-
-    # Check if example needs interrupts (EI in set flags)
-    needs_isr = any(f.strip().upper() == "EI" for f in extra_set.split(",")) if extra_set else False
+    sna = opts.get("sna", None)
 
     cmd = [MZX, "--model", model]
 
-    if attrs or needs_isr:
+    if sna:
+        # SNA mode: load snapshot directly (DEVICE+SAVESNA examples)
+        cmd += ["--snapshot", str(bin_path)]
+    elif attrs or (extra_set and any(f.strip().upper() == "EI" for f in extra_set.split(","))):
         # Use --load mode: allows preloading ISR stub + attrs + code
+        needs_isr = any(f.strip().upper() == "EI" for f in extra_set.split(",")) if extra_set else False
         loads = f"{bin_path}@8000"
         if attrs:
             loads = f"{ATTRS_FILE}@5800," + loads
@@ -464,7 +483,7 @@ def main():
             opts = dict(opts, border=True)
 
         # Compile
-        bin_path, err = compile_example(src)
+        bin_path, err = compile_example(src, sna=opts.get("sna"))
         if not bin_path:
             print(f"  FAIL  {name:30s}  compile error: {err}")
             fail += 1

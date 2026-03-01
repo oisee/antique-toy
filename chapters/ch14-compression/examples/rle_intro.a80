@@ -1,0 +1,46 @@
+; Ped7g's self-modifying RLE mini-intro
+; Assemble with sjasmplus: sjasmplus rle_intro.a80
+;
+; The RLE data is a stream of (value, count) pairs read via POP BC.
+; SP walks through the data as a read pointer.
+; The db $18,$00 at the end of the data stream overwrites ld (hl),c
+; to become jr +$23, exiting the depack loop into intro_start.
+;
+; Contributed by Ped7g (Peter Helcmanovsky) — sjasmplus maintainer
+; and ZX Spectrum Next contributor. Used with permission.
+
+    DEVICE ZXSPECTRUM48, $8000
+
+target  EQU $4000
+    ORG $5B00              ; loading address → print buffer
+
+intro_data:
+    dw  target             ; initial HL value (POP HL)
+; RLE pairs: value, count (count=0 means 256 iterations)
+    .(4*3) db $AA, 0, $00, 0    ; alternating stripe pattern
+    db  $43, 32*2, $44, 32*4, $45, 32*3, $46, 32*2, $47, 32*2
+    db  $46, 32*2, $45, 32*3, $44, 32*4, $43, 32*2
+    db  $18, $00           ; data that will overwrite ld (hl),c
+                           ; creating jr rle_loop_inner+$25
+rle_start:
+    ei                     ; simulate post-LOAD BASIC environment
+    ld  sp, intro_data
+    pop hl                 ; HL = target address
+rle_loop_outer:
+    pop bc                 ; C = value, B = repeat count
+rle_loop_inner:
+    ld  (hl), c            ; ← THIS instruction gets overwritten
+    inc hl                 ;   by the $18,$00 data to become
+    djnz rle_loop_inner    ;   jr +$23, jumping to intro_start
+    jr  rle_loop_outer
+; 31 bytes of space — fill with helper code
+    ds  $1F
+intro_start:
+    assert $ == rle_loop_inner + 2 + $23
+    inc a
+    and 7
+    out (254), a           ; cycle border colours
+    jr  intro_start
+
+    SAVESNA "build/rle_intro.sna", rle_start
+    SAVEBIN "build/rle_intro.bin", intro_data, $ - intro_data

@@ -258,6 +258,8 @@ RLE also benefits from **data transposition**: if your data is a 2D block (e.g.,
 >     SAVEBIN "rle_intro.bin", intro_data, $ - intro_data
 > ```
 >
+> ![Ped7g's 120-byte self-modifying RLE intro running on ZX Spectrum --- coloured attribute stripes unpacked by a 9-byte depack loop, rainbow border from the cycling OUT (254),A](../../build/screenshots/ch14_rle_intro.png)
+>
 > **Byte count analysis.** The depack loop is 9 bytes: `pop bc` (1) + `ld (hl),c` (1) + `inc hl` (1) + `djnz` (2) + `jr` (2) + `pop hl` (1) + `ld sp,nn` (3) = 9 core + 6 setup = **15 bytes total** for a self-contained RLE decoder with built-in exit. Compare to the 12-byte minimal RLE from the previous section, which still needs external setup and a termination check.
 >
 > **Interrupt safety.** SP is used as a data pointer, so interrupts will corrupt the stack. The `ei` at the start is intentional --- in a 256-byte intro loaded from BASIC, interrupts are already enabled. The occasional interrupt writes to already-consumed data behind the SP pointer, so the depack completes correctly. For the intro code itself, SP has moved past the data and the stack works normally. But do not combine this technique with IM2 or interrupt-driven music.
