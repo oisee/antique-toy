@@ -197,7 +197,7 @@ The `tools/` directory contains Python utilities developed alongside the book:
 ## Acknowledgements
 
 **Technical reviewers and contributors:**
-- **Ped7g** (Peter Helcmanovsky) -- sjasmplus maintainer. Signed multiply gap (Ch.4), self-modifying RLE depacker (Ch.14), Z80N T-state audit, shadow register warnings, extensive code review.
+- **Ped7g** (Peter Helcmanovsky) -- sjasmplus maintainer. Signed multiply gap (Ch.4), fix-unsigned technique and Z80N implementation (Ch.4), self-modifying RLE depacker (Ch.14), Z80N T-state audit, shadow register warnings, extensive code review.
 - **Introspec** -- Illusion reverse-engineering (Hype, 2017), compression articles, Eager source discussion. Core narrative source.
 - **Rombor** -- pixel row bug in Ch.2 screen layout illustration (first external bug report).
 - **Aki** -- relayed SinDiKat Slack feedback: AY chip history corrections (Investronica/8912), PSG terminology.
