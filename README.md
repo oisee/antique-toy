@@ -12,7 +12,7 @@
 > 2. By Alice directly — where personal expertise is "good enough" or no available sources or in new areas
 > 3. Corrections and contributions on topic are welcome — PRs open
 
-**TL;DR:** 23 chapters + 10 appendices, ~184K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v17/book-a4-v17.pdf)
+**TL;DR:** 23 chapters + 10 appendices, ~184K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v23/book-a4-v23.pdf)
 
 This book lives on the **ZX Spectrum**. Most techniques -- DOWN_HL, attribute tricks, ULA timing, 128K bank juggling -- only make sense on this machine. That's where the demoscene is, and that's where the hard problems are.
 
