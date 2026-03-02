@@ -4,7 +4,7 @@
 
 In Chapter 18, we built a game loop, an entity system that tracks sixteen objects, and an input handler. But right now our player walks through walls, floats above the ground, and the enemies stand still. A game with no collisions is a screensaver. A game with no physics is a slide puzzle. A game with no AI is a sandbox with nothing to push back.
 
-This chapter adds the three systems that turn a tech demo into a game: collision detection, physics, and enemy AI. All three share a design philosophy: fake it well enough, fast enough, and nobody will know the difference. We build on the entity structure from Chapter 18 -- the 16-byte record with X/Y positions in 8.8 fixed-point, velocity in dx/dy, type, state, and flags.
+This chapter adds the three systems that turn a tech demo into a game: collision detection, physics, and enemy AI. All three share a design philosophy: fake it well enough, fast enough, and nobody will know the difference. We build on the 16-byte entity structure introduced in Chapter 18 -- X/Y positions in 8.8 fixed-point, velocity in dx/dy (each split into int+frac), type, state, flags, and bounding box dimensions.
 
 ---
 
@@ -44,7 +44,7 @@ graph TD
 
 > **Early exit saves cycles:** Most entity pairs are far apart. The first X-overlap test rejects them in ~91 T-states. Only pairs that pass all four tests (worst case: ~270 T-states) are actual collisions. Test horizontal overlap first in side-scrollers -- entities are more spread out on X than Y.
 
-![AABB collision detection: two bounding boxes with axis projections. Left panel shows overlapping boxes (collision), right panel shows separated boxes (no collision). Overlap is tested on both axes independently.](../../illustrations/output/ch19_aabb_collision.png)
+![AABB collision detection: two bounding boxes with axis projections. Left panel shows overlapping boxes (collision), right panel shows separated boxes (no collision). Overlap is tested on both axes independently.](illustrations/output/ch19_aabb_collision.png)
 
 On the Z80, we store entity positions as 8.8 fixed-point values, but for collision detection we only need the integer part -- the high byte of each coordinate. Pixel-level precision is more than enough. Here is a complete AABB collision routine:
 
@@ -823,7 +823,7 @@ ai_attack:
     ret
 ```
 
-The `find_free_entity` routine (from Chapter 18) scans for an inactive slot. If the pool is full, the shot is dropped.
+The `find_free_entity` routine scans for an inactive slot using the same linear search pattern as Chapter 18's `spawn_bullet`. If the pool is full, the shot is dropped.
 
 ### Retreat: The Reverse Chase
 
@@ -931,7 +931,7 @@ update_all_ai:
     call nz, ai_dispatch   ; 17T + handler (only if active)
 
     ; Advance to next entity
-    ld   de, ENTITY_SIZE   ; 10T  16 bytes per entity
+    ld   de, ENTITY_SIZE   ; 10T  advance to next entity
     add  ix, de            ; 15T
 
     pop  bc                ; 10T

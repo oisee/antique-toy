@@ -13,7 +13,7 @@
 ; Constants
 ; ============================================================
 MAX_ENTITIES    EQU  16
-ENTITY_SIZE     EQU  10
+ENTITY_SIZE     EQU  16
 
 ST_TITLE        EQU  0
 ST_MENU         EQU  2
@@ -33,10 +33,10 @@ INPUT_DOWN      EQU  2
 INPUT_UP        EQU  3
 INPUT_FIRE      EQU  4
 
-FLAG_ACTIVE     EQU  0
-FLAG_VISIBLE    EQU  1
+FLAG_ACTIVE     EQU  7
+FLAG_VISIBLE    EQU  4
 FLAG_COLLIDABLE EQU  2
-FLAG_FACING_L   EQU  3
+FLAG_FACING_L   EQU  1
 
 ; ============================================================
 ; Entry point
@@ -149,16 +149,19 @@ init_game:
 
     ; Player (slot 0)
     ld   ix, entity_array
-    ld   (ix+0), 0              ; X frac = 0
-    ld   (ix+1), 128            ; X pixel = 128
-    ld   (ix+2), 160            ; Y = 160
-    ld   (ix+3), TYPE_PLAYER
-    ld   (ix+4), 1              ; state = active
-    ld   (ix+5), 0              ; anim_frame
-    ld   (ix+6), 0              ; dx
-    ld   (ix+7), 0              ; dy
-    ld   (ix+8), 3              ; health = 3
-    ld   (ix+9), %00000111      ; ACTIVE + VISIBLE + COLLIDABLE
+    ld   (ix+0), 0              ; x_frac
+    ld   (ix+1), 128            ; x_int = 128
+    ld   (ix+2), 0              ; y_frac
+    ld   (ix+3), 160            ; y_int = 160
+    ld   (ix+4), TYPE_PLAYER
+    ld   (ix+5), 1              ; state = active
+    ld   (ix+6), 0              ; anim_frame
+    ld   (ix+7), 0              ; dx_frac
+    ld   (ix+8), 0              ; dx_int
+    ld   (ix+9), 0              ; dy_frac
+    ld   (ix+10), 0             ; dy_int
+    ld   (ix+11), 3             ; health = 3
+    ld   (ix+12), %10010100     ; ACTIVE + VISIBLE + COLLIDABLE
 
     ; 8 enemies (slots 1-8)
     ld   ix, entity_array + ENTITY_SIZE
@@ -167,16 +170,19 @@ init_game:
 
 .enemy_loop:
     push bc
-    ld   (ix+0), 0              ; X frac
-    ld   (ix+1), c              ; X pixel
-    ld   (ix+2), 32             ; Y = 32
-    ld   (ix+3), TYPE_ENEMY
-    ld   (ix+4), 1              ; state = active
-    ld   (ix+5), 0              ; anim_frame
-    ld   (ix+6), 1              ; dx = 1
-    ld   (ix+7), 0              ; dy = 0
-    ld   (ix+8), 1              ; health = 1
-    ld   (ix+9), %00000111      ; flags
+    ld   (ix+0), 0              ; x_frac
+    ld   (ix+1), c              ; x_int
+    ld   (ix+2), 0              ; y_frac
+    ld   (ix+3), 32             ; y_int = 32
+    ld   (ix+4), TYPE_ENEMY
+    ld   (ix+5), 1              ; state = active
+    ld   (ix+6), 0              ; anim_frame
+    ld   (ix+7), 0              ; dx_frac
+    ld   (ix+8), 1              ; dx_int = 1
+    ld   (ix+9), 0              ; dy_frac
+    ld   (ix+10), 0             ; dy_int
+    ld   (ix+11), 1             ; health = 1
+    ld   (ix+12), %10010100     ; flags
 
     ld   de, ENTITY_SIZE
     add  ix, de
@@ -253,10 +259,10 @@ update_entities:
 
 .loop:
     push bc
-    bit  FLAG_ACTIVE, (ix+9)
+    bit  FLAG_ACTIVE, (ix+12)
     jr   z, .skip
 
-    ld   a, (ix+3)              ; type
+    ld   a, (ix+4)              ; type
     call update_by_type
 
 .skip:
@@ -304,7 +310,7 @@ update_player:
     jr   nc, .x_done_r
     inc  (ix+1)
 .x_done_r:
-    res  FLAG_FACING_L, (ix+9)
+    res  FLAG_FACING_L, (ix+12)
     jr   .horiz_done
 .not_right:
     bit  INPUT_LEFT, a
@@ -315,49 +321,49 @@ update_player:
     jr   nc, .x_done_l
     dec  (ix+1)
 .x_done_l:
-    set  FLAG_FACING_L, (ix+9)
+    set  FLAG_FACING_L, (ix+12)
 .horiz_done:
 
     ; Fire bullet on press
     ld   a, (input_pressed)
     bit  INPUT_FIRE, a
     jr   z, .no_fire
-    ld   b, (ix+1)              ; player X
-    ld   c, (ix+2)              ; player Y
+    ld   b, (ix+1)              ; player x_int
+    ld   c, (ix+3)              ; player y_int
     call spawn_bullet
 .no_fire:
 
     ; Animate
-    ld   a, (ix+5)
+    ld   a, (ix+6)
     inc  a
     and  7
-    ld   (ix+5), a
+    ld   (ix+6), a
     ret
 
 ; ============================================================
 ; Enemy update (simple patrol)
 ; ============================================================
 update_enemy:
-    ld   a, (ix+1)              ; X pixel
-    add  a, (ix+6)              ; + dx
+    ld   a, (ix+1)              ; x_int
+    add  a, (ix+8)              ; + dx_int
     ld   (ix+1), a
 
     ; Bounce at screen edges
     cp   240
     jr   c, .no_bounce_r
-    ld   (ix+6), 255            ; dx = -1
+    ld   (ix+8), 255            ; dx_int = -1
     jr   .bounce_done
 .no_bounce_r:
     cp   8
     jr   nc, .bounce_done
-    ld   (ix+6), 1
+    ld   (ix+8), 1
 .bounce_done:
 
     ; Animate
-    ld   a, (ix+5)
+    ld   a, (ix+6)
     inc  a
     and  3
-    ld   (ix+5), a
+    ld   (ix+6), a
     ret
 
 ; ============================================================
@@ -365,7 +371,7 @@ update_enemy:
 ; ============================================================
 update_bullet:
     ld   a, (ix+1)
-    add  a, (ix+6)              ; + dx
+    add  a, (ix+8)              ; + dx_int
     ld   (ix+1), a
 
     cp   248
@@ -375,21 +381,21 @@ update_bullet:
     ret
 
 .deactivate:
-    ld   (ix+9), 0
+    ld   (ix+12), 0
     ret
 
 ; ============================================================
 ; Explosion update
 ; ============================================================
 update_explosion:
-    ld   a, (ix+5)
+    ld   a, (ix+6)
     inc  a
     cp   8
     jr   nc, .done
-    ld   (ix+5), a
+    ld   (ix+6), a
     ret
 .done:
-    ld   (ix+9), 0
+    ld   (ix+12), 0
     ret
 
 ; ============================================================
@@ -401,7 +407,7 @@ spawn_bullet:
     ld   d, 7
 
 .find:
-    ld   a, (ix+9)
+    ld   a, (ix+12)
     bit  FLAG_ACTIVE, a
     jr   z, .found
     ld   e, ENTITY_SIZE
@@ -413,25 +419,29 @@ spawn_bullet:
     ret
 
 .found:
-    ld   (ix+0), 0
-    ld   (ix+1), b
-    ld   (ix+2), c
-    ld   (ix+3), TYPE_BULLET
-    ld   (ix+4), 1
-    ld   (ix+5), 0
-    ld   (ix+7), 0              ; dy = 0
+    ld   (ix+0), 0              ; x_frac
+    ld   (ix+1), b              ; x_int
+    ld   (ix+2), 0              ; y_frac
+    ld   (ix+3), c              ; y_int
+    ld   (ix+4), TYPE_BULLET
+    ld   (ix+5), 1              ; state
+    ld   (ix+6), 0              ; anim_frame
+    ld   (ix+9), 0              ; dy_frac
+    ld   (ix+10), 0             ; dy_int
 
     ; Direction from player facing
-    ld   a, (entity_array + 9)
+    ld   a, (entity_array + 12)
     bit  FLAG_FACING_L, a
     jr   z, .right
-    ld   (ix+6), 252            ; dx = -4 (unsigned)
+    ld   (ix+7), 0              ; dx_frac
+    ld   (ix+8), 252            ; dx_int = -4 (unsigned)
     jr   .dir_done
 .right:
-    ld   (ix+6), 4
+    ld   (ix+7), 0              ; dx_frac
+    ld   (ix+8), 4              ; dx_int = +4
 .dir_done:
-    ld   (ix+8), 1              ; health = 1
-    ld   (ix+9), %00000111
+    ld   (ix+11), 1             ; health = 1
+    ld   (ix+12), %10010100     ; ACTIVE + VISIBLE + COLLIDABLE
 
     pop  ix
     or   a
@@ -446,7 +456,7 @@ render_entities:
 
 .loop:
     push bc
-    bit  FLAG_VISIBLE, (ix+9)
+    bit  FLAG_VISIBLE, (ix+12)
     jr   z, .skip
 
     ; Character column from X pixel
@@ -457,7 +467,7 @@ render_entities:
     and  $1F
     ld   e, a
     ; Character row from Y pixel
-    ld   a, (ix+2)
+    ld   a, (ix+3)
     rrca
     rrca
     rrca
@@ -476,7 +486,7 @@ render_entities:
     add  hl, de
 
     ; Colour by type
-    ld   a, (ix+3)
+    ld   a, (ix+4)
     add  a, a
     or   %01000000
     ld   (hl), a

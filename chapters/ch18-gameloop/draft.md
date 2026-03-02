@@ -422,98 +422,90 @@ Here is the entity structure we will use throughout the game-dev chapters:
 ```text
 Offset  Size  Name        Description
 ------  ----  ----------  -------------------------------------------
- +0     2     x           X position, 8.8 fixed-point (high=pixel, low=subpixel)
- +2     1     y           Y position, pixel (0-191)
- +3     1     type        Entity type (0=inactive, 1=player, 2=enemy, 3=bullet, ...)
- +4     1     state       Entity state (0=idle, 1=active, 2=dying, 3=dead, ...)
- +5     1     anim_frame  Current animation frame index
- +6     1     dx          Horizontal velocity (signed, fixed-point fractional)
- +7     1     dy          Vertical velocity (signed, fixed-point fractional)
- +8     1     health      Hit points remaining
- +9     1     flags       Bit flags (see below)
+ +0     1     x_frac      X sub-pixel (low byte of 8.8 fixed-point)
+ +1     1     x_int       X pixel column (high byte, 0-255)
+ +2     1     y_frac      Y sub-pixel (low byte of 8.8 fixed-point)
+ +3     1     y_int       Y pixel row (high byte, 0-191)
+ +4     1     type        Entity type (0=inactive, 1=player, 2=enemy, 3=bullet, ...)
+ +5     1     state       Entity state (0=idle, 1=active, 2=dying, 3=dead, ...)
+ +6     1     anim_frame  Current animation frame index
+ +7     1     dx_frac     Horizontal velocity, fractional part
+ +8     1     dx_int      Horizontal velocity, integer part (signed)
+ +9     1     dy_frac     Vertical velocity, fractional part
+ +10    1     dy_int      Vertical velocity, integer part (signed)
+ +11    1     health      Hit points remaining
+ +12    1     flags       Bit flags (see below)
+ +13    1     width       Bounding box width in pixels (for collision, Ch.19)
+ +14    1     height      Bounding box height in pixels (for collision, Ch.19)
+ +15    1     (reserved)
 ------  ----
- 10 bytes total per entity
+ 16 bytes total per entity
 ```
 
 Flag bits in the `flags` byte:
 
 ```text id:ch18_structure_layout_2
-Bit 0: ACTIVE      -- entity is alive and should be updated/rendered
-Bit 1: VISIBLE     -- entity should be rendered (active but invisible = logic only)
+Bit 7: ACTIVE      -- entity is alive and should be updated/rendered
+Bit 4: VISIBLE     -- entity should be rendered (active but invisible = logic only)
 Bit 2: COLLIDABLE  -- entity participates in collision detection
-Bit 3: FACING_LEFT -- horizontal facing direction
-Bit 4: INVINCIBLE  -- temporary invulnerability (player after being hit)
-Bit 5: ON_GROUND   -- entity is standing on solid ground (set by physics)
-Bit 6-7: reserved
+Bit 1: FACING_LEFT -- horizontal facing direction
+Bit 3: INVINCIBLE  -- temporary invulnerability (player after being hit)
+Bit 0: ON_GROUND   -- entity is standing on solid ground (set by physics)
+Bit 5-6: reserved
 ```
 
-### Why 10 Bytes?
+ACTIVE is at bit 7 so that `bit 7, (ix+12)` gives a fast alive check, and `ld a, (ix+12)` / `and $80` tests it with one logical instruction. ON_GROUND at bit 0 allows `bit 0, (ix+12)` for the grounded test that Chapter 19's physics will use.
 
-Ten bytes is a deliberate choice. It is small enough that 16 entities occupy only 160 bytes -- trivial in memory terms. More importantly, multiplying an entity index by 10 to find its offset is straightforward on the Z80:
+### Why 16 Bytes?
 
-```z80 id:ch18_why_10_bytes
+Sixteen bytes is a deliberate choice. It is a power of two, which makes index-to-address conversion trivial -- four left shifts instead of the multiply-by-constant decomposition that odd sizes require. Sixteen entities occupy 256 bytes, exactly one page, which simplifies certain address calculations. And all 16 bytes are used: positions, velocities, type, state, animation, health, flags, bounding box dimensions, and one reserved byte for future use. Nothing is wasted.
+
+```z80 id:ch18_why_16_bytes
 ; Calculate entity address from index in A
 ; Input: A = entity index (0-15)
 ; Output: HL = address of entity structure
-; Destroys: DE
+; Destroys: nothing extra
 get_entity_addr:
     ld   l, a               ; 4T
     ld   h, 0               ; 7T
     add  hl, hl             ; 11T  x2
-    ld   d, h               ; 4T
-    ld   e, l               ; 4T   DE = index x 2
     add  hl, hl             ; 11T  x4
     add  hl, hl             ; 11T  x8
-    add  hl, de             ; 11T  x8 + x2 = x10
+    add  hl, hl             ; 11T  x16
     ld   de, entity_array   ; 10T
-    add  hl, de             ; 11T  HL = entity_array + index * 10
+    add  hl, de             ; 11T  HL = entity_array + index * 16
     ret                     ; 10T
-    ; Total: 94T
+    ; Total: 86T
 ```
 
-The multiplication by 10 uses the standard decomposition: 10 = 8 + 2. We compute index * 2, save it, compute index * 8, and add them together. No actual multiply instruction needed -- just shifts (ADD HL,HL) and an addition.
+Four `ADD HL,HL` instructions multiply by 16. No saved copy, no two-part decomposition, no extra register needed. Compare this to multiplying by 10 (which requires saving an intermediate result in DE for the 8+2 decomposition, 94 T-states) or by 12 (8+4, same overhead). Sixteen is the sweet spot: enough room for everything Chapter 19's physics and collision code will need, with the simplest possible index arithmetic.
 
-If you chose a power-of-two size like 8 or 16 bytes per entity, the index calculation would be even simpler (three shifts for 8, four for 16). But 8 bytes is too cramped -- you would lose either velocity or health, both of which matter. And 16 bytes wastes 6 bytes per entity on padding, which adds up: 16 entities x 6 wasted bytes = 96 bytes of dead space. On the Spectrum, every byte matters. Ten bytes is the right fit for the data we actually need.
+### Both Axes in 8.8 Fixed-Point
 
-### Why 16-bit X but 8-bit Y?
+Both X and Y use 16-bit 8.8 fixed-point: the high byte is the pixel coordinate and the low byte is a sub-pixel fraction for smooth movement. This is essential for any game where objects move at fractional-pixel speeds. A character moving at 1.5 pixels per frame with only integer coordinates would alternate between 1-pixel and 2-pixel steps, producing visible judder. With 8.8 fixed-point, the movement is smooth: add $0180 each frame and the pixel position advances 1, 2, 1, 2... in a pattern the eye perceives as steady 1.5 pixels per frame.
 
-The X position is 16-bit fixed-point (8.8 format): the high byte is the pixel column (0-255) and the low byte is a sub-pixel fraction for smooth movement. This is essential for horizontal scrolling games where the player moves at fractional-pixel speeds. A character moving at 1.5 pixels per frame with only integer coordinates would alternate between 1-pixel and 2-pixel steps, producing visible judder. With 8.8 fixed-point, the movement is smooth: add 0x0180 to X each frame and the pixel position advances 1, 2, 1, 2, 1, 2... in a pattern the eye perceives as a steady 1.5 pixels per frame.
-
-The Y position is only 8 bits because the Spectrum's screen is 192 pixels tall -- a single byte covers the full range. For a game with vertical scrolling, you would promote Y to 16-bit fixed-point as well, at the cost of one extra byte per entity.
+Y needs the same precision as X. A platformer with gravity applies a small downward acceleration each frame -- without sub-pixel Y, the jump arc becomes a staircase of integer steps instead of a smooth parabola. The Spectrum's screen is 192 pixels tall, so a single byte covers the pixel range, but the sub-pixel byte at +2 (y_frac) gives gravity and jumping the resolution they need. Chapter 19's physics code relies on this.
 
 ### The 8.8 Fixed-Point System
 
-Fixed-point arithmetic was introduced in Chapter 4. Here is a quick recap of how it applies to entity movement:
+Fixed-point arithmetic was introduced in Chapter 4. Here is a quick recap of how it applies to entity movement. Both X and Y work the same way -- a 16-bit add of position and velocity, with carry propagating from the fractional byte to the pixel byte:
 
 ```z80 id:ch18_the_8_8_fixed_point_system
-; Move entity right at velocity dx
-; HL points to entity X (2 bytes: low=fractional, high=pixel)
-; A = dx (signed velocity, treated as fractional byte)
+; Move entity: add velocity to position (one axis)
+; IX = entity pointer
+; Example: X axis (same pattern for Y at offsets +2/+3 with +9/+10)
 move_entity_x:
-    ld   c, (hl)            ; 7T   load X fractional part
-    inc  hl                  ; 6T
-    ld   b, (hl)            ; 7T   load X pixel part
-    ; BC = 16-bit fixed-point X
-
-    ld   e, a               ; 4T   dx into E
-    ; Sign-extend dx into DE
-    rla                      ; 4T   carry = sign bit
-    sbc  a, a               ; 4T   A = $FF if negative, $00 if positive
-    ld   d, a               ; 4T   DE = signed 16-bit dx
-
-    ex   de, hl             ; 4T
-    add  hl, de             ; 11T  new_X = old_X + dx (16-bit add)
-    ; HL = new X position (fractional in L, pixel in H)
-
-    ; Store back
-    ld   a, l               ; 4T
-    ld   (entity_x_lo), a   ; 13T  (self-modifying, or use IX)
-    ld   a, h               ; 4T
-    ld   (entity_x_hi), a   ; 13T
+    ld   a, (ix+0)          ; 19T  x_frac
+    add  a, (ix+7)          ; 19T  + dx_frac
+    ld   (ix+0), a          ; 19T  store x_frac
+    ld   a, (ix+1)          ; 19T  x_int
+    adc  a, (ix+8)          ; 19T  + dx_int (with carry from frac)
+    ld   (ix+1), a          ; 19T  store x_int
     ret
+    ; Total: 114T per axis
 ```
 
-The beauty of fixed-point: addition and subtraction are just regular 16-bit `ADD HL,DE` operations. No special handling, no lookup tables, no multiplication. The fractional precision happens automatically because we carry the sub-pixel bits along.
+The beauty of fixed-point: the 8-bit `ADD` on the fractional bytes produces a carry that `ADC` propagates into the integer byte. No 16-bit register juggling needed -- just two adds and two stores. A velocity of ($80, $00) moves 0.5 pixels per frame; ($80, $01) moves 1.5 pixels per frame. The same pattern applies to both axes, and Chapter 19's `move_entity` routine does exactly this for X and Y in sequence.
 
 ---
 
@@ -522,12 +514,12 @@ The beauty of fixed-point: addition and subtraction are just regular 16-bit `ADD
 Entities live in a statically allocated array. No dynamic memory allocation, no linked lists, no heap. Static arrays are the standard approach on the Z80 for good reason: they are fast, predictable, and cannot fragment.
 
 ```z80 id:ch18_the_entity_array
-; Entity array: 16 entities, 10 bytes each = 160 bytes
+; Entity array: 16 entities, 16 bytes each = 256 bytes (one page)
 MAX_ENTITIES    EQU  16
-ENTITY_SIZE     EQU  10
+ENTITY_SIZE     EQU  16
 
 entity_array:
-    DS   MAX_ENTITIES * ENTITY_SIZE    ; 160 bytes, zeroed at init
+    DS   MAX_ENTITIES * ENTITY_SIZE    ; 256 bytes, zeroed at init
 ```
 
 ### Entity Slot Allocation
@@ -556,24 +548,24 @@ update_entities:
 
 .loop:
     ; Check if entity is active
-    ld   a, (ix + 9)        ; 19T  load flags byte (offset +9)
-    bit  0, a               ; 8T   test ACTIVE flag
+    ld   a, (ix + 12)       ; 19T  load flags byte (offset +12)
+    bit  7, a               ; 8T   test ACTIVE flag (bit 7)
     jr   z, .skip           ; 12/7T skip if inactive
 
     ; Entity is active -- dispatch by type
-    ld   a, (ix + 3)        ; 19T  load type byte (offset +3)
+    ld   a, (ix + 4)        ; 19T  load type byte (offset +4)
     ; Jump table dispatch based on type
     call update_by_type     ; ~200-500T depending on type
 
 .skip:
     ; Advance IX to next entity
     ld   de, ENTITY_SIZE    ; 10T
-    add  ix, de             ; 15T  IX += 10
+    add  ix, de             ; 15T  IX += 16
     djnz .loop              ; 13/8T
     ret
 ```
 
-This uses IX as the entity pointer, which is convenient because IX-indexed addressing lets you access any field by its offset: `(IX+0)` is X low, `(IX+2)` is Y, `(IX+3)` is type, and so on. The downside of IX is cost: every `LD A,(IX+n)` takes 19 T-states versus 7 for `LD A,(HL)`. For the entity update loop, which runs 16 times per frame, this overhead is acceptable. For the inner rendering loop where you touch entity data thousands of times per frame, you would copy the relevant fields into registers first.
+This uses IX as the entity pointer, which is convenient because IX-indexed addressing lets you access any field by its offset: `(IX+0)` is x_frac, `(IX+1)` is x_int, `(IX+4)` is type, `(IX+12)` is flags, and so on. The downside of IX is cost: every `LD A,(IX+n)` takes 19 T-states versus 7 for `LD A,(HL)`. For the entity update loop, which runs 16 times per frame, this overhead is acceptable. For the inner rendering loop where you touch entity data thousands of times per frame, you would copy the relevant fields into registers first.
 
 ### Update Dispatch by Type
 
@@ -625,33 +617,33 @@ update_player:
     ld   a, (input_flags)    ; 13T
     bit  INPUT_RIGHT, a      ; 8T
     jr   z, .not_right       ; 12/7T
-    ; Move right: add dx to X
-    ld   a, 2               ; 7T   dx = 2 subpixels per frame (~1 pixel/frame)
-    add  a, (ix + 0)        ; 19T  add to X fractional
+    ; Move right: add dx to X (8.8 fixed-point)
+    ld   a, 2               ; 7T   dx_frac = 2 subpixels per frame
+    add  a, (ix + 0)        ; 19T  add to x_frac
     ld   (ix + 0), a        ; 19T
     jr   nc, .no_carry_r    ; 12/7T
-    inc  (ix + 1)           ; 23T  carry into X pixel
+    inc  (ix + 1)           ; 23T  carry into x_int
 .no_carry_r:
-    res  3, (ix + 9)        ; 23T  clear FACING_LEFT flag
+    res  FLAG_FACING_L, (ix + 12) ; 23T  clear FACING_LEFT flag
     jr   .horiz_done        ; 12T
 .not_right:
     bit  INPUT_LEFT, a       ; 8T
     jr   z, .horiz_done      ; 12/7T
     ; Move left: subtract dx from X
-    ld   a, (ix + 0)        ; 19T  load X fractional
-    sub  2                   ; 7T   subtract dx
+    ld   a, (ix + 0)        ; 19T  load x_frac
+    sub  2                   ; 7T   subtract dx_frac
     ld   (ix + 0), a        ; 19T
     jr   nc, .no_borrow_l   ; 12/7T
-    dec  (ix + 1)           ; 23T  borrow from X pixel
+    dec  (ix + 1)           ; 23T  borrow from x_int
 .no_borrow_l:
-    set  3, (ix + 9)        ; 23T  set FACING_LEFT flag
+    set  FLAG_FACING_L, (ix + 12) ; 23T  set FACING_LEFT flag
 .horiz_done:
 
     ; Update animation frame (cycle every 8 frames)
-    ld   a, (ix + 5)        ; 19T  anim_frame
+    ld   a, (ix + 6)        ; 19T  anim_frame (offset +6)
     inc  a                   ; 4T
     and  7                   ; 7T   wrap 0-7
-    ld   (ix + 5), a        ; 19T
+    ld   (ix + 6), a        ; 19T
     ret
     ; Total: ~250-350T depending on input
 ```
@@ -669,7 +661,7 @@ We already have the pool -- it is the entity array. Slots 9-15 are the projectil
 ### Spawning a Bullet
 
 ```z80 id:ch18_spawning_a_bullet
-; Spawn a bullet at position (B=x_pixel, C=y)
+; Spawn a bullet at position (B=x_pixel, C=y_pixel)
 ; moving in direction determined by player facing
 ; Returns: carry set if no free slot available
 spawn_bullet:
@@ -677,12 +669,12 @@ spawn_bullet:
     ld   d, SLOT_PROJ_LAST - SLOT_PROJ_FIRST + 1  ; 7 slots to check
 
 .find_slot:
-    ld   a, (ix + 9)        ; 19T  flags
-    bit  0, a               ; 8T   ACTIVE?
+    ld   a, (ix + 12)       ; 19T  flags
+    bit  7, a               ; 8T   ACTIVE?
     jr   z, .found          ; 12/7T found an inactive slot
 
     push de                 ; 11T  save loop counter (D)
-    ld   de, ENTITY_SIZE    ; 10T  DE = 10 (D=0, E=10)
+    ld   de, ENTITY_SIZE    ; 10T
     add  ix, de             ; 15T  next slot
     pop  de                 ; 10T  restore loop counter
     dec  d                  ; 4T
@@ -694,25 +686,29 @@ spawn_bullet:
 
 .found:
     ; Fill in the bullet entity
-    ld   (ix + 0), 0        ; fractional X = 0
-    ld   (ix + 1), b        ; pixel X = B
-    ld   (ix + 2), c        ; Y = C
-    ld   (ix + 3), TYPE_BULLET ; type
-    ld   (ix + 4), 1        ; state = active
-    ld   (ix + 5), 0        ; anim_frame = 0
-    ld   (ix + 8), 1        ; health = 1 (dies on first collision)
+    ld   (ix + 0), 0        ; x_frac = 0
+    ld   (ix + 1), b        ; x_int = B
+    ld   (ix + 2), 0        ; y_frac = 0
+    ld   (ix + 3), c        ; y_int = C
+    ld   (ix + 4), TYPE_BULLET ; type
+    ld   (ix + 5), 1        ; state = active
+    ld   (ix + 6), 0        ; anim_frame = 0
+    ld   (ix + 11), 1       ; health = 1 (dies on first collision)
 
     ; Set velocity based on player facing
-    ld   a, (entity_array + 9)  ; player flags
-    bit  3, a               ; FACING_LEFT?
+    ld   a, (entity_array + 12) ; player flags
+    bit  FLAG_FACING_L, a   ; FACING_LEFT?
     jr   z, .fire_right
-    ld   (ix + 6), -4       ; dx = -4 (fast, leftward)
+    ld   (ix + 7), 0        ; dx_frac = 0
+    ld   (ix + 8), -4       ; dx_int = -4 (fast, leftward)
     jr   .set_flags
 .fire_right:
-    ld   (ix + 6), 4        ; dx = +4 (fast, rightward)
+    ld   (ix + 7), 0        ; dx_frac = 0
+    ld   (ix + 8), 4        ; dx_int = +4 (fast, rightward)
 .set_flags:
-    ld   (ix + 7), 0        ; dy = 0 (horizontal bullet)
-    ld   (ix + 9), %00000111  ; flags: ACTIVE + VISIBLE + COLLIDABLE
+    ld   (ix + 9), 0        ; dy_frac = 0
+    ld   (ix + 10), 0       ; dy_int = 0 (horizontal bullet)
+    ld   (ix + 12), %10010100 ; flags: ACTIVE + VISIBLE + COLLIDABLE
     or   a                   ; clear carry (success)
     ret
 ```
@@ -724,11 +720,11 @@ When a bullet leaves the screen or an explosion finishes its animation, deactiva
 ```z80 id:ch18_deactivating_an_entity
 ; Deactivate entity at IX
 deactivate_entity:
-    ld   (ix + 9), 0        ; 19T  clear all flags (ACTIVE=0)
+    ld   (ix + 12), 0       ; 19T  clear all flags (ACTIVE=0)
     ret
 ```
 
-That is it. Next frame, the update loop sees ACTIVE=0 and skips the slot. The slot is now available for the next `spawn_bullet` call to reuse.
+That is it. Next frame, the update loop sees bit 7 of flags clear and skips the slot. The slot is now available for the next `spawn_bullet` call to reuse.
 
 ### Bullet Update Handler
 
@@ -736,24 +732,17 @@ That is it. Next frame, the update loop sees ACTIVE=0 and skips the slot. The sl
 ; Update a bullet entity
 ; IX = entity pointer
 update_bullet:
-    ; Move horizontally
-    ld   a, (ix + 6)        ; 19T  dx
-    ld   e, a               ; 4T
-    ; Sign-extend
-    rla                      ; 4T
-    sbc  a, a               ; 4T
-    ld   d, a               ; 4T   DE = signed 16-bit dx
-
-    ld   l, (ix + 0)        ; 19T  X lo
-    ld   h, (ix + 1)        ; 19T  X hi
-    add  hl, de             ; 11T  new X
-    ld   (ix + 0), l        ; 19T
-    ld   (ix + 1), h        ; 19T
+    ; Move horizontally (8.8 fixed-point add)
+    ld   a, (ix + 0)        ; 19T  x_frac
+    add  a, (ix + 7)        ; 19T  + dx_frac
+    ld   (ix + 0), a        ; 19T
+    ld   a, (ix + 1)        ; 19T  x_int
+    adc  a, (ix + 8)        ; 19T  + dx_int (with carry)
+    ld   (ix + 1), a        ; 19T
 
     ; Check screen bounds (0-255 pixel range)
-    ld   a, h               ; 4T   pixel X
     or   a                   ; 4T
-    jr   z, .off_screen     ; boundary check: if X=0, leftward bullet exited
+    jr   z, .off_screen     ; if x_int=0, leftward bullet exited
     cp   248                ; 7T   near right edge?
     jr   nc, .off_screen    ; past right boundary
 
@@ -762,7 +751,7 @@ update_bullet:
 
 .off_screen:
     ; Deactivate
-    ld   (ix + 9), 0        ; clear flags
+    ld   (ix + 12), 0       ; clear flags
     ret
     ; Total: ~170T active, ~190T when deactivating
 ```
@@ -771,7 +760,7 @@ update_bullet:
 
 Seven projectile slots (indices 9-15) might sound limited. In practice, it is more than enough for most Spectrum games. Consider: a bullet that crosses the full screen width (256 pixels) at 4 pixels per frame takes 64 frames -- over a second. If the player fires once every 8 frames (a rapid fire rate), at most 8 bullets can exist simultaneously. Seven slots with occasional spawn failures (the bullet simply does not fire that frame) feels natural, not buggy. The player is unlikely to notice a missed bullet at the edge of their fire rate.
 
-If you need more, expand the entity array. But be aware of the cost: each additional entity adds ~160 T-states to the worst-case update loop (when active) and ~50 T-states even when inactive (the ACTIVE flag check and the IX advance still run). Thirty-two entities with all active would consume roughly 16,000 T-states in the update loop alone -- a quarter of the frame budget before you have rendered a single pixel.
+If you need more, expand the entity array. But be aware of the cost: each additional entity adds ~160 T-states to the worst-case update loop (when active) and ~50 T-states even when inactive (the ACTIVE flag check and the IX advance still run). Thirty-two entities with all active would consume roughly 16,000 T-states in the update loop alone -- a quarter of the frame budget before you have rendered a single pixel. Memory is not an issue -- 32 entities at 16 bytes each is 512 bytes, still trivial.
 
 On the Agon, you can afford larger pools. With 360,000 T-states per frame and hardware sprite rendering, 64 or even 128 entities are feasible.
 
@@ -786,17 +775,17 @@ Explosions, score popups, and particle effects use the same entity slots as bull
 ; IX = entity pointer
 update_explosion:
     ; Advance animation frame
-    ld   a, (ix + 5)        ; 19T  anim_frame
+    ld   a, (ix + 6)        ; 19T  anim_frame (offset +6)
     inc  a                   ; 4T
     cp   8                   ; 7T   8 frames of animation
     jr   nc, .done          ; 12/7T animation complete
 
-    ld   (ix + 5), a        ; 19T  store new frame
+    ld   (ix + 6), a        ; 19T  store new frame
     ret
 
 .done:
     ; Animation complete -- deactivate
-    ld   (ix + 9), 0        ; 19T  clear flags
+    ld   (ix + 12), 0       ; 19T  clear flags
     ret
 ```
 
@@ -806,8 +795,8 @@ To spawn an explosion when an enemy dies:
 ; Spawn explosion at the enemy's position
 ; IX currently points to the dying enemy
 spawn_explosion_at_entity:
-    ld   b, (ix + 1)        ; enemy's X pixel
-    ld   c, (ix + 2)        ; enemy's Y
+    ld   b, (ix + 1)        ; enemy's x_int
+    ld   c, (ix + 3)        ; enemy's y_int
 
     ; Find a free projectile/effect slot
     push ix
@@ -815,8 +804,8 @@ spawn_explosion_at_entity:
     ld   d, SLOT_PROJ_LAST - SLOT_PROJ_FIRST + 1
 
 .find:
-    ld   a, (ix + 9)
-    bit  0, a
+    ld   a, (ix + 12)
+    bit  7, a
     jr   z, .got_slot
     ld   e, ENTITY_SIZE
     add  ix, de
@@ -826,16 +815,19 @@ spawn_explosion_at_entity:
     ret                      ; no free slot -- skip explosion
 
 .got_slot:
-    ld   (ix + 0), 0        ; X fractional
-    ld   (ix + 1), b        ; X pixel
-    ld   (ix + 2), c        ; Y
-    ld   (ix + 3), TYPE_EXPLOSION
-    ld   (ix + 4), 1        ; state = active
-    ld   (ix + 5), 0        ; anim_frame = 0
-    ld   (ix + 6), 0        ; dx = 0 (stationary)
-    ld   (ix + 7), 0        ; dy = 0
-    ld   (ix + 8), 0        ; health = 0 (not collidable in a meaningful way)
-    ld   (ix + 9), %00000011 ; ACTIVE + VISIBLE, not COLLIDABLE
+    ld   (ix + 0), 0        ; x_frac
+    ld   (ix + 1), b        ; x_int
+    ld   (ix + 2), 0        ; y_frac
+    ld   (ix + 3), c        ; y_int
+    ld   (ix + 4), TYPE_EXPLOSION
+    ld   (ix + 5), 1        ; state = active
+    ld   (ix + 6), 0        ; anim_frame = 0
+    ld   (ix + 7), 0        ; dx_frac = 0 (stationary)
+    ld   (ix + 8), 0        ; dx_int = 0
+    ld   (ix + 9), 0        ; dy_frac = 0
+    ld   (ix + 10), 0       ; dy_int = 0
+    ld   (ix + 11), 0       ; health = 0
+    ld   (ix + 12), %10010000 ; ACTIVE + VISIBLE, not COLLIDABLE
     pop  ix
     ret
 ```
@@ -855,7 +847,7 @@ Here is the complete game skeleton that ties everything together. This is a comp
 ; Constants
 ; ============================================================
 MAX_ENTITIES    EQU  16
-ENTITY_SIZE     EQU  10
+ENTITY_SIZE     EQU  16
 
 STATE_TITLE     EQU  0
 STATE_MENU      EQU  2
@@ -875,10 +867,10 @@ INPUT_DOWN      EQU  2
 INPUT_UP        EQU  3
 INPUT_FIRE      EQU  4
 
-FLAG_ACTIVE     EQU  0
-FLAG_VISIBLE    EQU  1
+FLAG_ACTIVE     EQU  7
+FLAG_VISIBLE    EQU  4
 FLAG_COLLIDABLE EQU  2
-FLAG_FACING_L   EQU  3
+FLAG_FACING_L   EQU  1
 
 ; ============================================================
 ; Entry point
@@ -1026,16 +1018,19 @@ init_game:
 
     ; Set up player (slot 0)
     ld   ix, entity_array
-    ld   (ix + 0), 0        ; X fractional = 0
-    ld   (ix + 1), 128      ; X pixel = 128 (centre)
-    ld   (ix + 2), 160      ; Y = 160 (near bottom)
-    ld   (ix + 3), TYPE_PLAYER
-    ld   (ix + 4), 1        ; state = active
-    ld   (ix + 5), 0        ; anim_frame
-    ld   (ix + 6), 0        ; dx
-    ld   (ix + 7), 0        ; dy
-    ld   (ix + 8), 3        ; health = 3
-    ld   (ix + 9), %00000111 ; ACTIVE + VISIBLE + COLLIDABLE
+    ld   (ix + 0), 0        ; x_frac = 0
+    ld   (ix + 1), 128      ; x_int = 128 (centre)
+    ld   (ix + 2), 0        ; y_frac = 0
+    ld   (ix + 3), 160      ; y_int = 160 (near bottom)
+    ld   (ix + 4), TYPE_PLAYER
+    ld   (ix + 5), 1        ; state = active
+    ld   (ix + 6), 0        ; anim_frame
+    ld   (ix + 7), 0        ; dx_frac
+    ld   (ix + 8), 0        ; dx_int
+    ld   (ix + 9), 0        ; dy_frac
+    ld   (ix + 10), 0       ; dy_int
+    ld   (ix + 11), 3       ; health = 3
+    ld   (ix + 12), %10010100 ; ACTIVE + VISIBLE + COLLIDABLE
 
     ; Set up 8 enemies (slots 1-8) in a formation
     ld   ix, entity_array + ENTITY_SIZE   ; slot 1
@@ -1043,16 +1038,19 @@ init_game:
     ld   c, 24              ; starting X pixel
 
 .enemy_loop:
-    ld   (ix + 0), 0        ; X fractional
-    ld   (ix + 1), c        ; X pixel
-    ld   (ix + 2), 32       ; Y = 32 (near top)
-    ld   (ix + 3), TYPE_ENEMY
-    ld   (ix + 4), 1        ; state = active
-    ld   (ix + 5), 0        ; anim_frame
-    ld   (ix + 6), 1        ; dx = 1 (moving right slowly)
-    ld   (ix + 7), 0        ; dy = 0
-    ld   (ix + 8), 1        ; health = 1
-    ld   (ix + 9), %00000111 ; ACTIVE + VISIBLE + COLLIDABLE
+    ld   (ix + 0), 0        ; x_frac
+    ld   (ix + 1), c        ; x_int
+    ld   (ix + 2), 0        ; y_frac
+    ld   (ix + 3), 32       ; y_int = 32 (near top)
+    ld   (ix + 4), TYPE_ENEMY
+    ld   (ix + 5), 1        ; state = active
+    ld   (ix + 6), 0        ; anim_frame
+    ld   (ix + 7), 0        ; dx_frac
+    ld   (ix + 8), 1        ; dx_int = 1 (moving right slowly)
+    ld   (ix + 9), 0        ; dy_frac
+    ld   (ix + 10), 0       ; dy_int = 0
+    ld   (ix + 11), 1       ; health = 1
+    ld   (ix + 12), %10010100 ; ACTIVE + VISIBLE + COLLIDABLE
 
     ; Advance to next slot and X position
     ld   de, ENTITY_SIZE
@@ -1137,11 +1135,11 @@ update_entities:
 
 .loop:
     push bc
-    ld   a, (ix + 9)        ; flags
+    ld   a, (ix + 12)       ; flags
     bit  FLAG_ACTIVE, a
     jr   z, .skip
 
-    ld   a, (ix + 3)        ; type
+    ld   a, (ix + 4)        ; type
     call update_by_type
 
 .skip:
@@ -1189,7 +1187,7 @@ update_player:
     jr   nc, .x_done_r
     inc  (ix + 1)
 .x_done_r:
-    res  FLAG_FACING_L, (ix + 9)
+    res  FLAG_FACING_L, (ix + 12)
     jr   .horiz_done
 .not_right:
     bit  INPUT_LEFT, a
@@ -1200,58 +1198,58 @@ update_player:
     jr   nc, .x_done_l
     dec  (ix + 1)
 .x_done_l:
-    set  FLAG_FACING_L, (ix + 9)
+    set  FLAG_FACING_L, (ix + 12)
 .horiz_done:
 
     ; Fire bullet on press (edge-detected)
     ld   a, (input_pressed)
     bit  INPUT_FIRE, a
     jr   z, .no_fire
-    ld   b, (ix + 1)        ; player X pixel
-    ld   c, (ix + 2)        ; player Y
+    ld   b, (ix + 1)        ; player x_int
+    ld   c, (ix + 3)        ; player y_int
     call spawn_bullet
 .no_fire:
 
     ; Animate
-    ld   a, (ix + 5)
+    ld   a, (ix + 6)
     inc  a
     and  7
-    ld   (ix + 5), a
+    ld   (ix + 6), a
     ret
 
 ; ============================================================
 ; Enemy update (simple patrol)
 ; ============================================================
 update_enemy:
-    ; Move by dx
-    ld   a, (ix + 6)        ; dx
-    add  a, (ix + 1)        ; add to X pixel
+    ; Move by dx_int (integer-only for simple patrol)
+    ld   a, (ix + 8)        ; dx_int
+    add  a, (ix + 1)        ; add to x_int
     ld   (ix + 1), a
 
     ; Bounce at screen edges
     cp   240
     jr   c, .no_bounce_r
-    ld   (ix + 6), -1       ; reverse direction
+    ld   (ix + 8), -1       ; reverse direction
     jr   .bounce_done
 .no_bounce_r:
     cp   8
     jr   nc, .bounce_done
-    ld   (ix + 6), 1        ; reverse direction
+    ld   (ix + 8), 1        ; reverse direction
 .bounce_done:
 
     ; Animate
-    ld   a, (ix + 5)
+    ld   a, (ix + 6)
     inc  a
     and  3                   ; 4-frame animation cycle
-    ld   (ix + 5), a
+    ld   (ix + 6), a
     ret
 
 ; ============================================================
 ; Bullet update
 ; ============================================================
 update_bullet:
-    ld   a, (ix + 6)        ; dx
-    add  a, (ix + 1)        ; add to X pixel (simplified: integer movement)
+    ld   a, (ix + 8)        ; dx_int
+    add  a, (ix + 1)        ; add to x_int (simplified: integer movement)
     ld   (ix + 1), a
 
     ; Off screen?
@@ -1262,38 +1260,38 @@ update_bullet:
     ret
 
 .deactivate:
-    ld   (ix + 9), 0        ; clear all flags
+    ld   (ix + 12), 0       ; clear all flags
     ret
 
 ; ============================================================
 ; Explosion update
 ; ============================================================
 update_explosion:
-    ld   a, (ix + 5)        ; anim_frame
+    ld   a, (ix + 6)        ; anim_frame
     inc  a
     cp   8                   ; 8 frames
     jr   nc, .done
-    ld   (ix + 5), a
+    ld   (ix + 6), a
     ret
 .done:
-    ld   (ix + 9), 0
+    ld   (ix + 12), 0
     ret
 
 ; ============================================================
 ; Spawn bullet
 ; ============================================================
 spawn_bullet:
-    ; B = x pixel, C = y
+    ; B = x_int, C = y_int
     push ix
     ld   ix, entity_array + (9 * ENTITY_SIZE)   ; first projectile slot
     ld   d, 7               ; 7 slots to search
 
 .find:
-    ld   a, (ix + 9)
+    ld   a, (ix + 12)
     bit  FLAG_ACTIVE, a
     jr   z, .found
     push de                  ; save loop counter in D
-    ld   de, ENTITY_SIZE     ; DE = 10 (D=0, E=10)
+    ld   de, ENTITY_SIZE
     add  ix, de
     pop  de                  ; restore loop counter
     dec  d
@@ -1304,25 +1302,29 @@ spawn_bullet:
     ret
 
 .found:
-    ld   (ix + 0), 0
-    ld   (ix + 1), b
-    ld   (ix + 2), c
-    ld   (ix + 3), TYPE_BULLET
-    ld   (ix + 4), 1
-    ld   (ix + 5), 0
-    ld   (ix + 7), 0        ; dy = 0
+    ld   (ix + 0), 0        ; x_frac
+    ld   (ix + 1), b        ; x_int
+    ld   (ix + 2), 0        ; y_frac
+    ld   (ix + 3), c        ; y_int
+    ld   (ix + 4), TYPE_BULLET
+    ld   (ix + 5), 1        ; state
+    ld   (ix + 6), 0        ; anim_frame
+    ld   (ix + 9), 0        ; dy_frac = 0
+    ld   (ix + 10), 0       ; dy_int = 0
 
     ; Direction from player facing
-    ld   a, (entity_array + 9)   ; player flags
+    ld   a, (entity_array + 12)  ; player flags
     bit  FLAG_FACING_L, a
     jr   z, .right
-    ld   (ix + 6), -4       ; dx = -4
+    ld   (ix + 7), 0        ; dx_frac
+    ld   (ix + 8), -4       ; dx_int = -4
     jr   .dir_done
 .right:
-    ld   (ix + 6), 4        ; dx = +4
+    ld   (ix + 7), 0        ; dx_frac
+    ld   (ix + 8), 4        ; dx_int = +4
 .dir_done:
-    ld   (ix + 8), 1        ; health = 1
-    ld   (ix + 9), %00000111 ; ACTIVE + VISIBLE + COLLIDABLE
+    ld   (ix + 11), 1       ; health = 1
+    ld   (ix + 12), %10010100 ; ACTIVE + VISIBLE + COLLIDABLE
 
     pop  ix
     or   a                   ; clear carry
@@ -1341,20 +1343,20 @@ render_entities:
 
 .loop:
     push bc
-    ld   a, (ix + 9)
+    ld   a, (ix + 12)
     bit  FLAG_VISIBLE, a
     jr   z, .skip
 
     ; Draw a 1-character coloured block at entity position.
     ; For real sprite rendering, see Chapter 16 (OR+AND masks,
     ; pre-shifted sprites, compiled sprites, dirty rectangles).
-    ld   a, (ix + 1)        ; X pixel
+    ld   a, (ix + 1)        ; x_int
     rrca                     ; /2
     rrca                     ; /4
     rrca                     ; /8 = character column
     and  $1F                 ; mask to 0-31
     ld   e, a
-    ld   a, (ix + 2)        ; Y pixel
+    ld   a, (ix + 3)        ; y_int
     rrca
     rrca
     rrca
@@ -1373,7 +1375,7 @@ render_entities:
     add  hl, de             ; HL = attribute address
 
     ; Colour by type
-    ld   a, (ix + 3)        ; type
+    ld   a, (ix + 4)        ; type
     add  a, a               ; type * 2 (crude colour mapping)
     or   %01000000           ; BRIGHT bit
     ld   (hl), a            ; write attribute
@@ -1391,7 +1393,7 @@ render_entities:
 game_state:     DB   STATE_TITLE
 
 entity_array:
-    DS   MAX_ENTITIES * ENTITY_SIZE, 0
+    DS   MAX_ENTITIES * ENTITY_SIZE, 0  ; 256 bytes
 ```
 
 This skeleton compiles, runs, and does something visible: coloured blocks move across the attribute grid. The player block responds to QAOP controls. Pressing SPACE spawns bullets that fly across the screen. Enemies bounce between the screen edges. When a bullet exits the screen, its slot frees up for the next shot.
@@ -1430,11 +1432,11 @@ For Spectrum games, fixed 50 fps is almost universally the right choice. The har
 
 On the Agon, with its larger budget, you are even less likely to need variable timing. Fix the frame rate at 50 or 60 fps and keep life simple.
 
-### Entity Size: Lean vs Generous
+### Entity Size: 16 Bytes vs Larger
 
-Our 10-byte entity structure is lean. Some commercial Spectrum games used 16 or even 32 bytes per entity, storing additional fields like previous position (for dirty-rectangle erasure), sprite address, collision box dimensions, AI timer, and more.
+Our 16-byte entity structure is a good fit for the data we need: positions, velocities, type, state, animation, health, flags, and bounding box dimensions for collision detection. Some commercial Spectrum games used 32 bytes or more per entity, storing additional fields like previous position (for dirty-rectangle erasure), sprite address, AI timer, and more.
 
-The trade-off is iteration speed versus field access. Our 16-entity array takes 160 bytes and the full update loop runs in ~8,000 T-states. A 32-byte structure with 16 entities takes 512 bytes (still small) but the iteration overhead grows because IX advances by 32 each step, and indexed accesses to fields at high offsets like `(IX+28)` take the same 19 T-states but are harder to keep track of.
+The trade-off is iteration speed versus field access. Our 16-entity array takes 256 bytes (one page) and the full update loop runs in ~8,000 T-states. A 32-byte structure with 16 entities takes 512 bytes (still small) but the iteration overhead grows because IX advances by 32 each step, and indexed accesses to fields at high offsets like `(IX+28)` take the same 19 T-states but are harder to keep track of.
 
 If you need more per-entity data, consider splitting the structure: a compact "hot" array (position, type, flags -- the fields touched every frame) and a parallel "cold" array (sprite address, AI state, score value -- fields accessed only when needed). This is the same structure-of-arrays versus array-of-structures trade-off that modern game engines face, applied at the Z80 scale.
 
@@ -1446,10 +1448,10 @@ But in the rendering loop, where you might touch 4-6 entity fields for each of 8
 
 ```z80 id:ch18_when_to_use_hl_instead_of_ix
     ; Copy entity fields to registers for fast rendering
-    ld   l, (ix + 0)        ; 19T  X lo
-    ld   h, (ix + 1)        ; 19T  X hi
-    ld   c, (ix + 2)        ; 19T  Y
-    ld   a, (ix + 5)        ; 19T  anim_frame
+    ld   l, (ix + 0)        ; 19T  x_frac
+    ld   h, (ix + 1)        ; 19T  x_int
+    ld   c, (ix + 3)        ; 19T  y_int
+    ld   a, (ix + 6)        ; 19T  anim_frame
     ; Now render using H (X pixel), C (Y), A (frame)
     ; All subsequent accesses are register-to-register: 4T each
 ```
@@ -1466,7 +1468,7 @@ Four IX accesses at 19T = 76T up front, then the entire render routine uses 4T r
 
 - **Input reading** on the Spectrum uses `IN A,(C)` to poll keyboard half-rows through port `$FE`. Five keys (QAOP + SPACE) cost roughly 220 T-states to read. The Kempston joystick is a single 11T port read. Edge detection (press vs hold) uses XOR between current and previous frames.
 
-- The **entity structure** is 10 bytes: X (16-bit fixed-point), Y, type, state, anim_frame, dx, dy, health, flags. Sixteen entities occupy 160 bytes. Multiplication by 10 for index-to-address conversion uses the decomposition 10 = 8 + 2.
+- The **entity structure** is 16 bytes: X and Y (both 8.8 fixed-point), type, state, anim_frame, dx and dy (both int+frac), health, flags, width, height, and one reserved byte. Sixteen entities occupy 256 bytes (one page). Multiplication by 16 for index-to-address conversion is four left shifts -- the simplest possible power-of-two arithmetic.
 
 - The **entity array** is statically allocated with fixed slot assignments: slot 0 for the player, slots 1-8 for enemies, slots 9-15 for projectiles and effects. Iteration checks the ACTIVE flag and dispatches to per-type handlers via a second jump table.
 
@@ -1476,7 +1478,7 @@ Four IX accesses at 19T = 76T up front, then the entire render routine uses 4T r
 
 - The Agon Light 2 uses the same architecture with more headroom. MOS `waitvblank` replaces `HALT`, PS/2 keyboard replaces half-row scanning, hardware sprites replace CPU blitting. The entity update loop is no longer the bottleneck.
 
-- The practical skeleton in this chapter runs a state machine, 16 entities (1 player + 8 enemies + 7 bullet/effect slots), input with edge detection, per-type update handlers, and a minimal attribute-block renderer. It is the chassis that Chapters 16 (sprites), 17 (scrolling), 19 (collisions), and 11 (sound) plug into.
+- The practical skeleton in this chapter runs a state machine, 16 entities (1 player + 8 enemies + 7 bullet/effect slots), input with edge detection, per-type update handlers, and a minimal attribute-block renderer. The 16-byte entity structure carries forward directly into Chapter 19's collision detection and physics -- same offsets, same flags, no refactoring needed. This skeleton is the chassis that Chapters 16 (sprites), 17 (scrolling), 19 (collisions), and 11 (sound) plug into.
 
 ---
 
