@@ -90,7 +90,7 @@ A game is not one loop -- it is several. The title screen has its own loop (anim
 
 The cleanest way to organise these is a **state machine**: a variable that tracks which state the game is in, and a table of handler addresses -- one per state.
 
-![Game state machine: Title, Menu, Game, Pause, and Game Over states connected by labelled transitions. Each state runs its own loop; transitions happen via a jump table.](../../illustrations/output/ch18_state_machine.png)
+![Game state machine: Title, Menu, Game, Pause, and Game Over states connected by labelled transitions. Each state runs its own loop; transitions happen via a jump table.](illustrations/output/ch18_state_machine.png)
 
 ### State Definitions
 
@@ -1412,7 +1412,7 @@ The key differences:
 
 **Entity budget.** With ~360,000 T-states per frame and hardware sprite rendering, the entity update loop is no longer a bottleneck. You could update 64 entities with complex AI and still use under 10% of the frame budget. The limiting factor on the Agon is VDP sprite count per scanline (typically 16-32 hardware sprites visible on the same line) rather than CPU time.
 
-**Rendering.** The Agon's VDP handles sprite rendering. Instead of manually blitting pixels into screen memory (Chapter 16's six methods), you issue VDU commands to position hardware sprites. The CPU cost per sprite drops from ~1,200 T-states (OR+AND blit on Spectrum) to ~50-100 T-states (sending a VDU position command). This frees enormous CPU time for game logic.
+**Rendering.** The Agon's VDP handles sprite rendering. Instead of manually blitting pixels into screen memory (Chapter 16's six methods), you issue VDU commands to position hardware sprites. The CPU cost per sprite drops from ~2,400 T-states (OR+AND blit on Spectrum) to ~50-100 T-states (sending a VDU position command). This frees enormous CPU time for game logic.
 
 **Memory.** The Agon has 512KB of flat memory -- no banking, no contended regions. Your entity array, lookup tables, sprite data, level maps, and music can all coexist without the bank-switching gymnastics that Chapter 15 describes for the Spectrum 128K.
 

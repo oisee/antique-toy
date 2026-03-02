@@ -456,7 +456,7 @@ When a tile boundary is crossed, the column copy can be spread across two frames
 
 Ironclaw uses OR+AND masked sprites (Chapter 16, method 2) for all game entities. This is the standard technique: for each sprite pixel, AND with a mask byte to clear the background, then OR with the sprite data to set the pixels.
 
-Each 16x16 sprite has four pre-shifted copies (Chapter 16, method 3), one for each 2-pixel horizontal alignment. This reduces per-pixel shifting from a runtime operation to a table lookup. The cost: each sprite frame requires 4 variants x 16 lines x 3 bytes/line (2 bytes data + 1 byte mask, widened to 3 bytes to handle shift overflow) = 192 bytes. But the rendering speed drops from ~1,500 T-states to ~1,000 T-states per sprite, and with 8-10 sprites on screen, that savings adds up.
+Each 16x16 sprite has four pre-shifted copies (Chapter 16, method 3), one for each 2-pixel horizontal alignment. This reduces per-pixel shifting from a runtime operation to a table lookup. The cost: each sprite frame requires 4 variants x 16 lines x 4 bytes/line (2 bytes data + 2 bytes mask, widened to handle shift overflow) = 256 bytes. But the rendering speed drops from ~1,500 T-states to ~1,000 T-states per sprite, and with 8-10 sprites on screen, that savings adds up.
 
 Pre-shifted sprite data lives in bank 3. During the sprite rendering phase, the renderer pages in bank 3, iterates through all active entities, and draws each one:
 

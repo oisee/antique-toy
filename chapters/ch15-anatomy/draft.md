@@ -195,7 +195,7 @@ Interrupt ──┐
 Top border  │  64 lines × 224T = 14,336T   No screen reads. No contention.
             │
 Active      │ 192 lines × 224T = 43,008T   ULA reads screen memory.
-display     │                                Contention on all RAM.
+display     │                                Contention on $4000-$7FFF.
             │
 Bottom      │  56 lines × 224T = 12,544T   No screen reads. No contention.
 border      │
@@ -245,7 +245,7 @@ Practical budgets with a music player running:
 |---------|-------|-------------------|----------------------------------|
 | Pentagon | 71,680 | ~66,000--68,000 | ~66,000--68,000 (no contention) |
 | 128K | 70,908 | ~65,000--67,000 | ~55,000--60,000 (screen writes during active display) |
-| 48K | 69,888 | ~64,000--66,000 | ~50,000--55,000 (all RAM contended) |
+| 48K | 69,888 | ~64,000--66,000 | ~55,000--60,000 ($4000--$7FFF contended) |
 
 When this book says "frame budget of ~70,000 T-states," it means the total. When planning your inner loops, budget for the practical figure -- typically 65,000--68,000 on Pentagon with music.
 
@@ -379,7 +379,7 @@ The Agon's defining characteristic is the split between the **eZ80** (your CPU) 
                         +-----+-----+
                               |
                           UART serial
-                          (384 Kbaud)
+                        (1,152 Kbaud)
                               |
                         +-----+-----+
                         |   ESP32   |  240 MHz dual-core
@@ -391,7 +391,7 @@ The Agon's defining characteristic is the split between the **eZ80** (your CPU) 
 This split has important consequences:
 
 1. **No shared video memory.** You cannot write directly to a framebuffer. Every pixel, every sprite, every tile operation is a *command* sent over the serial link from the eZ80 to the ESP32.
-2. **Latency.** The serial link runs at 384,000 baud. A single command byte takes about 26 microseconds to transmit. Complex drawing operations (fill rectangle, draw bitmap) require multiple bytes and the VDP needs time to execute them.
+2. **Latency.** The serial link runs at 1,152,000 baud (since MOS 1.03). A single command byte takes about 8.7 microseconds to transmit. Complex drawing operations (fill rectangle, draw bitmap) require multiple bytes and the VDP needs time to execute them.
 3. **Asynchronous rendering.** The VDP processes commands from a buffer. Your eZ80 code sends commands and continues running. The VDP catches up independently. This means you do not have the Spectrum's tight coupling between CPU work and screen output -- but you also cannot precisely control when pixels appear.
 4. **Independent frame rate.** The VDP renders at its own rate (typically 60 Hz). Your eZ80 game loop can run at whatever rate it wants; the VDP will display whatever it has most recently drawn.
 
@@ -512,7 +512,7 @@ Let us lay out the two machines side by side, focusing on what matters for the g
 | Storage | Tape / DivMMC (esxDOS) | SD card (FAT32) |
 | Double buffering | Shadow screen (page 7) | VDP-managed |
 
-The frame budget ratio is approximately 4:1 in the Agon's favour. But the Agon's graphics go through a serial bottleneck, so raw CPU speed does not translate directly to rendering speed. On the Spectrum, `PUSH HL` writes two bytes to the screen in 11 T-states. On the Agon, updating a sprite position requires 6+ bytes over a 384 Kbaud link, taking hundreds of microseconds regardless of CPU speed.
+The frame budget ratio is approximately 4:1 in the Agon's favour. But the Agon's graphics go through a serial bottleneck, so raw CPU speed does not translate directly to rendering speed. On the Spectrum, `PUSH HL` writes two bytes to the screen in 11 T-states. On the Agon, updating a sprite position requires 6+ bytes over a 1,152 Kbaud link, taking hundreds of microseconds regardless of CPU speed.
 
 The Spectrum rewards byte-level optimisation. The Agon rewards architectural decisions. Both reward careful thinking about frame budgets.
 

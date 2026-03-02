@@ -380,7 +380,7 @@ If the result is positive, the face is oriented toward the viewer and should be 
 ```z80 id:ch05_backface_culling_2
 ; Backface culling test for one face
 ; Input: three projected vertices (x0,y0), (x1,y1), (x2,y2)
-; Output: carry flag set if face is back-facing (should be culled)
+; Output: S flag set (M condition) if face is back-facing (should be culled)
 
 backface_test:
     ; V = v1 - v0
@@ -414,9 +414,7 @@ backface_test:
     ex   de, hl
     or   a
     sbc  hl, de             ; HL = Vx*Wy - Vy*Wx
-
-    bit  7, h               ; check sign
-    ret                     ; carry/sign indicates facing
+    ret                     ; S flag: negative = back-facing = cull
 ```
 
 Two multiplications and a subtraction per face. At 400 T-states for the multiplies plus overhead, the test costs roughly 500 T-states per face. For a 12-face object, that is 6,000 T-states --- and for each culled face, you save the entire cost of filling it.

@@ -186,7 +186,7 @@ update_entities:
 ;     1. Erase old sprite (restore background)
 ;     2. Calculate screen address from X,Y
 ;     3. Draw OR+AND masked sprite from pre-shifted table
-;     4. Cost: ~800-1200 T per 16x16 sprite
+;     4. Cost: ~2,400 T per 16x16 sprite
 ;
 ; AGON VERSION (VDP commands):
 ;   For each visible entity:

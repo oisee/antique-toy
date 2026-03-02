@@ -52,7 +52,7 @@ The frame budget ratio is roughly 5:1. But this understates the real difference,
 <!-- figure: ch22_spectrum_vs_agon_sprite -->
 ```mermaid id:ch22_the_architecture_at_a_glance
 graph TD
-    subgraph ZX["ZX Spectrum: Draw Sprite (~1200T CPU)"]
+    subgraph ZX["ZX Spectrum: Draw Sprite (~2400T CPU)"]
         direction TB
         ZA["Calculate screen address<br>from (x, y) coordinates"] --> ZB["Select pre-shifted variant<br>(x mod 8 → shift table)"]
         ZB --> ZC["For each pixel row:<br>AND mask with screen byte<br>OR sprite data<br>write back to framebuffer"]
@@ -75,7 +75,7 @@ graph TD
     style AC fill:#dfd,stroke:#393
 ```
 
-> **The architectural shift:** On the Spectrum, the CPU _is_ the rendering engine — every pixel is placed by Z80 instructions. On the Agon, the CPU is a _command sequencer_ — it tells the VDP what to draw, and the ESP32 coprocessor handles the actual rendering. The CPU cost drops from ~1,200T to ~50T per sprite, but you now manage an asynchronous command pipeline with serial latency.
+> **The architectural shift:** On the Spectrum, the CPU _is_ the rendering engine — every pixel is placed by Z80 instructions. On the Agon, the CPU is a _command sequencer_ — it tells the VDP what to draw, and the ESP32 coprocessor handles the actual rendering. The CPU cost drops from ~2,400T to ~50T per sprite, but you now manage an asynchronous command pipeline with serial latency.
 
 ---
 
@@ -354,7 +354,7 @@ move_sprite:
     ret
 ```
 
-Each `RST $10` sends one byte to the VDP through MOS. The total CPU cost of moving a sprite is approximately 13 bytes sent x ~30 T-states per RST call = ~390 T-states. Compare that to the Spectrum's ~1,200 T-states for a full masked sprite draw. And the Agon version does not need background save/restore --- the VDP composites sprites over the background automatically.
+Each `RST $10` sends one byte to the VDP through MOS. The total CPU cost of moving a sprite is approximately 13 bytes sent x ~30 T-states per RST call = ~390 T-states. Compare that to the Spectrum's ~2,400 T-states for a full masked sprite draw. And the Agon version does not need background save/restore --- the VDP composites sprites over the background automatically.
 
 The trade-off: latency. The VDP processes commands asynchronously. Between sending the "move sprite" command and the sprite actually appearing at the new position, there is a serial transfer delay and a VDP processing delay. For smooth animation, you need to send all sprite updates early in the frame and trust that the VDP will process them before the next screen refresh.
 
@@ -644,7 +644,7 @@ Here is the side-by-side comparison of the same game on both platforms. These nu
 | **Music + SFX** | ~16 KB (PT3 + SFX tables) | ~20 KB (converted format + waveform data) |
 | **Total data** | ~76 KB (fits in 128 KB with banking) | ~160 KB (fits in 512 KB easily) |
 | **Compression needed?** | Yes, mandatory | No, optional |
-| **Sprite draw cost** | ~1,200 T/sprite (software) | ~400 T/sprite (VDP commands) |
+| **Sprite draw cost** | ~2,400 T/sprite (software) | ~400 T/sprite (VDP commands) |
 | **Scroll cost per frame** | ~15,000--30,000 T (software shift) | ~240 T (VDP offset command) |
 | **Frame budget** | ~71,680 T | ~368,640 T |
 | **Achievable fps** | 25--50 (depends on entity count) | 60 (VDP-limited, not CPU-limited) |

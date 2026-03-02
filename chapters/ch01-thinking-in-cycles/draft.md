@@ -299,7 +299,7 @@ A note on `xor a` versus `ld a, 0`: both set A to zero. `XOR A` takes 4 T-states
 
 Let us use our budget arithmetic to answer some practical questions.
 
-**How many sprites can you draw per frame?** A 16x16 masked sprite using the OR+AND method takes roughly 16 scanlines x (read mask + read sprite + read screen + combine + write screen) per byte. A reasonable estimate is about 1,200 T-states per sprite. On a Pentagon, that is 71,680 / 1,200 = ~59 sprites, if sprite rendering were the *only* thing you did. In practice, with music, game logic, and everything else, 8-12 full sprites per frame is typical.
+**How many sprites can you draw per frame?** A 16x16 masked sprite using the OR+AND method takes roughly 144 T-states per row (mask+draw for two bytes, row advance, loop control) for 16 rows --- about 2,400 T-states per sprite (see Chapter 16 for the instruction-level breakdown). On a Pentagon, that is 71,680 / 2,400 = ~29 sprites, if sprite rendering were the *only* thing you did. In practice, with music, game logic, and everything else, 8-12 full sprites per frame is typical.
 
 **How many bytes can LDIR copy per frame?** At 21 T-states per byte: 71,680 / 21 = 3,413 bytes. Not even half the screen.
 

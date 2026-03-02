@@ -227,7 +227,7 @@ That average hides a problem. If you are iterating down the full screen and call
 
 In December 2020, Introspec (spke) published a detailed analysis on Hype titled "Once more about DOWN_HL" (Eshchyo raz pro DOWN_HL). The article examined the problem of iterating down the full screen efficiently -- not just the cost of one call, but the total cost of moving HL through all 192 rows.
 
-The naive approach -- calling the classic DOWN_HL routine 191 times -- costs **5,825 T-states** for a full screen traversal. Introspec's goal was to find the fastest way to iterate through all 192 rows, visiting every screen address in top-to-bottom order.
+The naive approach -- calling the classic DOWN_HL routine 191 times -- costs **5,922 T-states** for a full screen traversal. Introspec's goal was to find the fastest way to iterate through all 192 rows, visiting every screen address in top-to-bottom order.
 
 His key insight was to use **split counters**. Instead of testing the address bits after every increment to detect boundary crossings, he structured the loop to match the screen's three-level hierarchy directly:
 

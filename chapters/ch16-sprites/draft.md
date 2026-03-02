@@ -175,7 +175,7 @@ For 16 rows: 16 x 144 = **2,304 T-states** (common case). Add boundary-crossing 
 
 But this only draws the sprite. You also need to erase the previous frame's sprite, which means restoring the background --- we will address this in Method 6 (Dirty Rectangles). For now, note that the draw alone is about 35% more expensive than XOR, but the visual quality is incomparably better.
 
-![AND mask clears the sprite area on a checkered background, then OR stamps the graphic. The mask has 0-bits where sprite pixels go (AND clears them) and 1-bits elsewhere (AND preserves the background).](../../illustrations/output/ch16_sprite_masking.png)
+![AND mask clears the sprite area on a checkered background, then OR stamps the graphic. The mask has 0-bits where sprite pixels go (AND clears them) and 1-bits elsewhere (AND preserves the background).](illustrations/output/ch16_sprite_masking.png)
 
 ### Byte alignment and the shift problem
 
