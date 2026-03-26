@@ -32,6 +32,8 @@ _in/                     # Input materials, research, raw sources
     zxart_press_catalog.md
     spectrum_expert_articles.md
 build/                   # Compiled output (gitignored)
+illustrations/           # Generated diagrams (Python scripts + PNG output)
+translations/            # ES, RU, UK translations + glossary + manifest
 ```
 
 ## Build System
@@ -47,7 +49,9 @@ make clean        # remove build artifacts
 
 **Primary assembler:** `sjasmplus` v1.21.1 — full Z80/Z80N instruction set, IX/IY indexed modes, negative DB, expressions. Pinned as git submodule in `tools/sjasmplus/`. Flags: `--nologo`, `--raw=` for binary output.
 
-**Secondary:** `mza` (MinZ Z80 Assembler) — we develop it at `../minz-ts/`. Used for mze emulation and DZRP. Has IX/IY limitations (see MEMORY.md).
+**Secondary:** `mza` (MinZ Z80 Assembler) v0.23.0 — we develop it at `../minz/`. Used for mze emulation and DZRP. Has IX/IY limitations. New in v0.23.0: INCBIN directive, RLCA sled peephole optimization, multipass fix.
+
+**Known assembler gotcha:** `LD IXH,H` under DD prefix: H resolves to IXH, so `LD IXH,H` = NOP. Fix: `LD A,H / LD IXH,A`.
 
 ## Key Context
 
@@ -86,3 +90,53 @@ python3 translations/manifest.py check all      # check all languages
 python3 translations/manifest.py diff es        # show EN chapters changed since last translation
 ```
 After translating → `stamp`. Before translating → `check`. After editing EN → `diff` to find stale translations.
+
+## Sibling Projects (via ddll)
+
+This repo is part of a constellation of projects supervised by `ddll` (dedelulu). Active neighbors contribute material to the book:
+
+| Session | Directory | Project | What it provides |
+|---------|-----------|---------|-----------------|
+| `um2dy4ex:main` | `~/dev/z80-optimizer` | GPU Z80 superoptimizer | Provably optimal arithmetic sequences (Appendix K) |
+| `ju6yy047:main` | `~/dev/minz` | MZA assembler | Secondary assembler, RLCA sled peephole, INCBIN |
+| `jjjlhyva:main` | `~/dev/minz-vir` | VIR compiler backend | TSMC tunnels, Z3-optimized codegen, SQL on ZX |
+| `gq1enuw8:main` | `~/dev/dedelulu` | ddll supervisor | Inter-session comms, external LLM queries |
+
+**Communication:**
+
+```sh
+# Discovery
+ddll explore                              # list active sessions + available LLMs
+
+# Inter-session messaging (persistent context — the other agent remembers)
+ddll send session:main "message"          # send to a neighbor agent
+ddll send um2dy4ex:main "review this approach..."  # ask z80-optimizer for review
+ddll send all "status update please"      # broadcast to all sessions
+
+# External LLM queries (ephemeral — no memory between calls)
+ddll ask gpt54 "question"                 # one-shot query to GPT-5.4 (Azure)
+ddll ask gemini "question"                # one-shot query to Gemini 2.5 Flash
+ddll ask gpt54 -f draft.md "review @draft.md for technical errors"  # include file as context
+ddll ask gemini -f ch04.md -f ch05.md "compare these chapters"      # multiple files
+
+# Persistent LLM sessions (remembers across calls — use -s)
+ddll ask gpt54 -s review "here is chapter 4: @chapters/ch04-maths/draft.md"
+ddll ask gpt54 -s review "now check the code examples for cycle count errors"  # continues same session
+```
+
+**When to use what:**
+- `ddll send` → talk to neighbor agents (minz, z80-optimizer, etc.) — they have full project context
+- `ddll ask` → quick external review, second opinion, fact-checking — no project context unless you pass files
+- `ddll ask -s name` → multi-turn review with external LLM — builds up context across calls
+
+## GPU-Optimal Arithmetic (z80-optimizer)
+
+Reference data for Z80 constant arithmetic, all GPU brute-force proven optimal:
+- **254/254** u8 multiply sequences (avg 8× faster than general loop)
+- **244/247** u8 division sequences (avg 2.6× faster than general loop)
+- **15** branchless idioms (ABS, bool, NOT, sign-extend, etc.)
+- Packed library: ~2KB covers ALL optimal Z80 arithmetic
+- Source: `_in/appendix_superoptimizer.md`, `_in/gpu_brute_force_findings.md`
+- Repo: `github.com/oisee/z80-optimizer`
+
+Key tricks: `SBC A,A` = carry-to-mask (0x00/0xFF). `NEG` = ×255. `RLCA` + `SBC A,A` = branchless sign detection.
