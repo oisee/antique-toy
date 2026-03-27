@@ -183,7 +183,7 @@ The search runs on commodity GPUs:
 - AMD Radeon RX 580: ~400 million/second (via OpenCL)
 - Apple M2: ~200 million/second (via Metal)
 
-Cross-verified across 5 platforms (CUDA + OpenCL + Vulkan + Metal + CPU). All results identical across 4 GPU APIs.
+Cross-verified across 5 platforms (CUDA + OpenCL + Vulkan + Metal + CPU). All results identical across 4 GPU APIs. The verification kernels are written in Nanz (a C23-like language) and compiled to GPU compute shaders via the `mir2gpu` backend --- the same compiler that targets Z80 also targets the GPU (see Chapter 23, Section 23.5c).
 
 ---
 

@@ -343,11 +343,36 @@ The rules cluster into **83 unique transformation patterns** — families of rep
 
 What makes z80-optimizer interesting for this chapter is not the specific rules — any experienced Z80 coder knows most of the common ones. It is the *methodology*. This is AI in the original sense: a machine that finds knowledge through search, not through learned patterns. The 602,008 rules include thousands that no human has catalogued, because they involve obscure opcode pairs that nobody writes deliberately but that compilers and code generators *do* produce.
 
-The obvious next step — length-3 sequences — requires GPU brute force (406³ = 67 million triples × all input states). Beyond that, stochastic search (STOKE-style) can explore the space of longer replacements without exhaustive enumeration.
+The obvious next step — length-3 sequences — requires GPU brute force (406³ = 67 million triples × all input states). That step has now been taken: by early 2026, GPU search at depth 11 had found **501 provably optimal arithmetic sequences** — 254 constant multiplies and 247 constant divisions, covering every non-trivial 8-bit constant (see Appendix K). The average constant multiply is 8× faster than Dark's general loop from 1997. The average constant division is 2.6× faster than a general loop. `div10 = 124T` matches the hand-optimised sequence from *Hacker's Delight* — found automatically by GPU in 11 seconds.
+
+Beyond arithmetic, the GPU discovered 15 branchless idioms (Appendix K), BCD operations via DAA (Appendix M), and short programs that *generate* 256-byte lookup tables at runtime — a 20:1 compression ratio through computation rather than data (Appendix N). The meta-analysis of all 755 sequences (Appendix O) revealed that just 21 instructions — 2.7% of the Z80's ~700 opcodes — generate ALL optimal arithmetic.
 
 For practical Z80 development, z80-optimizer complements the AI feedback loop from this chapter: Claude Code generates correct-but-unoptimised code, then z80-optimizer can mechanically verify whether any instruction pairs have shorter equivalents. One AI writes the code; the other AI proves how to shrink it.
 
 **Source:** `github.com/oisee/z80-optimizer` (MIT license)
+
+---
+
+## 23.5c Sidebar: The Compiler That Targets Both Z80 and GPU
+
+The z80-optimizer verification pipeline raises an interesting question: how do you test billions of Z80 instruction sequences on a GPU? You need a way to express the verification logic in GPU compute shaders — and ideally, you want the same compiler that targets Z80 to also target the GPU.
+
+**Nanz** is a C23-like systems language developed alongside MinZ. Its compiler (MinZ/MIR2) uses the same intermediate representation for both targets: write the verification kernel once in Nanz, compile it to Z80 assembly for the CPU reference, and compile it to CUDA/OpenCL/Vulkan/Metal compute shaders for the GPU search. Same source, same semantics, different backends.
+
+The `mir2gpu` backend landed in early 2026: **1,284 lines of code** producing compute shaders for 4 GPU APIs, verified 256/256 across 3 hardware vendors (NVIDIA, AMD, Apple). The verification pipeline:
+
+```text
+Nanz source → MIR2 → Z80 (reference) + GPU shader (search)
+                         ↓                    ↓
+                    CPU verifies          GPU enumerates
+                    survivors             billions of candidates
+```
+
+This is the same pipeline that produced the 501 optimal arithmetic sequences in Appendix K, the BCD operations in Appendix M, and the LUT generators in Appendix N. It is also the pipeline behind an even more unlikely achievement: **SQL on ZX Spectrum** — a 31-function SQL client where the Z3 SMT solver chose optimal registers for each function, compiled through the same MIR2 backend. `puts()` compiles to a single `RET` instruction after PFCCO (post-function call continuation optimisation). `swap()` compiles to zero instructions — a pure calling convention trick.
+
+The broader point: AI-assisted Z80 development is not just about one tool. It is a *toolchain* — language, compiler, superoptimiser, GPU verifier — where each component amplifies the others. Claude Code writes the Nanz source. MIR2 compiles it to Z80 and GPU. The GPU finds optimal sequences. The sequences feed back into the compiler's peephole tables. The loop closes.
+
+**Source:** `github.com/oisee/minz` (Nanz compiler + mir2gpu backend)
 
 ---
 
