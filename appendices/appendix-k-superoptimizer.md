@@ -192,10 +192,12 @@ Cross-verified across 5 platforms (CUDA + OpenCL + Vulkan + Metal + CPU). All re
 All sequences available at: https://github.com/oisee/z80-optimizer
 
 - `data/mulopt8_clobber.json` --- 164 multiply sequences with register annotations
-- `data/div8_optimal.json` --- 244 division sequences
+- `data/div8_optimal.json` --- 247 division sequences
 - `data/mul8_library.asm` --- packed Z80 assembly with multi-entry points
 
 **501 total provably optimal arithmetic sequences for Z80.**
+
+**See also:** Appendix L (floating-point formats), Appendix M (BCD arithmetic), Appendix N (LUT generators), Appendix O (meta-analysis of all sequences).
 
 ---
 
