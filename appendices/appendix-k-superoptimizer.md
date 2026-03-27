@@ -16,7 +16,7 @@ The z80-optimizer project ran exhaustive searches on commodity GPUs (NVIDIA RTX 
 
 Dark's Method 1 (shift-and-add loop, Chapter 4): **196--204T** for any 8-bit constant. The GPU found specific-constant sequences that are dramatically faster.
 
-**254/254 constants solved** --- every `u8` multiply has a proven optimal sequence.
+**254/254 constants solved --- ALL DIRECT.** Every `u8` multiply has a proven optimal sequence found by direct GPU brute-force. No composition fallbacks needed --- last 5 constants (×170, ×171, ×173, ×179, ×181) found at length-11.
 
 | Constant | GPU-Optimal Sequence | Insts | T-states | vs Dark's loop |
 |----------|---------------------|-------|----------|----------------|
