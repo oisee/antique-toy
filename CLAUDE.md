@@ -133,7 +133,7 @@ ddll ask gpt54 -s review "now check the code examples for cycle count errors"  #
 
 Reference data for Z80 constant arithmetic, all GPU brute-force proven optimal:
 - **254/254** u8 multiply sequences (avg 8× faster than general loop)
-- **246/247** u8 division sequences (avg 2.6× faster than general loop)
+- **247/247** u8 division sequences — COMPLETE (avg 2.6× faster than general loop)
 - **15** branchless idioms (ABS, bool, NOT, sign-extend, etc.)
 - Packed library: ~2KB covers ALL optimal Z80 arithmetic
 - Source: `_in/appendix_superoptimizer.md`, `_in/gpu_brute_force_findings.md`

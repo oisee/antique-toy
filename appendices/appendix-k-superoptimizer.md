@@ -48,7 +48,7 @@ Division by constant K on Z80 has no hardware support. The GPU found that the re
 
 `n / K = (n × M) >> S` where `M ≈ 2^S / K`
 
-**246/247 divisors solved** (3--255). Only 1 remains unsolved (div129, GPU still searching).
+**247/247 divisors solved** (3--255). COMPLETE --- zero gaps. Every u8 division has a proven optimal sequence.
 
 | Divisor | Insts | T-states | vs general loop (280T) |
 |---------|-------|----------|------------------------|
@@ -68,9 +68,7 @@ Division by constant K on Z80 has no hardware support. The GPU found that the re
 | /205 | 5 | 35T | 8.0× |
 | /255 | 6 | 50T | 5.6× |
 
-**Total: 246 divisors, average 107T. Fastest: div171 = 4 instructions, 27T (10.4× vs loop).** `div10 = 124T` matches the famous Hacker's Delight hand-optimized sequence --- found automatically by GPU in 11 seconds.
-
-**Missing:** div129 (requires sequence length > 15, GPU still searching).
+**Total: 247/247 divisors --- COMPLETE. Average 107T. Fastest: div171 = 4 instructions, 27T (10.4× vs loop).** `div10 = 124T` matches the famous Hacker's Delight hand-optimized sequence --- found automatically by GPU in 11 seconds. Last solved: div129 = 16 instructions, 160T.
 
 ---
 
@@ -166,7 +164,7 @@ rot1:   RLCA       ; 1               shr1:   SRL A    ; /2
 **Packed library sizes:**
 - 594 bytes for 164 mul8 constants (51% compression)
 - ~500 bytes for 254 mul16 constants (86% compression)
-- **Total: ~2KB packed blob covers ALL optimal arithmetic for Z80.** 254 multiplies + 246 divisions + rotation/shift sleds. For ZX Spectrum: just 4% of 48KB RAM.
+- **Total: ~2KB packed blob covers ALL optimal arithmetic for Z80.** 254 multiplies + 247 divisions + rotation/shift sleds. For ZX Spectrum: just 4% of 48KB RAM.
 
 ---
 
@@ -197,7 +195,7 @@ All sequences available at: https://github.com/oisee/z80-optimizer
 - `data/div8_optimal.json` --- 244 division sequences
 - `data/mul8_library.asm` --- packed Z80 assembly with multi-entry points
 
-**500 total provably optimal arithmetic sequences for Z80.**
+**501 total provably optimal arithmetic sequences for Z80.**
 
 ---
 
