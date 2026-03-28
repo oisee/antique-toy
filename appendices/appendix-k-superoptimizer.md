@@ -89,6 +89,10 @@ All found via GPU exhaustive search with a 37-op instruction pool:
 | `max_0(A)` | `LD B,A : RLCA : SBC A,A : XOR B : AND B` | 5 | 20T |
 | `sign(A)` | (5 insts) | 5 | 20T |
 | `ABS(A)` | `LD B,A : RLCA : SBC A,A : XOR B : SBC A,B : ADC A,B` | 6 | 24T |
+| `MIN(A,B)` | `SUB B : SBC A,A : AND ... : ADD A,B` | 8 | 32T |
+| `MAX(A,B)` | `SUB B : SBC A,A : AND ... : ADD A,B` | 8 | 32T |
+| `CMOV(CY?B:C)` | `SBC A,A : LD D,A : LD A,B : XOR C : AND D : XOR C` | 6 | 24T |
+| `div3(A)` | `A×171>>9` --- no lookup table | 3 | 16T |
 
 **The `SBC A,A` carry-to-mask trick** appears in many sequences: it sets A to `$00` or `$FF` depending on the carry flag. Combined with `RLCA` (sign bit → carry), this enables instant sign detection without any conditional jumps.
 
@@ -110,7 +114,21 @@ All found via GPU exhaustive search with a 37-op instruction pool:
     ADC  A, L     ; double — overflow if ≥128 sets carry
     SBC  A, A     ; carry → 0xFF mask
     LD   H, A     ; H = sign extension byte
+
+; CMOV — conditional select: CY ? B : C — 6 insts, 24T
+    SBC  A, A     ; carry → mask (0x00 or 0xFF)
+    LD   D, A     ; save mask
+    LD   A, B
+    XOR  C        ; B XOR C
+    AND  D        ; mask: keep diff if CY, zero if not
+    XOR  C        ; B if CY, C if not — branchless select
+
+; div3(A) — exact division by 3, no table — 3 insts, 16T
+; Uses reciprocal: A × 171 >> 9 = A/3 for all u8
+; (171 ≈ 256×2/3, verified exhaustively on all 256 inputs)
 ```
+
+**Bool convention:** CY flag with 0xFF/0x00 mask representation is optimal for Z80 branchless code. The Z flag is provably **write-only** for conditional purposes --- no branchless Z→CY conversion exists (verified by exhaustive GPU search). This means `SBC A,A` (CY→mask) is the universal conditional, while Z flag results require a branch.
 
 ---
 
@@ -197,7 +215,7 @@ All sequences available at: https://github.com/oisee/z80-optimizer
 
 **501 total provably optimal arithmetic sequences for Z80.**
 
-**See also:** Appendix L (floating-point formats), Appendix M (BCD arithmetic), Appendix N (LUT generators), Appendix O (meta-analysis of all sequences).
+**See also:** Appendix L (floating-point formats), Appendix M (BCD arithmetic), Appendix N (LUT generators), Appendix O (meta-analysis of all sequences), Appendix P (register allocation tables --- how the compiler uses these sequences without clobbering live variables).
 
 ---
 

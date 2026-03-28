@@ -21,13 +21,13 @@ Each "compound operation" maps to 1--3 Z80 instructions (2--6 bytes). Searches a
 | Function | Compound Ops | Description |
 |----------|-------------|-------------|
 | gray\_encode | 3 | `SAVE SHR XOR_B` --- Gray code: n XOR (n>>1) |
+| gray\_decode | 13 | Exact inverse Gray code --- found via focused search on Vulkan RX 580 in <1 second |
 | is\_pow2 | 7 | Via carry trick: `NEG SAVE NEG XOR_B SUB_B SBC_MASK NEG` |
 
 ### Good Approximations (>90% accuracy)
 
 | Function | Max Error | Accuracy | Compound Ops | Key Trick |
 |----------|-----------|----------|-------------|-----------|
-| gray\_decode | ±3 | 98.8% | 10 | Iterative XOR-shift |
 | sqrt (f3.5) | ±10 | 92.2% | 5 | `SHR RLCA XOR_B RRCA MUL7` |
 | bin→bcd | ±17 | 93.3% | 5 | `MUL3 MUL5 SBC_MASK` |
 | sqrt (f4.4) | ±21 | 91.8% | 5 | `MUL5 RLCA XOR_B` |
@@ -41,7 +41,18 @@ Each "compound operation" maps to 1--3 Z80 instructions (2--6 bytes). Searches a
 | recip (256/x) | ±31 | 87.8% | 6 |
 | log2 (f3.5) | ±36 | 85.9% | 5 |
 
-Depth-12 search is running on 3 GPUs --- expected to push sqrt below ±8 (97%+ accuracy).
+### The Focused Search Breakthrough
+
+The key insight from extended searches: **smaller operation pools enable deeper searches that find better results**. Instead of depth-12 with the full 33-op pool, focused searches with minimal pools (6--8 ops) reach depth-16+ and find exact solutions:
+
+| Function | Strategy | Depth | Pool Size | Result |
+|----------|----------|-------|-----------|--------|
+| gray\_decode | Focused | 13 | 8 ops | **EXACT** (was ±3) |
+| sqr\_hi (x²>>8) | Focused | 16 | 6 ops | ±29 |
+| cbrt (f2.6) | Focused | 13 | 8 ops | ±16 (was ±24) |
+| sin\_q1 | Focused | 15 | 6 ops | ±68 |
+
+The gray\_decode result is striking: depth-11 with 33 ops gave ±3 error; depth-13 with 8 ops gave **zero error**. Fewer ops → deeper search → exact solution. The operation pool is the primary knob for trading breadth against depth.
 
 ---
 
@@ -123,8 +134,10 @@ Each additional compound operation reduces maximum error by approximately **30%:
 | 9 | ~±10 | ~96% |
 | 11 | ~±7 | ~97% |
 
-The curve suggests diminishing returns past depth 9--10 for most functions. Depth 12 (running now) should establish the practical precision ceiling for single-register computation.
+The curve suggests diminishing returns past depth 9--10 for most functions when using the full operation pool. However, focused searches with minimal pools can push far deeper --- gray\_decode went from ±3 at depth-11/33-ops to EXACT at depth-13/8-ops.
+
+**The practical ceiling is pool-dependent, not depth-dependent.** This is the key design insight for future LUT generator searches.
 
 ---
 
-*Depth-11 results from z80-optimizer v1.0.0 (3× GPU: RTX 4060 Ti × 2 + RTX 2070). Depth-12 in progress.*
+*Results from z80-optimizer v1.0.0 (3× GPU: RTX 4060 Ti × 2 + RTX 2070 + Vulkan RX 580). Depth-11 broad + focused searches to depth-16.*

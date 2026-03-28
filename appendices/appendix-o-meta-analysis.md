@@ -115,7 +115,24 @@ This is counterintuitive: a concrete ISA should be more verbose than an abstract
 
 ---
 
-## O.12 Conclusion
+## O.12 The Z Flag Is Write-Only
+
+A surprising result from exhaustive GPU search: **no branchless Z→CY conversion exists on Z80**. The Z (zero) flag cannot be materialized into a register without a conditional branch.
+
+This was verified by searching all instruction sequences up to length 8 with pools of 21--37 operations: no sequence maps Z=1→CY=1, Z=0→CY=0 without using a branch instruction.
+
+**Why it matters:** The CY flag has `SBC A,A` (carry-to-mask, 4T). The Z flag has no equivalent. This makes CY the **only viable flag for branchless conditionals** on Z80:
+
+- CY → mask: `SBC A,A` (1 instruction, 4T) --- available
+- Z → mask: impossible branchlessly --- must use `JR Z/NZ`
+
+**Practical consequence:** Prefer `CP` (which sets CY for less-than) over `AND`/`OR`/`SUB` (which set Z for equality) when designing branchless logic. The carry flag is strictly more powerful than the zero flag for branchless programming.
+
+**Bool convention:** Use CY flag + 0xFF/0x00 representation (via `SBC A,A`), not Z flag + 0/1. This enables chaining: mask AND value = conditional in 2 instructions.
+
+---
+
+## O.13 Conclusion
 
 Ten patterns, one recurring theme: **structure emerges from exhaustion.**
 

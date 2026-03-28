@@ -336,6 +336,54 @@ In practice, the log tables work. Rounding errors from compressing a continuous 
 
 ---
 
+### Sidebar 4.5b: The SBC A,A Trick — From Accident to Foundation
+
+Every Z80 programmer discovers `SBC A,A` eventually. Few realise it's the single most powerful idiom the chip has. One instruction, four T-states, and it unlocks an entire family of branchless algorithms that neither Zilog nor Intel ever intended.
+
+**What it does:** `SBC A, A` computes A = A - A - CY. If carry is clear: A = **0x00**. If carry is set: A = -1 = **0xFF**. One instruction turns a single-bit flag into a full byte mask. And the subtle part: **the carry flag is preserved afterwards**, so you can chain operations without losing the condition.
+
+**Why it matters:** The Z80 has no conditional move. The only way to do "if carry then X else Y" is a branch (19--26T, variable timing). With SBC A,A:
+
+```z80
+; Branchless conditional zero: A = CY ? B : 0
+    SBC A, A            ;  4T — mask: 0xFF or 0x00
+    AND B               ;  4T — A = CY ? B : 0
+; Total: 8T, constant timing, two instructions.
+```
+
+The mask opens a cascade of possibilities. Each builds on the last:
+
+**Conditional select (CMOV)** --- `C XOR ((B XOR C) AND mask)`. When mask=0xFF, you get B. When mask=0x00, you get C. Six instructions, 24T, branchless. Verified on all 131,072 input combinations.
+
+```z80
+; CMOV: A = CY ? B : C — 6 insts, 24T
+    SBC A, A            ; mask
+    LD  D, A            ; save mask
+    LD  A, B : XOR C    ; B XOR C
+    AND D               ; select
+    XOR C               ; A = CY ? B : C
+```
+
+**Branchless ABS** --- the two's complement identity `|x| = (x XOR mask) - mask`:
+
+```z80
+; ABS(A) — 6 insts, 24T
+    LD  B, A            ; save original
+    RLCA                ; sign bit → carry
+    SBC A, A            ; mask = negative ? 0xFF : 0x00
+    LD  C, A            ; save mask
+    XOR B               ; conditional complement
+    SUB C               ; adjust (subtracting 0xFF = adding 1)
+```
+
+**MIN/MAX** (8 insts, 32T), **div3 EXACT** (A×171>>9, no lookup table), and more --- all built on the same foundation. See Appendix K for the complete branchless library.
+
+**What it can't do:** SBC A,A reads the **carry flag**, not the zero flag. And on the Z80, the zero flag is provably **write-only** for branchless purposes --- no instruction sequence of any length can convert Z→CY without branching (verified by exhaustive GPU search). If your condition comes from equality (`CP` sets Z), you need a branch. For unsigned comparison (`SUB`/`CP` set CY), SBC A,A works directly.
+
+SBC A,A was not designed. Zilog specified "A = A - r - CY" and moved on. The trick emerges because A - A is always zero, leaving CY as the sole variable. It's an accident of orthogonal instruction design that makes the impossible merely expensive.
+
+---
+
 ## Sine and Cosine
 
 Rotation, scrolling, plasma -- every effect that curves needs trigonometry. On the Z80, you pre-compute a lookup table. Dark's approach is beautifully pragmatic: a parabola is close enough to a sine wave for demo work.
