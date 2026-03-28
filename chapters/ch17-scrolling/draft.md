@@ -175,6 +175,52 @@ You might think unrolling or alternate addressing modes would help. They do not.
 
 **Bottom line:** The only way to make horizontal scrolling affordable is to reduce the number of rows or bytes you scroll.
 
+### Sidebar 17.x: The RL (IX+N),R Trick — Scroll and Copy in One Instruction
+
+There is one exception to the "RL (IX+d) is always slower" rule, and it involves undocumented opcodes that nobody knew what to do with --- until RMDA found a use in 2023.
+
+The Z80's DDCB prefix encodes indexed rotate/shift operations. The documented form `RL (IX+d)` rotates a memory byte and writes the result back. But the **undocumented** variants --- `RL (IX+d),H` and `RL (IX+d),L` --- do something extra: they write the result to both memory **and** a register simultaneously. The timing is the same 23T.
+
+This seems useless for a simple scroll. But for **scroll-with-copy** --- where you rotate pixels in a source buffer AND need the result for a second screen write --- the dual-store eliminates a separate load:
+
+```z80
+; RMDA's technique: scroll source via IX, capture in HL,
+; PUSH HL writes a second copy to screen (SP points to screen)
+    rl   (ix+N), h            ; 23T — rotate + copy result to H
+    rl   (ix+N+1), l          ; 23T — rotate + copy result to L
+    push hl                   ; 11T — write H:L to second location
+; Total: 57T for 4 bytes (2 source rotated + 2 screen written)
+```
+
+Without the undocumented dual-store:
+
+```z80
+    rl   (ix+N)               ; 23T — rotate
+    ld   h, (ix+N)            ; 19T — load result
+    rl   (ix+N+1)             ; 23T — rotate
+    ld   l, (ix+N+1)          ; 19T — load result
+    push hl                   ; 11T — write copy
+; Total: 95T — 67% slower
+```
+
+And with a fourth instruction --- `LD (nnnn), HL` --- the same rotated data goes to a *third* destination:
+
+```z80
+    rl   (ix+N), h            ; 23T — rotate + H
+    rl   (ix+N+1), l          ; 23T — rotate + L
+    push hl                   ; 11T — copy #1 (via SP)
+    ld   (addr), hl           ; 16T — copy #2 (direct)
+; Total: 73T for 6 bytes: 2 rotated + 2 pushed + 2 stored
+```
+
+One rotation, three destinations. This is the basis for reflection effects (original + mirrored copy), parallax (offset copy), and water effects (shifted + reflected).
+
+Maxim Muchkaev (.ded^RMDA, Samara) used this in **4608pix** (2023) --- a 4K intro that achieves **50fps horizontal pixel scrolling across 2/3 of the screen** on a stock ZX Spectrum 48K with a 4608×64 pixel sprite. The combination of undocumented RL+copy and PUSH-to-screen eliminates the loads that normally dominate the inner loop. The claim in the previous section --- that full-screen pixel scrolling is impossible at 50fps --- needs a footnote: RMDA got close by changing what "scroll" means. Instead of rotating every byte independently, they rotate and replicate in one pass.
+
+**Compatibility:** these opcodes work on all Z80 silicon (original Zilog, CMOS, and clones including the T80 core in ZX Spectrum Next). Some emulators do not implement the dual-store behaviour --- test on real hardware or an accurate emulator.
+
+**See also:** Chapter 13.3b for RMDA's CALL-chain drawing technique (same author, different trick).
+
 ---
 
 ## Attribute (Character) Scrolling

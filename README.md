@@ -12,7 +12,7 @@
 > 2. By Alice directly — where personal expertise is "good enough" or no available sources or in new areas
 > 3. Corrections and contributions on topic are welcome — PRs open
 
-**TL;DR:** 23 chapters + 10 appendices, ~184K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/download/v23/book-a4-v23.pdf)
+**TL;DR:** 23 chapters + 16 appendices, ~200K words, 29 compilable examples, 4 languages. You know Z80 -- this book shows you *why* the tricks work, not *what* the registers are. [Download PDF](https://github.com/oisee/antique-toy/releases/latest)
 
 This book lives on the **ZX Spectrum**. Most techniques -- DOWN_HL, attribute tricks, ULA timing, 128K bank juggling -- only make sense on this machine. That's where the demoscene is, and that's where the hard problems are.
 
@@ -30,8 +30,8 @@ Chapter 1 (T-state budgets) is the foundation -- read it first. Everything after
 
 | Language | Version | PDF | Words |
 |----------|---------|-----|-------|
-| English | **v20** | [book-a4-v20.pdf](https://github.com/oisee/antique-toy/releases/download/v20/book-a4-v20.pdf) | ~184K |
-| Russian | **v20** | [book-a4-v20_RU.pdf](https://github.com/oisee/antique-toy/releases/download/v20/book-a4-v20_RU.pdf) | ~140K |
+| English | **v29** | [Latest release](https://github.com/oisee/antique-toy/releases/latest) | ~200K |
+| Russian | v20 | [book-a4-v20_RU.pdf](https://github.com/oisee/antique-toy/releases/download/v20/book-a4-v20_RU.pdf) | ~140K |
 | Spanish | v0.6 | [book-a4_ES-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_ES-v0.6.pdf) | ~165K |
 | Ukrainian | v0.6 | [book-a4_UK-v0.6.pdf](https://github.com/oisee/antique-toy/releases/download/v0.6/book-a4_UK-v0.6.pdf) | ~142K |
 
@@ -39,7 +39,7 @@ English is the primary edition and always ahead. Translations catch up periodica
 
 ## Contents
 
-23 chapters + 10 appendices, ~184K words (English), 29 compilable assembly examples.
+23 chapters + 16 appendices (A--P), ~200K words (English), 29 compilable assembly examples.
 
 Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. **eZ80** = Agon Light 2.
 
@@ -83,6 +83,12 @@ Platform tags: **Z80** = pure Z80, any platform. **ZX** = ZX Spectrum specific. 
 | H: Storage APIs | Done | TR-DOS (Beta Disk 128) and esxDOS (DivMMC) — ports, ROM API, code examples |
 | I: Bytebeat & AY-Beat | Done | Classic bytebeat, AY-beat engine, formula cookbook, music theory (scales, arpeggios, L-grammars), procedural sound |
 | J: Modern Tools | Done | ZX Spectrum Next IDE/SDK, DeZog, ZEsarUX, CSpect, ZX-Paintbrush, Multipaint, tools for modern retro dev |
+| K: GPU Superoptimization | Done | 501 provably optimal Z80 sequences (254 mul + 247 div), branchless idioms, packed library |
+| L: Z80-Optimal Floating Point | Done | Byte-aligned exponent FP family (fp8/fp16/fp24), INC H = ×2 |
+| M: BCD Arithmetic | Done | GPU-proven BCD operations, DAA H-flag model, score counter |
+| N: LUT Generators | Done | 12-byte programs replacing 256-byte tables, gray_decode EXACT, focused search |
+| O: Meta-Analysis | Done | 21-instruction thesis, disjoint worlds, rotation dominance, Z flag write-only proof |
+| P: Register Allocation | Done | 83.6M shapes, O(1) lookup for 91%, 5-level pipeline, phase transition |
 
 ## Building the book
 

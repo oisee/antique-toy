@@ -177,6 +177,148 @@ The ZX Spectrum 256-byte category has a rich history. Studying winning entries r
 
 ---
 
+## 13.3b The CALL-Chain: When Code Becomes Data
+
+In February 2021, .ded of RMDA (Russian Massive Digital Aggression, Samara) released **Hole 17 enigma** at Lovebyte --- a 256-byte intro with a tagline that doubles as a technical abstract: *"In SPACE no one can hear your CALL..."*
+
+The intro does not store any graphics data. Instead, it fills most of the Spectrum's 42KB free RAM with `CALL` instructions pointing to random addresses --- creating a self-executing graph of function calls whose side effect is drawing to the screen.
+
+### How CALL Draws Pixels
+
+The Z80's `CALL nn` instruction does two things: it pushes the return address (PC+3) onto the stack, then jumps to address `nn`. The push writes 2 bytes to the address pointed to by SP. Normally, SP points to a stack area. But if SP points to screen memory:
+
+```z80
+    ld   sp, $5800           ; SP → end of screen bitmap
+    call $C000               ; pushes return address to screen memory
+                             ; SP decreases by 2 — next CALL writes
+                             ; the next 2 bytes of screen, working upward
+```
+
+Each CALL writes 2 bytes to the screen and costs 17T = **8.5T per byte**. That is slower than PUSH (5.5T/byte, Chapter 3), but the difference is what gets written: PUSH writes a register value you chose, while CALL writes its own *location in memory*. The address bytes --- the high and low bytes of the instruction following the CALL --- become visible pixels. The program's structure in memory IS the image.
+
+### The Generation Phase
+
+Hole 17 builds its CALL graph at startup:
+
+```z80
+; Simplified from .ded's source
+; HL = current position, DE = random target, BC = counter
+newrnd:
+    ld   (hl), $CD           ; write CALL opcode
+    inc  hl
+    ld   (hl), h             ; secure the next 2 bytes
+    dec  hl                   ; (prevent overwrite by future CALLs)
+
+    call prnd                 ; pRNG → A
+    cp   $5B                  ; target must be above screen area
+    jr   nc, next
+    cpl                       ; if too low, CPL flips it high
+next:
+    ld   d, a                 ; D = random high byte
+
+    call prnd                 ; pRNG → A
+    ld   e, a                 ; E = random low byte
+
+    ; Check: 3 bytes at (DE) must be $00 (free RAM)
+    ld   a, (de)
+    or   a
+    jr   nz, rernd            ; not free → try again
+
+    ; Write the CALL argument
+    ld   (hl), e              ; low byte of target
+    inc  hl
+    ld   (hl), d              ; high byte of target
+
+    ld   h, d                 ; next CALL will be AT the target
+    ld   l, e
+
+    inc  bc
+    ld   a, b
+    cp   $EB                  ; ~60,000 CALLs generated
+    jr   nz, newrnd
+```
+
+The algorithm: write a CALL opcode at the current position, generate a random address in free RAM, write it as the CALL's argument, then move to that address and repeat. The result is a graph of CALL instructions spanning $5B00--$FCFF. The last CALL points back to $5B00, closing the loop.
+
+### Execution
+
+```z80
+    ld   sp, $5800            ; SP at end of screen bitmap
+    jp   (hl)                 ; jump into the CALL graph
+```
+
+The CPU begins executing CALLs. Each one pushes its return address to screen memory (via SP), then jumps to the next CALL. SP decrements with each push, filling the screen from bottom to top. The IM2 interrupt fires at 50fps, does attribute animation and resets SP to restart the cycle. The visual: chaotic patterns that shift and flicker as different CALL chains write different address bytes to different screen positions each frame.
+
+### The pRNG: CMWC ×253
+
+Hole 17 uses Patrik Rak's Complementary Multiply-With-Carry generator --- a 10-byte state ($i$ + $cy$ + $q[8]$) with period $2^{66}$:
+
+```z80
+prnd:
+    exx                       ; shadow registers hold pRNG state
+    ld   hl, table            ; 10-byte state: index + carry + q[8]
+    ld   a, (hl)
+    and  7                    ; i = (i & 7) + 1
+    inc  a
+    ld   (hl), a
+    ; ... compute ba = 253 × y + cy via three SUBs ...
+    cpl                       ; x = ~x (better distribution)
+    exx
+    ret
+```
+
+The EXX trick is elegant: shadow registers (HL', BC', DE') hold the generator's working state, completely isolated from the main program's registers. No PUSH/POP needed, no memory temporaries. The switch costs 4T each way.
+
+### Tricks Worth Stealing
+
+**The JR addr-1 trick.** Hole 17 needs `LD SP, HL` ($31) in a critical spot. Instead of spending 1 byte on the instruction, .ded arranges a `JR` that jumps to *one byte before* a label. That byte happens to encode the opcode he needs. The CPU executes the stray byte as an instruction, then falls through to the label. Cost: zero additional bytes. This works because many useful Z80 opcodes share byte values with data that occurs naturally in `JR` targets.
+
+```z80
+; .ded's actual code (simplified)
+clear:
+    ld   (hl), e
+    dec  hl
+    ld   a, h
+    cp   $57
+    jr   nz, clear            ; fills RAM with zeros
+
+attr:                         ; ← JR target
+    inc  hl
+    ld   (hl), $36            ; fill attributes
+    ld   a, h
+    cp   $5B
+    jr   nz, attr-1           ; jumps to the byte BEFORE attr
+                              ; that byte = $31 = LD SP,HL !
+```
+
+The `JR NZ, attr-1` targets the last byte of the `JR NZ, clear` instruction above, which happens to be $31 --- the opcode for `LD SP,HL`. When the attribute loop exits, it falls through having secretly set SP to point to the screen. One byte saved from a 256-byte budget.
+
+**Self-closing graph.** The last generated CALL points to $5B00 (the start of the graph), creating an infinite loop without any explicit loop instruction. The graph IS the loop.
+
+**EXX as context switch.** Shadow registers are a free second register file. The pRNG lives entirely in the shadow bank, the CALL generator in the main bank. `EXX` (4T, 1 byte) switches between them instantly.
+
+### Hole 11: The 8-Byte Semaphore
+
+A later entry in the series pushes size-coding to its logical extreme. **Hole 11 enigma** (Lovebyte 2023) is an 8-byte program --- arguably 5 bytes if you accept the `BC=USR` calling convention:
+
+```z80
+; Hole 11: 5 bytes, self-modifying semaphore
+    ld   l, c                 ; L = C (initial address)
+    add  hl, bc               ; HL += BC (walk through memory)
+    inc  (hl)                 ; increment byte at (HL)
+    jr   $-2                  ; loop back to ADD HL,BC
+```
+
+The `INC (HL)` modifies memory --- including its own opcode when HL points to it. When `INC (HL)` ($34) increments itself, it becomes `DEC (HL)` ($35). On the next pass, `DEC (HL)` decrements itself back to `INC (HL)`. A self-toggling semaphore with no variables, no branches, no state --- the instruction IS the state.
+
+The visual result: the program walks through all 64KB of RAM, incrementing and decrementing bytes, including screen memory. Pattern emerges from arithmetic chaos.
+
+### Credits
+
+The Hole series and the CALL-chain technique are the work of Maxim Muchkaev (.ded^RMDA, Samara, Russia). The pRNG is by Patrik Rak (Raxsoft). RMDA demos with sources are available at https://rmda.su and on scene.org / demozoo.org. The INC↔DEC trick was observed in Hole 11; the RL (IX+N) pixel scroll technique (used in the 4K intro *4608pix*, also by RMDA) is discussed in Chapter 17.
+
+---
+
 ## 13.4 The LPRINT Trick
 
 In 2015, diver4d published "Secrets of LPRINT" on Hype, documenting a technique older than the demoscene itself -- one that first appeared in pirated cassette software loaders in the 1980s.

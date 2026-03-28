@@ -117,14 +117,23 @@ Every function has a computable **signature**: `(interference_graph_shape, opera
 
 The operation bag is order-independent --- ADD A,B costs 4T whether it's the first or last instruction. The order of liveness is already captured in the interference graph.
 
-### Three-Level Pipeline
+### Five-Level Pipeline
 
-1. **Hash lookup** (90%): O(1) result from enriched table --- assignment + cost
-2. **CPU backtracking** (8%): solved in <1 second with pruning
-3. **Z3 SAT solver** (2%): solved in <10 seconds
-4. **Decomposition** (0%): cut vertex splitting always finds a way
+1. **Cut vertex decomposition**: split functions with 7+ variables at graph cut points into ≤6-variable subproblems --- always lossless
+2. **Enriched table lookup** (91%): O(1) result from pre-computed table --- assignment + cost + flags
+3. **EXX shadow bank**: functions that exceed 7 registers get a second register file via `EXX` (4T context switch)
+4. **GPU partition optimizer**: for 7--14 variable functions, find the optimal split into ≤6-variable subgraphs on GPU
+5. **Z3 SAT solver** (fallback): provably optimal, <10 seconds
 
-**90% of functions** resolve in O(1) --- a hash table lookup. The remaining 10% fall through to increasingly powerful solvers.
+**91% of functions** resolve in O(1) --- a hash table lookup. The remaining 9% fall through to increasingly powerful solvers. No function is unsolvable --- decomposition always finds a way.
+
+### VIR Corpus Validation
+
+Analysis of 820 real functions from the VIR compiler corpus confirms the table's coverage:
+
+- **Move instructions = 34%** of all operations --- the single largest category, and the primary target for register allocation optimization
+- **Multiply = 0%** --- no function in the corpus uses hardware multiply (confirming that mul8 conflict, while theoretically affecting 93% of shapes, rarely matters in practice)
+- **Average live variables: 3.8** --- well within the ≤6 sweet spot of the enriched tables
 
 ---
 

@@ -130,6 +130,21 @@ All found via GPU exhaustive search with a 37-op instruction pool:
 
 **Bool convention:** CY flag with 0xFF/0x00 mask representation is optimal for Z80 branchless code. The Z flag is provably **write-only** for conditional purposes --- no branchless Z→CY conversion exists (verified by exhaustive GPU search). This means `SBC A,A` (CY→mask) is the universal conditional, while Z flag results require a branch.
 
+**When to use branchless vs branch:** On the Z80, a conditional branch penalty is only 5T (the cost of a not-taken JR). A branchless ABS costs 24T; a branching version costs 9--14T. **Branch usually wins on Z80.** Branchless is valuable for: (1) the `SBC A,A` mask itself (always worth it at 4T), (2) inner loops where constant timing matters, (3) GPU code generation via Nanz→CUDA (no branch divergence), (4) cryptographic constant-time execution. For general code, prefer the branch.
+
+### Division by Constant (Reciprocal Multiplication)
+
+Exact or near-exact division without lookup tables, using the reciprocal trick `n/K = (n × M) >> S`:
+
+| Divisor | Formula | Exact inputs | Max error |
+|---------|---------|-------------|-----------|
+| /3 | A×171>>9 | **256/256** | **0** |
+| /5 | A×103>>9 | 239/256 | 1 |
+| /7 | A×37>>8 | 220/256 | 1 |
+| /10 | A×26>>8 | 218/256 | 1 |
+
+Only /3 is exact for all u8 inputs. Magic constant 171 works because $\lfloor 256 \times 256 / 3 \rfloor = 21845$ and $171 = \lfloor 21845/128 + 0.5 \rfloor$. For other divisors, the full division table (Appendix K.3) provides GPU-proven optimal sequences.
+
 ---
 
 ## K.5 16-bit Idioms

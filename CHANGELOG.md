@@ -1,5 +1,38 @@
 # What's New
 
+## v29 (2026-03-28)
+
+**RMDA techniques + register allocation + branchless library. Material from z80-optimizer, minz-vir, and .ded^RMDA.**
+
+### New content
+
+**Chapter 4 — Sidebar 4.5b: The SBC A,A Trick.** Five levels of branchless computation: mask → conditional zero → CMOV → ABS → MIN/MAX → div3. Z flag write-only proof. "Makes the impossible merely expensive."
+
+**Chapter 13 — Section 13.3b: The CALL-Chain.** Full analysis of Hole 17 enigma (.ded^RMDA, 256b, Lovebyte 2021). CALL-as-pixels technique, pRNG (Patrik Rak CMWC ×253), JR addr-1 free-opcode trick, EXX dual-bank, self-closing graph. Hole 11 (8-byte intro): INC↔DEC self-modifying semaphore.
+
+**Chapter 17 — Sidebar: RL (IX+N),R.** Undocumented DDCB dual-store opcodes for scroll+copy in one instruction. RMDA's 4608pix technique: 50fps pixel scrolling on ZX48K. Three-destination variant with PUSH HL + LD (nnnn),HL for reflection/parallax/water.
+
+**Appendix K — Branchless updates.** MIN/MAX (8i, 32T), CMOV (6i, 24T), div3 EXACT. Reciprocal division table (/3, /5, /7, /10). "Branch usually wins on Z80" caveat. Bool convention (CY + 0xFF/0x00).
+
+**Appendix N — Focused search breakthrough.** gray_decode now EXACT (13 ops, Vulkan RX 580, <1s). Key insight: smaller op pools → deeper search → better results.
+
+**Appendix O — Section O.12: Z Flag Is Write-Only.** Exhaustive GPU proof that no branchless Z→CY conversion exists on Z80.
+
+**Appendix P: Register Allocation as a Solved Game** (NEW). 83.6M shapes enumerated, 37.6M enriched with 15 metrics. O(1) lookup for 91% of functions. Five-level pipeline: cut vertex → enriched table → EXX → GPU partition → Z3. Phase transition at 6-7 variables. Hidden infeasibility (43% shapes lack accumulator). Smart CALL save (17T vs 34T). VIR corpus validation (820 functions, move=34%). Real-world analysis: The Hobbit, ZX demos.
+
+### Credits
+
+- .ded^RMDA (Maxim Muchkaev, Samara) — CALL-chain, RL (IX+N),R, Hole series
+- Patrik Rak (Raxsoft) — CMWC pRNG
+- z80-optimizer — branchless library, flag proofs, register allocation tables, div3 EXACT
+- minz-vir — mir2gpu verification (Vulkan 20/20)
+
+### Book stats
+
+23 chapters + 16 appendices (A-P). English edition.
+
+---
+
 ## v20 (2026-02-28)
 
 **Russian translation updated to v20 + community feedback fixes.**
