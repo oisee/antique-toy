@@ -313,9 +313,48 @@ The `INC (HL)` modifies memory --- including its own opcode when HL points to it
 
 The visual result: the program walks through all 64KB of RAM, incrementing and decrementing bytes, including screen memory. Pattern emerges from arithmetic chaos.
 
+### pRNG Image Search: The Compression Problem
+
+Hole 17 generates random visuals. But what if you want a *specific* image --- a recognisable face, a logo, a scene? The pRNG seed determines the output. Find the right seed, and the generator produces your target image. No stored graphics --- just a seed and a generator.
+
+This is a compression problem in disguise. A 256-byte intro has room for perhaps 10 bytes of seed data. The screen is 6,144 bytes. That is a 600:1 compression ratio --- impossible for any general-purpose compressor. But the "decompressor" is not a general algorithm: it is a specific pRNG with a specific generator (points, lines, fills). The question becomes: does any seed in the generator's output space produce something close to the target?
+
+**The answer is: not close enough, but close enough to recognise.** The fundamental limit: a pRNG with N bytes of state can produce at most $2^{8N}$ distinct screens. For 10 bytes of state ($2^{80}$ screens), the average Hamming distance to any target is about 25% of all pixels. A face is recognisable at 15--20% error, so you need either more seed bytes or a smarter generator.
+
+**Three approaches have been tried in the scene:**
+
+**1. Single-seed brute force.** Try all seeds, pick the one closest to the target image. With a 16-bit seed: 65,536 candidates, exhaustive in milliseconds. With a 32-bit seed: 4 billion, exhaustive in seconds on GPU. Maxim Muchkaev (.ded^RMDA) ran this approach for three months in a Spectrum emulator at 10,000% speed before concluding that the search space was too small for recognisable results from a single seed.
+
+**2. Layered XOR accumulation.** Run the generator N times with different seeds, XOR-ing each output onto the screen. Each layer adds or removes detail. With 64 layers × 16-bit seeds = 128 bytes of searchable parameters, you get 26% error on a real photograph --- noisy but the shape is visible. The search is greedy: optimise each layer independently against the current residual error. Guaranteed convergence --- each layer can only reduce error.
+
+**3. Hierarchical segmentation.** Divide the screen into progressively smaller rectangles. Level 0: one seed for the whole screen (coarse shapes). Level 1: four seeds for quadrants (medium detail). Level 2: sixteen seeds for tiles (fine detail). Level 3: sixty-four seeds for blocks (pixel-level). Each level corrects the errors of the previous one via XOR. With 4 levels (85 seeds, 170 bytes), a real photograph reaches 15% error --- recognisably a specific person --- and the entire search takes under one second on GPU.
+
+```
+Hierarchical segmentation:
+  Level 0:  1 seed  × 128×96  blocks  → coarse shape     (2 bytes)
+  Level 1:  4 seeds × 64×48   blocks  → quadrant detail   (8 bytes)
+  Level 2: 16 seeds × 32×24   blocks  → tile refinement  (32 bytes)
+  Level 3: 64 seeds × 16×12   pixels  → fine correction (128 bytes)
+  Total: 85 seeds = 170 bytes. Error: ~15%. Time: <1 second on GPU.
+```
+
+The key metric is **weighted Hamming distance** --- not all pixels are equal. Eyes and nose matter more than background. A mask gives 4× weight to the face region. This steers the search toward seeds that get the important features right, even at the cost of background noise.
+
+**GPU acceleration transforms this problem.** What took months of emulator time in 2019 now takes seconds:
+
+| Method | Seeds | Data | Error | Time (GPU) |
+|--------|-------|------|-------|------------|
+| Single seed (16-bit) | 1 | 2B | ~45% | 1ms |
+| Single seed (32-bit) | 1 | 4B | ~40% | 7s |
+| Layered × 128 | 128 | 256B | 26% | 0.7s |
+| Segmented × 85 | 85 | 170B | **15%** | <1s |
+| Segmented × 597 | 597 | 1194B | **15%** | <1s |
+
+The honest conclusion: a single pRNG seed cannot encode a recognisable image. But hierarchical seeds with XOR correction can, and GPU makes the search practical. The technique is a cousin of the LUT generators in Appendix N --- compression via computation, where the "decompressor" is the CPU executing a tiny program.
+
 ### Credits
 
-The Hole series and the CALL-chain technique are the work of Maxim Muchkaev (.ded^RMDA, Samara, Russia). The pRNG is by Patrik Rak (Raxsoft). RMDA demos with sources are available at https://rmda.su and on scene.org / demozoo.org. The INC↔DEC trick was observed in Hole 11; the RL (IX+N) pixel scroll technique (used in the 4K intro *4608pix*, also by RMDA) is discussed in Chapter 17.
+The Hole series and the CALL-chain technique are the work of Maxim Muchkaev (.ded^RMDA, Samara, Russia). The pRNG is by Patrik Rak (Raxsoft). RMDA demos with sources are available at https://rmda.su and on scene.org / demozoo.org. The INC↔DEC trick was observed in Hole 11; the RL (IX+N) pixel scroll technique (used in the 4K intro *4608pix*, also by RMDA) is discussed in Chapter 17. pRNG image search results from the z80-optimizer project; the layered XOR approach was inspired by Ilmenit's *Mona* (Atari 256b, 2014).
 
 ---
 
