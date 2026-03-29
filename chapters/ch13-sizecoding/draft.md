@@ -323,9 +323,17 @@ This is a compression problem in disguise. A 256-byte intro has room for perhaps
 
 **Three approaches have been tried in the scene:**
 
+![Dual-layer evolutionary search: synthetic cat (5%, 128B) and skull (15%, 128B) — target left, GPU result right](../../illustrations/output/ch13_dual_cat.png)
+
+![Dual-layer evolutionary search: skull target vs GPU result (15% error, 128 bytes of parameters)](../../illustrations/output/ch13_dual_skull.png)
+
 **1. Single-seed brute force.** Try all seeds, pick the one closest to the target image. With a 16-bit seed: 65,536 candidates, exhaustive in milliseconds. With a 32-bit seed: 4 billion, exhaustive in seconds on GPU. Maxim Muchkaev (.ded^RMDA) ran this approach for three months in a Spectrum emulator at 10,000% speed before concluding that the search space was too small for recognisable results from a single seed.
 
-**2. Layered XOR accumulation.** Run the generator N times with different seeds, XOR-ing each output onto the screen. Each layer adds or removes detail. With 64 layers × 16-bit seeds = 128 bytes of searchable parameters, you get 26% error on a real photograph --- noisy but the shape is visible. The search is greedy: optimise each layer independently against the current residual error. Guaranteed convergence --- each layer can only reduce error.
+**2. Layered XOR accumulation.** Run the generator N times with different seeds, XOR-ing each output onto the screen. Each layer adds or removes detail. With 64 layers × 16-bit seeds = 128 bytes of searchable parameters, you get 26% error on a real photograph --- noisy but the shape is visible. The search is greedy: optimise each layer independently against the current residual error. Guaranteed convergence --- each layer can only reduce error. Inspired by Ilmenit's *Mona* (Atari 256b, 2014) which used 64 LFSR brush strokes.
+
+![Layered LFSR: Che Guevara (128 layers, 26% error, 256B) and Einstein (128 layers, 26% error, 256B) — target left, result right](../../illustrations/output/ch13_layered_che_128.png)
+
+![Layered LFSR: Einstein — same technique, different target. The face is recognisable despite 26% pixel error](../../illustrations/output/ch13_layered_einstein_128.png)
 
 **3. Hierarchical segmentation.** Divide the screen into progressively smaller rectangles. Level 0: one seed for the whole screen (coarse shapes). Level 1: four seeds for quadrants (medium detail). Level 2: sixteen seeds for tiles (fine detail). Level 3: sixty-four seeds for blocks (pixel-level). Each level corrects the errors of the previous one via XOR. With 4 levels (85 seeds, 170 bytes), a real photograph reaches 15% error --- recognisably a specific person --- and the entire search takes under one second on GPU.
 
@@ -338,6 +346,20 @@ Hierarchical segmentation:
   Total: 85 seeds = 170 bytes. Error: ~15%. Time: <1 second on GPU.
 ```
 
+The progression is striking --- watch the image emerge from noise as each level adds detail:
+
+![Level 0: 1 seed, 8×8 blocks — coarse light/dark regions (2 bytes)](../../illustrations/output/ch13_segmented_level0.png)
+
+![Level 1: 5 seeds, 4×4 blocks — quadrant structure appears (10 bytes)](../../illustrations/output/ch13_segmented_level1.png)
+
+![Level 2: 21 seeds, 2×2 blocks — contours emerge (42 bytes)](../../illustrations/output/ch13_segmented_level2.png)
+
+![Level 3: 85 seeds, 1×1 pixels — face recognisable (170 bytes)](../../illustrations/output/ch13_segmented_level3.png)
+
+![Level 4: 341 seeds — detail sharpens, beret and hair visible (682 bytes)](../../illustrations/output/ch13_segmented_level4.png)
+
+![Level 5: 597 seeds — 15% error, clearly Che Guevara (1194 bytes)](../../illustrations/output/ch13_segmented_level5.png)
+
 The key metric is **weighted Hamming distance** --- not all pixels are equal. Eyes and nose matter more than background. A mask gives 4× weight to the face region. This steers the search toward seeds that get the important features right, even at the cost of background noise.
 
 **GPU acceleration transforms this problem.** What took months of emulator time in 2019 now takes seconds:
@@ -349,6 +371,8 @@ The key metric is **weighted Hamming distance** --- not all pixels are equal. Ey
 | Layered × 128 | 128 | 256B | 26% | 0.7s |
 | Segmented × 85 | 85 | 170B | **15%** | <1s |
 | Segmented × 597 | 597 | 1194B | **15%** | <1s |
+
+![Evolution mosaic: 20 generations of GPU evolutionary search converging on a cat silhouette (128 bytes, dual-layer with island migration)](../../illustrations/output/ch13_cat_evolution.png)
 
 The honest conclusion: a single pRNG seed cannot encode a recognisable image. But hierarchical seeds with XOR correction can, and GPU makes the search practical. The technique is a cousin of the LUT generators in Appendix N --- compression via computation, where the "decompressor" is the CPU executing a tiny program.
 
