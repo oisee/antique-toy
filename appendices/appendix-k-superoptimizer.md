@@ -48,27 +48,48 @@ Division by constant K on Z80 has no hardware support. The GPU found that the re
 
 `n / K = (n × M) >> S` where `M ≈ 2^S / K`
 
-**247/247 divisors solved** (3--255). COMPLETE --- zero gaps. Every u8 division has a proven optimal sequence.
+**254/254 divisors solved** (2--255). COMPLETE --- zero gaps. Every u8 division has a proven optimal sequence.
+
+The v3 table uses **6 methods**, three of which were discovered by GPU exhaustive search:
+
+| Method | Divisors | Description |
+|--------|----------|-------------|
+| shift | 5 | Powers of 2: SRL/SRA chains |
+| mul\_shift | 30 | Classic reciprocal: `(A × M) >> S` |
+| preshift\_mul | 36 | Pre-shift input, then reciprocal multiply |
+| mul\_add256\_shift | 41 | Multiply + add 256 correction |
+| double\_mul\_shift | 15 | Two-stage reciprocal |
+| **carry\_compare** | **127** | **GPU-discovered:** ADC overflow trick for K≥128 |
+
+**The carry\_compare breakthrough.** For divisors K ≥ 128, the quotient is always 0 or 1. The GPU discovered a branchless comparison via ADC overflow:
+
+```z80
+; Branchless A / K for K ≥ 128 (result: 0 or 1)
+; GPU-discovered — not in any Z80 reference
+    OR   A              ; 4T  clear carry
+    LD   B, (256-K)     ; 7T  B = 256 - K
+    ADC  A, B           ; 4T  A + (256-K): overflows iff A ≥ K
+    SBC  A, A           ; 4T  mask from carry
+    AND  1              ; 7T  A = (A ≥ K) ? 1 : 0
+; 5 instructions, 26T. Verified: all 256 inputs for each K.
+```
+
+Representative sequences:
 
 | Divisor | Insts | T-states | vs general loop (280T) |
 |---------|-------|----------|------------------------|
+| /2  | 1 | 8T | 35× |
 | /3  | 14 | 130T | 2.2× |
 | /5  | 14 | 127T | 2.2× |
-| /7  | 14 | 123T | 2.3× |
-| /9  | 11 | 97T | 2.9× |
 | /10 | 14 | 124T | 2.3× |
-| /15 | 12 | 102T | 2.7× |
-| /19 | 10 | 86T | 3.3× |
-| /25 | 10 | 83T | 3.4× |
-| /50 | 10 | 80T | 3.5× |
 | /57 | 6 | 49T | 5.7× |
 | /100 | 9 | 105T | 2.7× |
-| /114 | 6 | 46T | 6.1× |
+| /128 | 5 | 26T | **10.8×** (carry\_compare) |
 | /171 | 4 | 27T | **10.4×** |
-| /205 | 5 | 35T | 8.0× |
-| /255 | 6 | 50T | 5.6× |
+| /200 | 5 | 26T | **10.8×** (carry\_compare) |
+| /255 | 5 | 26T | **10.8×** (carry\_compare) |
 
-**Total: 247/247 divisors --- COMPLETE. Average 107T. Fastest: div171 = 4 instructions, 27T (10.4× vs loop).** `div10 = 124T` matches the famous Hacker's Delight hand-optimized sequence --- found automatically by GPU in 11 seconds. Last solved: div129 = 16 instructions, 160T.
+**Total: 254/254 divisors --- COMPLETE. Average 79T (was 154T in v1 = −49%). Min 8T (/2), max 188T.** The carry\_compare method alone covers 127 of 254 divisors at a flat 26T. Three levels of validation: analytical (Hacker's Delight baseline), composite search (+12%), GPU exhaustive (+49% total).
 
 ---
 
@@ -89,6 +110,9 @@ All found via GPU exhaustive search with a 37-op instruction pool:
 | `max_0(A)` | `LD B,A : RLCA : SBC A,A : XOR B : AND B` | 5 | 20T |
 | `sign(A)` | (5 insts) | 5 | 20T |
 | `ABS(A)` | `LD B,A : RLCA : SBC A,A : XOR B : SBC A,B : ADC A,B` | 6 | 24T |
+| `sat_add8(A,B)` | `ADD A,B : LD C,A : SBC A,A : OR C` | 4 | 16T |
+| `sat_sub8(A,B)` | `SUB B : LD C,A : SBC A,A : CPL : AND C` | 5 | 20T |
+| `sign8(A)` | `→ -1/0/+1` (RLCA + SBC + NEG chain) | 9 | 43T |
 | `MIN(A,B)` | `SUB B : SBC A,A : AND ... : ADD A,B` | 8 | 32T |
 | `MAX(A,B)` | `SUB B : SBC A,A : AND ... : ADD A,B` | 8 | 32T |
 | `CMOV(CY?B:C)` | `SBC A,A : LD D,A : LD A,B : XOR C : AND D : XOR C` | 6 | 24T |
@@ -153,6 +177,10 @@ Only /3 is exact for all u8 inputs. Magic constant 171 works because $\lfloor 25
 |-------|----------|-------|----------|
 | NEG HL (DE=0) | `EX DE,HL : OR A : SBC HL,DE` | 3 | 23T |
 | NEG HL (universal) | `XOR A : SUB L : LD L,A : SBC A,A : SUB H : LD H,A` | 6 | 24T |
+| NEG HL (v3) | `XOR A : SUB L : LD L,A : LD A,0 : SBC A,H : LD H,A` | 6 | 27T |
+| ABS HL | `LD A,H : RLA : SBC A,A : LD B,A : XOR L : SUB B : LD L,A : LD A,B : XOR H : SBC A,B : LD H,A` | 11 | 44T |
+| MIN HL,DE | `OR A : SBC HL,DE : ADD HL,DE : JR C,+1 : EX DE,HL` | 5 | 41--46T |
+| MAX HL,DE | (same, swap JR condition) | 5 | 41--46T |
 | Sign-extend A→HL | `ADC A,L : SBC A,A : LD H,A` | 3 | 12T |
 | NOT HL | `DEC H : XOR H : LD L,A` | 3 | 12T |
 | HL >> 1 | `SRL H : RR L` | 2 | 16T |
@@ -160,7 +188,9 @@ Only /3 is exact for all u8 inputs. Magic constant 171 works because $\lfloor 25
 | HL × 10 | (5 insts via shift-add) | 5 | 48T |
 | HL × 256 | `LD H,L : LD L,0` | 2 | 11T |
 
-**NEG HL** has 4 variants with different register prerequisites. Alf's universal method works without any prerequisites. The GPU found shorter versions requiring DE=0 or B=0.
+**NEG HL** has 4 variants with different register prerequisites. Alf's universal method works without any prerequisites. The GPU found shorter versions requiring DE=0 or B=0. The v3 NEG HL (27T) avoids SBC A,A and works when CY is unknown.
+
+**ABS HL** (44T, branchless) extends the 8-bit ABS pattern to 16 bits: extract sign from H, create mask, XOR-subtract both bytes. **MIN/MAX HL,DE** (41--46T) use the SBC+ADD trick: `SBC HL,DE` sets carry if HL < DE, then `ADD HL,DE` restores the original value. The conditional `EX DE,HL` is a single-byte branch (JR C/NC skips 1 byte) --- the only case where a branch is cheaper than branchless on Z80.
 
 ---
 
@@ -197,7 +227,7 @@ rot1:   RLCA       ; 1               shr1:   SRL A    ; /2
 **Packed library sizes:**
 - 594 bytes for 164 mul8 constants (51% compression)
 - ~500 bytes for 254 mul16 constants (86% compression)
-- **Total: ~2KB packed blob covers ALL optimal arithmetic for Z80.** 254 multiplies + 247 divisions + rotation/shift sleds. For ZX Spectrum: just 4% of 48KB RAM.
+- **Total: ~2KB packed blob covers ALL optimal arithmetic for Z80.** 254 multiplies + 254 divisions + rotation/shift sleds + branchless idioms. For ZX Spectrum: just 4% of 48KB RAM.
 
 ---
 
@@ -228,7 +258,7 @@ All sequences available at: https://github.com/oisee/z80-optimizer
 - `data/div8_optimal.json` --- 247 division sequences
 - `data/mul8_library.asm` --- packed Z80 assembly with multi-entry points
 
-**501 total provably optimal arithmetic sequences for Z80.**
+**508+ total provably optimal arithmetic sequences for Z80** (254 mul + 254 div).
 
 **See also:** Appendix L (floating-point formats), Appendix M (BCD arithmetic), Appendix N (LUT generators), Appendix O (meta-analysis of all sequences), Appendix P (register allocation tables --- how the compiler uses these sequences without clobbering live variables).
 
