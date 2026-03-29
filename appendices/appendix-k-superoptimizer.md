@@ -194,6 +194,87 @@ Only /3 is exact for all u8 inputs. Magic constant 171 works because $\lfloor 25
 
 ---
 
+## K.5b Multi-Accumulator Arithmetic
+
+> *The Z80 has 144 bits of registers --- enough for 4.5 simultaneous u32 accumulators. Choosing the right packing changes everything.*
+
+The Z80 has no 32-bit registers. For u32 arithmetic, we pack four 8-bit registers into one logical accumulator. The classic choice is **DEHL** (D:E:H:L), but it is not the best:
+
+| Convention | Layout | SHL32 | ADD32 | SAVE | Key feature |
+|------------|--------|-------|-------|------|-------------|
+| **DEHL** | D:E:H:L | 34T | 54T | 22T | ADC HL,rr native |
+| **HLIX** | H:L:IXH:IXL | 30T | 30T | 24T | DE+BC free as temp |
+| **HLH'L'** | H:L:H':L' | 30T | 30T | **4T** | EXX instant swap |
+
+**HLH'L' wins overwhelmingly.** `EXX` swaps three register pairs in 4T. Where DEHL needs 22T to save state to the stack, HLH'L' does it in 4T. This 18T difference compounds with every multiply-by-constant.
+
+### Why It Matters: ×10 Decomposition
+
+Multiplying u32 by constant K requires SHL + SAVE + ADD. For `×10` (the atoi inner loop, ×2 + ×8):
+
+| Convention | 3×SHL | 1×SAVE | 1×ADD | **Total ×10** |
+|------------|-------|--------|-------|---------------|
+| DEHL       | 102T  | 22T    | 54T   | **178T**      |
+| HLIX       | 90T   | 24T    | 30T   | **144T**      |
+| HLH'L'     | 90T   | 4T     | 30T   | **124T**      |
+
+HLH'L' is **30% faster** than DEHL for ×10. Over 10 digits of atoi: 540T saved.
+
+### The HLIX×10+A Trick
+
+For atoi specifically, HLIX has an advantage: the digit in A is injected during the save step at zero extra cost.
+
+```z80
+; HLIX = HLIX × 10 + A (19 instructions, 178T, 31 bytes)
+; Input:  HLIX = running total, A = digit (0-9)
+; Output: HLIX = total × 10 + digit
+
+  ADD  IX, IX     ; 15T ─┐ HLIX <<= 1 (×2)
+  ADC  HL, HL     ; 15T ─┘
+
+  ADD  A, IXL     ;  8T ─┐ Save HLIX×2 into DEBC
+  LD   C, A       ;  4T  │ AND inject digit into low byte
+  LD   A, IXH     ;  8T  │ — the +A is FREE
+  ADC  A, 0       ;  7T  │
+  LD   B, A       ;  4T  │
+  LD   A, L       ;  4T  │
+  ADC  A, 0       ;  7T  │ ADC A,H + SUB E trick:
+  LD   E, A       ;  4T  │ chains carry from previous
+  ADC  A, H       ;  4T  │ byte and subtracts already-
+  SUB  E          ;  4T  │ saved E to isolate H+carry
+  LD   D, A       ;  4T ─┘
+
+  ADD  IX, IX     ; 15T ─┐ ×4
+  ADC  HL, HL     ; 15T ─┘
+  ADD  IX, IX     ; 15T ─┐ ×8
+  ADC  HL, HL     ; 15T ─┘
+  ADD  IX, BC     ; 15T ─┐ ×8 + ×2 = ×10 (+digit)
+  ADC  HL, DE     ; 15T ─┘
+```
+
+### Register Budget: 144 Bits
+
+The Z80's 18 eight-bit registers organize into up to 4.5 simultaneous u32 accumulators:
+
+```
+Main bank:  A  B  C  D  E  H  L      (56 bits)
+Shadow:     A' B' C' D' E' H' L'     (56 bits, via EXX / EX AF,AF')
+Index:      IXH  IXL  IYH  IYL      (32 bits)
+                                     ─────────
+                                     144 bits = 4.5 × u32
+```
+
+| Config | Bits | Layout | Use case |
+|--------|------|--------|----------|
+| 2×32 + 8 | 72 | HLIX + DEBC + A | atoi (×10+A) |
+| 2×32 | 64 | HL:H'L' + DE:D'E' | bignum add |
+| 3×32 | 96 | DEHL + D'E'H'L' + IX:IY | FP mul |
+| 4×32 | 128 | DEHL + BCIX + D'E'H'L' + B'C'IY | SHA-256 |
+
+For SHA-256, all four 32-bit working variables fit in registers --- no RAM spills needed.
+
+---
+
 ## K.6 The Packed Arithmetic Cassette
 
 All optimal sequences share instruction prefixes. A packed library with multiple entry points via labels eliminates all redundancy:
