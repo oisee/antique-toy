@@ -329,6 +329,37 @@ The search runs on commodity GPUs:
 
 Cross-verified across 5 platforms (CUDA + OpenCL + Vulkan + Metal + CPU). All results identical across 4 GPU APIs. The verification kernels are written in Nanz (a C23-like language) and compiled to GPU compute shaders via the `mir2gpu` backend --- the same compiler that targets Z80 also targets the GPU (see Chapter 23, Section 23.5c).
 
+### Three-Level Validation: How GPU Discovers What Humans Miss
+
+The division table illustrates a general methodology. No single technique finds all optimal sequences --- three complementary levels are required:
+
+**Level 1 --- Analytical (Hacker's Delight).** For each K, find magic multiplier M and shift S such that `floor(A × M / 2^S) = floor(A / K)`. Compose with the proven-optimal mul16 table and SRL chains. Result: 254/254 divisors solved, average **154T**. The mathematical foundation --- without it, there is no div3 or div10 at all (they need 16+ instructions, far beyond GPU depth).
+
+**Level 2 --- Composite Search.** Enumerate structural decompositions that combine proven building blocks:
+
+- **Pre-shift**: `(A >> P) × M >> S` --- shift right first, multiply a smaller number
+- **Double multiply**: `A × M1 × M2 >> S` --- factor M into two smaller multiplies
+
+Python enumerates all structural variants, picks the cheapest per K. Result: 140/254 improved, average **135T** (−12%). Star discovery: `div86 = (A>>1) × 6 >> 8` costs just **60T** (was 170T) --- exploits that 86 = 2 × 43.
+
+**Level 3 --- GPU Exhaustive.** Try everything, assume nothing. Depth ≤6 sequences from a 21-instruction pool with a parametric B register. For K < 128: nothing new (sequences too short). For K ≥ 128: discovered **carry\_compare** --- 127 divisors solved at flat 26T. No human found this. Not in Hacker's Delight, not on any Z80 forum, not in SDCC source. The GPU tried 23 billion sequences per K value and found the one that works.
+
+| Level | Method | avg T | Δ from prev | Key discovery |
+|-------|--------|-------|-------------|---------------|
+| 1 | Analytical | 154T | baseline | multiply-and-shift formula |
+| 2 | Composite | 135T | −12% | PRESHIFT, DOUBLE\_MUL |
+| 3 | GPU exhaustive | **79T** | **−49%** | **carry\_compare** |
+
+Each level finds optimizations the others cannot:
+
+- **Analytical** provides sequences too long for GPU search (div3 = 16 instructions)
+- **Composite** exploits factorization structure Python can enumerate but GPU cannot see
+- **GPU** finds tricks with no known mathematical structure
+
+The carry\_compare trick was cross-verified on four independent systems (z80-optimizer, MinZ compiler, MinZ-VIR backend, MinZ-ABAP frontend) --- 32,768 test cases each, all pass.
+
+This three-level approach generalizes: the mul8 table used Level 1 (shift-add decomposition) + Level 3 (GPU pool reduction). The LUT generators (Appendix N) used Level 3 alone (no analytical formula for sqrt approximations). The branchless idioms (K.4) used Level 3 with Level 1 verification. In every case, combining levels produced results that no single level could achieve.
+
 ---
 
 ## K.8 Source & Data
