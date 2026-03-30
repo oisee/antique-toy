@@ -376,9 +376,39 @@ The key metric is **weighted Hamming distance** --- not all pixels are equal. Ey
 
 The honest conclusion: a single pRNG seed cannot encode a recognisable image. But hierarchical seeds with XOR correction can, and GPU makes the search practical. The technique is a cousin of the LUT generators in Appendix N --- compression via computation, where the "decompressor" is the CPU executing a tiny program.
 
+### pRNG Video: From Images to Motion
+
+The image search has a natural extension: video. If each frame can be encoded as a set of seeds, then a video is a sequence of seed-sets. And if consecutive frames are similar, most of the encoding carries over --- you only need seeds for the *delta* between frames.
+
+**Keyframe + delta architecture.** A keyframe uses the full hierarchical search (85--213 seeds, 170--426 bytes). A delta frame encodes only the inter-frame difference --- typically 5--15% of pixels change between frames, so the delta is sparse and compresses well.
+
+**Masked two-layer delta.** The coarse seed (8×8 blocks) naturally acts as both data and mask --- it marks *where* changes happened. The fine seed (1×1 pixels) is evaluated only inside the coarse-activated blocks. Without masking, the fine seed wastes its "correlation budget" staying neutral on unchanged areas. With masking, all 65,536 candidates are useful --- dramatically better search quality per seed.
+
+```z80
+; Delta frame decoder (4 bytes: coarse seed + fine seed)
+    call lfsr_xor_8x8          ; XOR coarse pattern → marks changed blocks
+    call lfsr_xor_1x1_masked   ; XOR fine correction → only inside changed blocks
+; Cost: ~70,000 T-states = 50fps at 3.5MHz
+```
+
+**Stochastic resonance.** Each frame has ~30% pixel error. But at 25fps, the human visual system averages consecutive frames. The perceived error drops as $\sqrt{0.3^2/N}$: 4 frames → 15%, 16 frames → 7.5%. Random noise becomes perceptual grayscale through temporal averaging --- a monochrome display producing apparent grey levels for free.
+
+**Bitrate estimates:**
+
+| Content | Seeds/frame | Bytes/frame | FPS | Bitrate | 3 min |
+|---------|-------------|-------------|-----|---------|-------|
+| Static portrait | 213 | 426 | 1 | 3.4 Kbps | 76 KB |
+| Slow video (5% change) | 2 | 4 | 10 | 320 bps | **8.8 KB** |
+| Medium video (15% change) | 3 | 6 | 25 | 1.2 Kbps | 27 KB |
+| Scene cut | full keyframe | 426 | --- | --- | --- |
+
+**8.8 KB for 3 minutes of slow video** --- on a machine with 48 KB of RAM. The encoder runs on GPU (minutes per frame); the decoder is 200 bytes of Z80 code using only LFSR + XOR. No multiply, no DCT, no motion compensation. Encode once on a modern machine, play on any Z80 hardware from 1976 onward.
+
+The crossover point: pRNG beats naive pixel coding for the first 50--200 seeds per frame. Beyond that, LZ-family compressors win (they can exploit arbitrary structure, not just LFSR correlations). The practical sweet spot is exactly where demoscene content lives --- low-resolution, high-contrast, stylised imagery with slow motion.
+
 ### Credits
 
-The Hole series and the CALL-chain technique are the work of Maxim Muchkaev (.ded^RMDA, Samara, Russia). The pRNG is by Patrik Rak (Raxsoft). RMDA demos with sources are available at https://rmda.su and on scene.org / demozoo.org. The INC↔DEC trick was observed in Hole 11; the RL (IX+N) pixel scroll technique (used in the 4K intro *4608pix*, also by RMDA) is discussed in Chapter 17. pRNG image search results from the z80-optimizer project; the layered XOR approach was inspired by Ilmenit's *Mona* (Atari 256b, 2014).
+The Hole series and the CALL-chain technique are the work of Maxim Muchkaev (.ded^RMDA, Samara, Russia). The pRNG is by Patrik Rak (Raxsoft). RMDA demos with sources are available at https://rmda.su and on scene.org / demozoo.org. The INC↔DEC trick was observed in Hole 11; the RL (IX+N) pixel scroll technique (used in the 4K intro *4608pix*, also by RMDA) is discussed in Chapter 17. pRNG image search and video codec theory from the z80-optimizer project; the layered XOR approach was inspired by Ilmenit's *Mona* (Atari 256b, 2014). Rate-distortion analysis and masked delta architecture from z80-optimizer `docs/prng_compression_theory.md`.
 
 ---
 
