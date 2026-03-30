@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Working repository for **"Coding the Impossible: Z80 Demoscene Techniques for Modern Makers"** — a book about Z80/eZ80 assembly on ZX Spectrum and Agon Light 2, with deep focus on demoscene techniques. Companion demo project ("Antique Toy") included.
 
-**Merged outline:** `book-outline.md` (23 chapters + 8 appendices, 2 platforms: ZX Spectrum 128K + Agon Light 2). NEO6502/65C02 dropped for now.
+**Merged outline:** `book-outline.md` (23 chapters + 16 appendices A-P, 2 platforms: ZX Spectrum 128K + Agon Light 2). NEO6502/65C02 dropped for now. Current version: **v30**.
 
 ## Repository Structure
 
@@ -49,7 +49,7 @@ make clean        # remove build artifacts
 
 **Primary assembler:** `sjasmplus` v1.21.1 — full Z80/Z80N instruction set, IX/IY indexed modes, negative DB, expressions. Pinned as git submodule in `tools/sjasmplus/`. Flags: `--nologo`, `--raw=` for binary output.
 
-**Secondary:** `mza` (MinZ Z80 Assembler) v0.23.0 — we develop it at `../minz/`. Used for mze emulation and DZRP. Has IX/IY limitations. New in v0.23.0: INCBIN directive, RLCA sled peephole optimization, multipass fix.
+**Secondary:** `mza` (MinZ Z80 Assembler) v0.23.0 — we develop it at `../minz/`. Installed at `~/.local/bin/mza`. Supports IXH/IXL/IYH/IYL, undocumented instructions, ZX Spectrum target. New in v0.23.0: INCBIN directive, RLCA sled peephole optimization, multipass fix. **sjasmplus is not installed** — use `mza` for assembly: `mza file.a80 -t zxspectrum -o output.bin`.
 
 **Known assembler gotcha:** `LD IXH,H` under DD prefix: H resolves to IXH, so `LD IXH,H` = NOP. Fix: `LD A,H / LD IXH,A`.
 
@@ -72,7 +72,7 @@ make clean        # remove build artifacts
 - Negative DB values allowed: `DB -3, -6` (sjasmplus handles two's complement)
 - Self-modifying code labels inside functions must be local (`.smc_xxx:`) to avoid breaking local label scope
 - Comments explain cycle counts where relevant: `; 11 T` or `; 196-204 T-states`
-- Examples must compile with `sjasmplus --nologo`
+- Examples must compile with `sjasmplus --nologo` or `mza -t zxspectrum`
 
 ## Languages
 
@@ -97,10 +97,12 @@ This repo is part of a constellation of projects supervised by `ddll` (dedelulu)
 
 | Session | Directory | Project | What it provides |
 |---------|-----------|---------|-----------------|
-| `um2dy4ex:main` | `~/dev/z80-optimizer` | GPU Z80 superoptimizer | Provably optimal arithmetic sequences (Appendix K) |
-| `ju6yy047:main` | `~/dev/minz` | MZA assembler | Secondary assembler, RLCA sled peephole, INCBIN |
-| `jjjlhyva:main` | `~/dev/minz-vir` | VIR compiler backend | TSMC tunnels, Z3-optimized codegen, SQL on ZX |
+| `efafkv1x:main` | `~/dev/z80-optimizer` | GPU Z80 superoptimizer | Appendix K (arithmetic), P (regalloc), branchless library |
+| `ukqll0cm:main` | `~/dev/minz` | MZA assembler | Secondary assembler, RLCA sled peephole, INCBIN |
+| (varies) | `~/dev/minz-vir` | VIR compiler backend | TSMC tunnels, Z3-optimized codegen, mir2gpu |
 | `gq1enuw8:main` | `~/dev/dedelulu` | ddll supervisor | Inter-session comms, external LLM queries |
+
+**Note:** Session IDs change when agents restart. Always `ddll explore` first if unsure.
 
 **Communication:**
 
@@ -133,10 +135,12 @@ ddll ask gpt54 -s review "now check the code examples for cycle count errors"  #
 
 Reference data for Z80 constant arithmetic, all GPU brute-force proven optimal:
 - **254/254** u8 multiply sequences (avg 8× faster than general loop)
-- **247/247** u8 division sequences — COMPLETE (avg 2.6× faster than general loop)
-- **15** branchless idioms (ABS, bool, NOT, sign-extend, etc.)
+- **254/254** u8 division sequences — COMPLETE, v3 (avg 79T, −49% from v1). 6 methods including GPU-discovered carry_compare
+- **20+** branchless idioms (ABS, MIN/MAX, CMOV, sat_add/sub, sign, bool, etc.)
+- Multi-accumulator: DEHL vs HLIX vs HLH'L' conventions (K.5b)
+- 3-level validation methodology: analytical → composite → GPU exhaustive (K.7)
 - Packed library: ~2KB covers ALL optimal Z80 arithmetic
-- Source: `_in/appendix_superoptimizer.md`, `_in/gpu_brute_force_findings.md`
+- Source: `_in/appendix_superoptimizer.md`, `_in/branchless_primitives.md`
 - Repo: `github.com/oisee/z80-optimizer`
 
-Key tricks: `SBC A,A` = carry-to-mask (0x00/0xFF). `NEG` = ×255. `RLCA` + `SBC A,A` = branchless sign detection.
+Key tricks: `SBC A,A` = carry-to-mask (0x00/0xFF). `NEG` = ×255. `RLCA` + `SBC A,A` = branchless sign detection. `OR A; ADC A,(256-K); SBC A,A` = branchless A≥K (carry_compare).
